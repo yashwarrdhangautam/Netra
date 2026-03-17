@@ -286,6 +286,6 @@ git push origin feature/your-feature
 ## 📄 License
 
 AGPL-3.0 — Free and open-source.
-Commercial licensing: [yash@netra.security](mailto:yash@netra.security)
+Commercial licensing: [yashwarrdhangautam@gmail.com](mailto:yashwarrdhangautam@gmail.com)
 
 **Author**: [Yash Wardhan Gautam](https://github.com/yashwardhan-gautam)
