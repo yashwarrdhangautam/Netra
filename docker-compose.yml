@@ -1,0 +1,38 @@
+# NETRA नेत्र — Docker Compose
+# Runs NETRA + Ollama together. Data persists in ./netra-data/
+
+services:
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: netra-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  netra:
+    build: .
+    container_name: netra
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen:14b
+      - NETRA_HOME=/root/.netra
+    volumes:
+      - netra-data:/root/.netra
+    network_mode: host          # needed for scanning local networks
+    stdin_open: true
+    tty: true
+
+volumes:
+  ollama-data:
+  netra-data:

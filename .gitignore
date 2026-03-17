@@ -1,0 +1,127 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# NETRA .gitignore — Exclude sensitive data, build artifacts, and cache files
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# NETRA runtime data (keep dir structure, ignore files)
+netra_output/
+~/.netra.conf.yaml
+~/.netra/
+findings.db
+findings.db-wal
+findings.db-shm
+*.log
+
+# Credentials & secrets
+.env
+.env.production
+*.key
+*.pem
+*.pfx
+secrets.yaml
+credentials.json
+aws_credentials
+
+# Test artifacts
+test_results/
+test_output/
+.hypothesis/
+
+# Package managers
+poetry.lock
+Pipfile.lock
+yarn.lock
+package-lock.json
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Git
+.git/
+.gitmodules
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+.swp
+.swo
+
+# OS-specific
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor backups
+.#*
+*.#
+
+# System files
+.vagrant/
+Vagrantfile
+
+# Build outputs (keep if versioned)
+dist/
+build/
+*.egg-info/
+
+# ── NETRA: Project-specific excludes ──────────────────────────────────────
+_archive/
+config.yaml
+claude_desktop_config.json
+*.netra-session
+
+# Local scan output (never commit scan data)
+~/.netra/
