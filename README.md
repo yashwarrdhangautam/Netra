@@ -48,7 +48,7 @@ Scan → Recon → VAPT → AI Analysis → Attack Chains → Compliance Audit �
 ### Option 1: One-command install (recommended)
 
 ```bash
-git clone https://github.com/netra-security/netra.git
+git clone https://github.com/yashwarrhan/netra.git
 cd netra
 bash install.sh
 ```
@@ -59,7 +59,7 @@ bash install.sh
 
 ```bash
 # 1. Clone
-git clone https://github.com/netra-security/netra.git && cd netra
+git clone https://github.com/yashwarrhan/netra.git && cd netra
 
 # 2. Python dependencies
 pip3 install -r requirements.txt --break-system-packages
@@ -192,7 +192,7 @@ python3 netra.py -t example.com --profile deep
 
 ```bash
 # Pull and start
-git clone https://github.com/netra-security/netra.git && cd netra
+git clone https://github.com/yashwarrhan/netra.git && cd netra
 docker-compose up -d
 
 # First run: pull Qwen model into Ollama container
