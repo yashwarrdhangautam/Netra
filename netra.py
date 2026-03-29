@@ -110,6 +110,11 @@ examples:
     p.add_argument("--only-pentest", action="store_true",
                    help="Run pentest only (requires prior recon data)")
 
+    # CI/CD output
+    p.add_argument("--output-sarif", help="Path to write SARIF output file")
+    p.add_argument("--fail-on", choices=["critical", "high", "medium", "low", "info"],
+                   help="Exit with code 1 if findings at this severity or above")
+
     # DB management
     p.add_argument("--mark-fp",  type=int, metavar="FINDING_ID",
                    help="Mark finding as false positive")
@@ -388,6 +393,33 @@ def run_scan(args: argparse.Namespace, targets: list,
     stats = db.get_stats(scan_id)
     _print_summary(scan_id, stats, risk_score, risk_grade, workdir)
     notify_complete(scan_id, str(workdir), stats, risk_score, risk_grade)
+
+    # ── CI/CD: SARIF output ──────────────────────────────────────────
+    if args.output_sarif:
+        try:
+            from netra.reports.sarif import generate_sarif
+            findings = db.get_findings(scan_id)
+            generate_sarif(findings, Path(args.output_sarif))
+            status(f"SARIF output: {args.output_sarif}", "ok")
+        except Exception as e:
+            status(f"SARIF generation failed: {e}", "warn")
+
+    # ── CI/CD: Exit code based on severity ───────────────────────────
+    if args.fail_on:
+        severity_order = ["critical", "high", "medium", "low", "info"]
+        threshold_idx = severity_order.index(args.fail_on)
+        findings = db.get_findings(scan_id)
+        
+        for f in findings:
+            sev = f.get("severity", "info")
+            if sev in severity_order:
+                sev_idx = severity_order.index(sev)
+                if sev_idx <= threshold_idx:
+                    status(f"Failing due to {sev} severity finding", "warn")
+                    sys.exit(1)
+        
+        status("No findings at or above threshold", "ok")
+        sys.exit(0)
 
 
 def _generate_reports(scan_id: str, workdir: Path, db: FindingsDB) -> None:
