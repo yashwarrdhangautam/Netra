@@ -1,0 +1,121 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# NETRA नेत्र — Configuration Template
+# Copy to ~/.netra.conf.yaml or point to it with NETRA_CONFIG env var.
+# All values here are DEFAULTS; override per-scan with CLI flags.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Output & storage ──────────────────────────────────────────────────────────
+output_dir: "~/netra_output"       # Root directory for all scan output
+db_path:    "~/netra_output/findings.db"  # SQLite findings database
+
+# ── Scan defaults ─────────────────────────────────────────────────────────────
+default_profile: "balanced"        # fast | balanced | deep | healthcare | legacy | mobile | saas
+threads: 10                        # Concurrent threads for scanning
+timeout: 30                        # HTTP request timeout (seconds)
+max_redirects: 5                   # Maximum HTTP redirects to follow
+user_agent: "Mozilla/5.0 (compatible; NETRA-Scanner/1.0)"
+
+# ── AI Brain (Ollama-based — no API keys needed) ───────────────────────────────
+ai:
+  enabled: true
+  # Ollama models supported:
+  #   - qwen:14b         ← DEFAULT (lightweight, fast, good reasoning)
+  #   - llama2           (solid general-purpose)
+  #   - mistral          (fast, good for specific tasks)
+  #   - neural-chat      (optimized for chat/analysis)
+  #
+  # Install: ollama pull qwen:14b
+  # Run:     ollama serve  (in background)
+
+  ollama_url: "http://localhost:11434"
+  ollama_model: "qwen:14b"         # Primary AI model
+
+  consensus_threshold: 0.75        # Fraction of personas required for confirmation
+  skeptic_veto_threshold: 0.80     # Skeptic confidence to veto finding
+  max_concurrent_personas: 3       # Async semaphore limit
+
+# ── API keys (optional — for Shodan, Censys, etc.) ────────────────────────────
+api_keys:
+  # anthropic: DEPRECATED (using Ollama instead)
+  shodan:     "${SHODAN_API_KEY}"
+  censys_id:  "${CENSYS_API_ID}"
+  censys_key: "${CENSYS_API_SECRET}"
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+notifications:
+  slack:
+    enabled: false
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    channel: "#security-alerts"
+    notify_on: ["critical", "high"]   # Severities that trigger Slack alert
+
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    from_addr: "${EMAIL_FROM}"
+    to_addrs:  ["security@company.com"]
+    use_tls:   true
+
+# ── Compliance & Standards Selection ───────────────────────────────────────────
+compliance:
+  # Select which standards to audit findings against
+  # Available: CIS, NIST, PCI, HIPAA, SOC2, ISO27001
+  standards: ["CIS", "NIST", "PCI"]
+  # Generate compliance report after scan (includes control mappings)
+  auto_audit: true
+
+# ── Report generation ─────────────────────────────────────────────────────────
+reports:
+  auto_generate: true              # Generate all 6 report types after every scan
+  formats:
+    - word
+    - pdf
+    - html
+    - excel
+    - compliance
+    - evidence_zip
+  company_logo: ""                 # Path to logo PNG for cover pages (optional)
+  watermark: "CONFIDENTIAL"        # Watermark text on PDF/Word reports
+
+# ── Scan profiles (fine-tune per profile) ─────────────────────────────────────
+profiles:
+  fast:
+    threads: 20
+    timeout: 15
+    phases:  ["recon_light", "port_scan", "vuln_scan"]
+
+  balanced:
+    threads: 10
+    timeout: 30
+    phases:  ["recon", "port_scan", "vuln_scan", "pentest_light"]
+
+  deep:
+    threads: 5
+    timeout: 60
+    phases:  ["recon", "osint", "port_scan", "vuln_scan", "pentest", "ai_analysis"]
+
+  healthcare:
+    threads: 5
+    timeout: 60
+    phases:  ["recon", "port_scan", "vuln_scan", "pentest", "ai_analysis"]
+    compliance: ["HIPAA"]
+    extra_checks: ["phi_exposure", "hl7_fhir", "dicom"]
+
+  saas:
+    threads: 10
+    timeout: 30
+    phases:  ["recon", "port_scan", "vuln_scan", "api_testing", "auth_testing", "ai_analysis"]
+    compliance: ["SOC2", "PCI"]
+
+# ── Tool paths (auto-detected if empty) ───────────────────────────────────────
+tools:
+  nmap:       ""
+  nuclei:     ""
+  subfinder:  ""
+  httpx:      ""
+  ffuf:       ""
+  amass:      ""
+  gobuster:   ""
+  sqlmap:     ""
+  nikto:      ""
