@@ -1,38 +1,89 @@
-# NETRA नेत्र — Docker Compose
-# Runs NETRA + Ollama together. Data persists in ./netra-data/
-
 services:
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: netra-ollama
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  netra:
-    build: .
-    container_name: netra
-    depends_on:
-      ollama:
-        condition: service_healthy
+      - "8000:8000"
     environment:
-      - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_MODEL=qwen:14b
-      - NETRA_HOME=/root/.netra
+      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+      - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
+      - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - NETRA_ENVIRONMENT=development
+      - NETRA_DEBUG=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - netra-data:/root/.netra
-    network_mode: host          # needed for scanning local networks
-    stdin_open: true
-    tty: true
+      - netra-data:/home/netra/.netra
+    networks:
+      - netra-net
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+      - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
+      - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - netra-data:/home/netra/.netra
+    networks:
+      - netra-net
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=netra
+      - POSTGRES_PASSWORD=netra
+      - POSTGRES_DB=netra
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netra"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netra-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netra-net
+
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "5173:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - api
+    networks:
+      - netra-net
 
 volumes:
-  ollama-data:
+  pg-data:
   netra-data:
+
+networks:
+  netra-net:
+    driver: bridge

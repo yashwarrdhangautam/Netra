@@ -21,7 +21,7 @@ RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 
     go install -v github.com/lc/gau/v2/cmd/gau@latest
 
 # ── Stage 2: Final image ──────────────────────────────────────────────────────
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 LABEL maintainer="Yash Wardhan Gautam <yash@netra.security>"
 LABEL org.opencontainers.image.title="NETRA नेत्र"
@@ -53,7 +53,9 @@ RUN mkdir -p $NETRA_HOME/data/scans \
 
 # Copy NETRA source
 WORKDIR /netra
-COPY requirements.txt .
+COPY pyproject.toml poetry.lock* requirements.txt ./
+
+# Install pip dependencies (poetry not required at runtime)
 RUN pip install --no-cache-dir -r requirements.txt --break-system-packages
 
 # Install Playwright (for screenshots)
@@ -62,11 +64,14 @@ RUN pip install playwright --break-system-packages && \
 
 COPY . .
 
+# Install NETRA as a package
+RUN pip install --no-cache-dir -e . --break-system-packages
+
 # Update nuclei templates
 RUN nuclei -update-templates -templates-directory $NETRA_HOME/tools/templates || true
 
 # Volumes for persistent data
 VOLUME ["/root/.netra"]
 
-ENTRYPOINT ["python3", "netra.py"]
+ENTRYPOINT ["netra"]
 CMD ["--help"]
