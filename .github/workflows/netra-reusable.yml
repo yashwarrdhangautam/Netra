@@ -1,0 +1,71 @@
+# NETRA Security Scan - Reusable Workflow
+# Use this workflow to run NETRA security scans in your CI/CD pipeline
+
+name: NETRA Security Scan
+description: "Run NETRA security scan as part of CI/CD"
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        required: true
+        type: string
+        description: "Target URL or domain to scan"
+      profile:
+        required: false
+        type: string
+        default: "quick"
+        description: "Scan profile (quick, standard, deep, api_only)"
+      fail_on_severity:
+        required: false
+        type: string
+        default: "critical"
+        description: "Fail pipeline if findings at this severity or above"
+      upload_sarif:
+        required: false
+        type: boolean
+        default: true
+        description: "Upload SARIF to GitHub Security tab"
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      SHODAN_API_KEY:
+        required: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install NETRA
+        run: pip install netra
+
+      - name: Install security tools
+        run: |
+          go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Run scan
+        env:
+          NETRA_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SHODAN_API_KEY: ${{ secrets.SHODAN_API_KEY }}
+        run: |
+          netra scan \
+            --target "${{ inputs.target }}" \
+            --profile "${{ inputs.profile }}" \
+            --output-sarif results.sarif \
+            --fail-on "${{ inputs.fail_on_severity }}"
+
+      - name: Upload SARIF
+        if: inputs.upload_sarif && always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif

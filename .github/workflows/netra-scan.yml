@@ -1,0 +1,78 @@
+name: NETRA Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Sundays at 2 AM
+    - cron: '0 2 * * 0'
+
+jobs:
+  netra-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install NETRA
+        run: |
+          pip install --upgrade pip
+          pip install netra
+
+      - name: Install security tools
+        run: |
+          # Install Go for nuclei, subfinder, etc.
+          go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+          go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install github.com/ffuf/ffuf@latest
+          go install github.com/hahwul/dalfox/v2@latest
+          
+          # Install nmap
+          sudo apt-get update && sudo apt-get install -y nmap
+          
+          # Add Go bin to PATH
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Run NETRA scan
+        env:
+          NETRA_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NETRA_SHODAN_API_KEY: ${{ secrets.SHODAN_API_KEY }}
+        run: |
+          netra scan \
+            --target "${{ github.event.repository.html_url }}" \
+            --profile quick \
+            --output-sarif results.sarif \
+            --fail-on high \
+            || true  # Continue even if scan finds vulnerabilities
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: netra
+
+      - name: Upload scan results as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netra-scan-results
+          path: |
+            results.sarif
+            ~/.netra/reports/*.pdf
+            ~/.netra/reports/*.html
+          retention-days: 30
