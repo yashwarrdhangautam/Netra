@@ -1,0 +1,66 @@
+site_name: NETRA Documentation
+site_description: AI-augmented unified cybersecurity platform
+site_url: https://yashwg.github.io/netra
+repo_url: https://github.com/yashwg/netra
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    primary: indigo
+    accent: indigo
+    scheme: slate
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quickstart.md
+    - Configuration: configuration.md
+  - User Guide:
+    - Scan Profiles: profiles.md
+    - Reports: reports.md
+    - Compliance: compliance.md
+    - Dashboard: dashboard.md
+  - Advanced:
+    - Autonomous Agent: agent.md
+    - MCP Integration: mcp.md
+    - CI/CD: cicd.md
+    - API Reference: api.md
+  - Development:
+    - Architecture: architecture.md
+    - Plugins: plugins.md
+    - Contributing: contributing.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            heading_level: 2
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  version:
+    provider: mike
