@@ -1,0 +1,1 @@
+"""Database seeds module."""

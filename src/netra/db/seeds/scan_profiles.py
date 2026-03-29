@@ -1,0 +1,125 @@
+"""Seed scan profiles for NETRA."""
+
+
+def get_scan_profiles() -> list[dict]:
+    """Get default scan profile definitions.
+
+    Returns:
+        List of scan profile configurations
+    """
+    return [
+        {
+            "name": "quick",
+            "display_name": "Quick Scan",
+            "description": "Fast reconnaissance and critical vulnerability check",
+            "phases": ["recon_subdomains", "recon_discovery", "vuln_scan"],
+            "tools": ["subfinder", "httpx", "nuclei"],
+            "timeout_hours": 2,
+            "token_budget": 10000,
+        },
+        {
+            "name": "standard",
+            "display_name": "Standard Scan",
+            "description": "Balanced scan with full recon and vulnerability assessment",
+            "phases": [
+                "recon_osint",
+                "recon_subdomains",
+                "recon_discovery",
+                "recon_ports",
+                "vuln_scan",
+            ],
+            "tools": [
+                "subfinder",
+                "amass",
+                "httpx",
+                "nmap",
+                "nuclei",
+                "nikto",
+            ],
+            "timeout_hours": 6,
+            "token_budget": 30000,
+        },
+        {
+            "name": "deep",
+            "display_name": "Deep Scan",
+            "description": "Comprehensive security assessment with active testing",
+            "phases": [
+                "recon_osint",
+                "recon_subdomains",
+                "recon_discovery",
+                "recon_ports",
+                "vuln_scan",
+                "pentest",
+                "auth_test",
+                "ai_analysis",
+            ],
+            "tools": [
+                "subfinder",
+                "amass",
+                "httpx",
+                "nmap",
+                "nuclei",
+                "nikto",
+                "ffuf",
+                "dalfox",
+                "sqlmap",
+                "semgrep",
+            ],
+            "timeout_hours": 12,
+            "token_budget": 50000,
+        },
+        {
+            "name": "api_only",
+            "display_name": "API Security Scan",
+            "description": "Focused API security testing for REST/GraphQL endpoints",
+            "phases": ["recon_discovery", "vuln_scan", "auth_test"],
+            "tools": ["nuclei", "httpx", "dalfox"],
+            "timeout_hours": 4,
+            "token_budget": 25000,
+        },
+        {
+            "name": "cloud",
+            "display_name": "Cloud Security Scan",
+            "description": "Cloud infrastructure security posture assessment",
+            "phases": ["vuln_scan", "ai_analysis"],
+            "tools": ["prowler", "trivy"],
+            "timeout_hours": 4,
+            "token_budget": 20000,
+        },
+        {
+            "name": "mobile",
+            "display_name": "Mobile App Scan",
+            "description": "Mobile application security assessment",
+            "phases": ["vuln_scan", "pentest"],
+            "tools": ["nuclei", "semgrep"],
+            "timeout_hours": 4,
+            "token_budget": 20000,
+        },
+        {
+            "name": "container",
+            "display_name": "Container Scan",
+            "description": "Container and Kubernetes security scanning",
+            "phases": ["vuln_scan"],
+            "tools": ["trivy"],
+            "timeout_hours": 2,
+            "token_budget": 15000,
+        },
+        {
+            "name": "ai_llm",
+            "display_name": "AI/LLM Security Scan",
+            "description": "AI model and LLM application security testing",
+            "phases": ["vuln_scan", "auth_test", "ai_analysis"],
+            "tools": ["nuclei"],
+            "timeout_hours": 4,
+            "token_budget": 40000,
+        },
+        {
+            "name": "custom",
+            "display_name": "Custom Scan",
+            "description": "User-defined scan configuration",
+            "phases": [],
+            "tools": [],
+            "timeout_hours": 12,
+            "token_budget": 50000,
+        },
+    ]
