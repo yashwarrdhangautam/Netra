@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/authStore'
 import { authApi } from '@/api/auth'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { EmptyState } from '@/components/shared/EmptyState'
 import { Shield } from 'lucide-react'
 
 export function Login() {
@@ -22,16 +21,23 @@ export function Login() {
 
     try {
       const response = await authApi.login(email, password)
-      const token = response.access_token || response.token
-      const user = response.user
+      const token = response.access_token
 
-      if (!token || !user) {
+      if (!token) {
         setError('Invalid response from server')
         setIsLoading(false)
         return
       }
 
-      login(token, user)
+      // Fetch user info
+      const userResponse = await fetch('/api/v1/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      const userData = await userResponse.json()
+      
+      login(token, userData)
       await navigate({ to: '/' })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Login failed. Please try again.'

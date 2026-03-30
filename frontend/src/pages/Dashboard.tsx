@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
-import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import { scansApi } from '@/api/scans'
 import { findingsApi } from '@/api/findings'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { formatDate, formatRelativeTime, getSeverityColor } from '@/utils/formatters'
+import { EmptyState } from '@/components/shared/EmptyState'
+import { formatRelativeTime } from '@/utils/formatters'
 import type { ScanList } from '@/types'
 
 const COLORS = {
@@ -30,8 +32,8 @@ export function Dashboard() {
 
   // Calculate stats
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
-  findings?.items.forEach((f) => {
-    severityCounts[f.severity]++
+  findings?.data.forEach((f) => {
+    severityCounts[f.severity as keyof typeof severityCounts]++
   })
 
   const totalFindings = findings?.total || 0
@@ -56,15 +58,15 @@ export function Dashboard() {
         <h1 className="text-2xl font-bold">Dashboard</h1>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      {/* Stats Grid - Responsive */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-5">
         {/* Risk Score */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Risk Score</CardTitle>
           </CardHeader>
           <CardContent>
-            {riskScore >= 80 ? (
+            {findingsLoading ? (
               <Skeleton className="h-10 w-20" />
             ) : (
               <>
@@ -166,23 +168,50 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Recent Activity Placeholder */}
+        {/* Recent Activity */}
         <Card>
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex items-center space-x-4">
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
+            {scansLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex items-center space-x-4">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : scans?.items && scans.items.length > 0 ? (
+              <div className="space-y-4">
+                {scans.items.slice(0, 4).map((scan: ScanList) => {
+                  const isCompleted = scan.status === 'completed'
+                  const isRunning = scan.status === 'running'
+                  const StatusIcon = isCompleted ? CheckCircle : isRunning ? Clock : AlertCircle
+                  const statusColor = isCompleted ? 'text-green-500' : isRunning ? 'text-blue-500' : 'text-amber-500'
+
+                  return (
+                    <div key={scan.id} className="flex items-center space-x-4">
+                      <StatusIcon className={`h-5 w-5 flex-shrink-0 ${statusColor}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{scan.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatRelativeTime(scan.created_at)}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Clock}
+                title="No recent activity"
+                description="Scans will appear here once they run"
+              />
+            )}
           </CardContent>
         </Card>
       </div>
@@ -196,7 +225,8 @@ export function Dashboard() {
           {scansLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
@@ -219,7 +249,8 @@ export function Dashboard() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

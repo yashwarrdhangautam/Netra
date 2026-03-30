@@ -1,15 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d'
+import { useState, useEffect, useCallback } from 'react'
+import ForceGraph2D from 'react-force-graph-2d'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 import { SeverityBadge } from '@/components/findings/SeverityBadge'
 import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { findingsApi } from '@/api/findings'
-import { cn } from '@/utils/formatters'
 import type { Finding } from '@/types/findings'
 
 interface GraphNode {
@@ -58,7 +56,6 @@ interface SelectedFinding {
 
 export function AttackGraph(): JSX.Element {
   const { scanId } = useParams({ from: '/scans/$scanId' })
-  const graphRef = useRef<ForceGraphMethods>(null)
   const [selectedNode, setSelectedNode] = useState<SelectedFinding | null>(null)
   const [filteredSeverities, setFilteredSeverities] = useState<Set<string>>(
     new Set(['critical', 'high', 'medium', 'low', 'info'])
@@ -105,7 +102,7 @@ export function AttackGraph(): JSX.Element {
         finding.ai_analysis?.attacker?.attack_chains &&
         Array.isArray(finding.ai_analysis.attacker.attack_chains)
       ) {
-        finding.ai_analysis.attacker.attack_chains.forEach((chain) => {
+        finding.ai_analysis.attacker.attack_chains.forEach((chain: any) => {
           if (chain.steps && Array.isArray(chain.steps)) {
             for (let i = 0; i < chain.steps.length - 1; i++) {
               const sourceId = chain.steps[i]
@@ -168,18 +165,12 @@ export function AttackGraph(): JSX.Element {
   }
 
   const handleResetLayout = (): void => {
-    if (graphRef.current) {
-      graphRef.current.zoomToFit(400)
-      setZoom(1)
-    }
+    setZoom(1)
   }
 
   const handleZoom = (direction: 'in' | 'out'): void => {
-    if (graphRef.current) {
-      const newZoom = direction === 'in' ? zoom * 1.2 : zoom / 1.2
-      setZoom(newZoom)
-      graphRef.current.zoom(newZoom, 500)
-    }
+    const newZoom = direction === 'in' ? zoom * 1.2 : zoom / 1.2
+    setZoom(newZoom)
   }
 
   if (isLoading) {
@@ -219,7 +210,6 @@ export function AttackGraph(): JSX.Element {
         <Card className="flex-1 border border-zinc-800 bg-zinc-950 shadow-lg">
           <CardContent className="p-0 h-full relative">
             <ForceGraph2D
-              ref={graphRef}
               graphData={{
                 nodes: filteredNodes,
                 links: visibleLinks,
@@ -259,15 +249,12 @@ export function AttackGraph(): JSX.Element {
               }}
               linkColor={() => 'rgba(148, 163, 184, 0.3)'}
               linkWidth={1.5}
-              linkCurveRotation={0.5}
               onNodeClick={(node: any) => {
                 handleNodeClick(node as GraphNode)
               }}
               backgroundColor="#09090b"
               width={typeof window !== 'undefined' ? window.innerWidth * 0.65 : 800}
               height={typeof window !== 'undefined' ? window.innerHeight - 48 : 600}
-              d3Force="charge"
-              d3AlphaDecay={0.02}
               warmupTicks={100}
               cooldownTicks={200}
             />
@@ -464,15 +451,21 @@ export function AttackGraph(): JSX.Element {
 
 // Mock data for fallback
 function getMockFindings(): Finding[] {
+  const now = new Date().toISOString()
   return [
     {
       id: 'finding-001',
+      scan_id: 'scan-001',
       title: 'SQL Injection in Login Form',
       severity: 'critical',
-      confidence: 0.95,
+      status: 'new',
+      confidence: 95,
+      tool_source: 'sqlmap',
       description:
         'User input is not properly sanitized in the login form, allowing SQL injection attacks.',
       evidence: ["SELECT * FROM users WHERE username='admin'--"],
+      created_at: now,
+      updated_at: now,
       ai_analysis: {
         attacker: {
           attack_chains: [
@@ -485,12 +478,17 @@ function getMockFindings(): Finding[] {
     },
     {
       id: 'finding-002',
+      scan_id: 'scan-001',
       title: 'Weak Password Policy',
       severity: 'high',
-      confidence: 0.87,
+      status: 'new',
+      confidence: 87,
+      tool_source: 'nuclei',
       description:
         'The system allows weak passwords without minimum complexity requirements.',
       evidence: ['Password "123456" was accepted during testing'],
+      created_at: now,
+      updated_at: now,
       ai_analysis: {
         attacker: {
           attack_chains: [
@@ -503,26 +501,34 @@ function getMockFindings(): Finding[] {
     },
     {
       id: 'finding-003',
+      scan_id: 'scan-001',
       title: 'Session Hijacking Risk',
       severity: 'high',
-      confidence: 0.82,
+      status: 'new',
+      confidence: 82,
+      tool_source: 'custom',
       description:
         'Session tokens are not properly validated on subsequent requests.',
       evidence: ['Session token reused across multiple requests without validation'],
+      created_at: now,
+      updated_at: now,
       ai_analysis: {
-        attacker: {
-          attack_chains: [],
-        },
+        attacker: { attack_chains: [] },
       },
     },
     {
       id: 'finding-004',
+      scan_id: 'scan-001',
       title: 'Data Exposure via Debug Logs',
       severity: 'medium',
-      confidence: 0.76,
+      status: 'new',
+      confidence: 76,
+      tool_source: 'manual',
       description:
         'Sensitive data is logged in debug mode, including API keys and user credentials.',
       evidence: ['DEBUG: api_key=sk_test_abc123xyz in logs'],
+      created_at: now,
+      updated_at: now,
       ai_analysis: {
         attacker: {
           attack_chains: [
@@ -535,30 +541,36 @@ function getMockFindings(): Finding[] {
     },
     {
       id: 'finding-005',
+      scan_id: 'scan-001',
       title: 'Missing CORS Headers',
       severity: 'medium',
-      confidence: 0.68,
+      status: 'new',
+      confidence: 68,
+      tool_source: 'nuclei',
       description:
         'API endpoints do not properly restrict cross-origin requests.',
       evidence: ['CORS header missing from response'],
+      created_at: now,
+      updated_at: now,
       ai_analysis: {
-        attacker: {
-          attack_chains: [],
-        },
+        attacker: { attack_chains: [] },
       },
     },
     {
       id: 'finding-006',
+      scan_id: 'scan-001',
       title: 'Outdated Dependencies',
       severity: 'low',
-      confidence: 0.54,
+      status: 'new',
+      confidence: 54,
+      tool_source: 'pip-audit',
       description:
         'Several third-party libraries have known vulnerabilities and should be updated.',
       evidence: ['lodash 4.17.15 has CVE-2021-23337'],
+      created_at: now,
+      updated_at: now,
       ai_analysis: {
-        attacker: {
-          attack_chains: [],
-        },
+        attacker: { attack_chains: [] },
       },
     },
   ]

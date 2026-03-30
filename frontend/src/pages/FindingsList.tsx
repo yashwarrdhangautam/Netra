@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 import { getSeverityColor } from '@/utils/formatters'
-import type { FindingList } from '@/types'
+import type { Finding } from '@/types/findings'
 
 export function FindingsList() {
   const { data, isLoading } = useQuery({
@@ -35,7 +35,7 @@ export function FindingsList() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data?.items.map((finding: FindingList) => (
+                {data?.data.map((finding: Finding) => (
                   <TableRow key={finding.id}>
                     <TableCell>
                       <Badge className={getSeverityColor(finding.severity)}>

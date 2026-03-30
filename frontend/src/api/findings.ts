@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { PaginatedResponse, Finding, FindingStatus, Severity } from '@/types'
+import type { PaginatedResponse, Finding, FindingStatus, Severity } from '@/types/findings'
 
 export interface CreateFindingPayload {
   scan_id: string
@@ -22,8 +22,8 @@ export interface FindingFilters {
 
 export const findingsApi = {
   /** List findings with pagination and filters */
-  list: async (filters?: FindingFilters): Promise<PaginatedResponse<FindingList>> => {
-    const { data } = await apiClient.get<PaginatedResponse<FindingList>>('/api/v1/findings', { params: filters })
+  list: async (filters?: FindingFilters): Promise<PaginatedResponse<Finding>> => {
+    const { data } = await apiClient.get<PaginatedResponse<Finding>>('/api/v1/findings', { params: filters })
     return data
   },
 

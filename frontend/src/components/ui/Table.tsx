@@ -1,8 +1,11 @@
+import React from 'react'
 import { cn } from '@/utils/formatters'
 
 interface TableProps {
   children: React.ReactNode
   className?: string
+  colSpan?: number
+  onClick?: () => void
 }
 
 export function Table({ children, className }: TableProps) {
@@ -31,17 +34,17 @@ export function TableRow({ children, className }: TableProps) {
   )
 }
 
-export function TableHead({ children, className }: TableProps) {
+export function TableHead({ children, className, colSpan, onClick }: TableProps) {
   return (
-    <th className={cn('h-10 px-4 text-left font-medium text-muted-foreground', className)}>
+    <th className={cn('h-10 px-4 text-left font-medium text-muted-foreground', className)} colSpan={colSpan} onClick={onClick}>
       {children}
     </th>
   )
 }
 
-export function TableCell({ children, className }: TableProps) {
+export function TableCell({ children, className, colSpan }: TableProps) {
   return (
-    <td className={cn('px-4 py-3', className)}>
+    <td className={cn('px-4 py-3 text-foreground', className)} colSpan={colSpan}>
       {children}
     </td>
   )

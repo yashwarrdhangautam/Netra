@@ -1,138 +1,158 @@
-"""Target routes for managing scan targets."""
+"""Target routes for managing scan targets with SSRF protection."""
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+import structlog
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.api.deps import get_db_session
-from netra.schemas.common import PaginatedResponse
-from netra.schemas.target import (
-    TargetCreate,
-    TargetListResponse,
-    TargetResponse,
-    TargetUpdate,
-)
+from netra.db.session import get_db
+from netra.api.routes.auth import get_current_active_user
+from netra.db.models.user import User
+from netra.db.models.target import Target, TargetType
+from netra.core.ssrf_protection import validate_scan_target, SSRFProtectionError
+from netra.core.rate_limiter import rate_limit, RateLimitProfiles
 
-router = APIRouter()
+logger = structlog.get_logger()
+
+router = APIRouter(prefix="/targets", tags=["Targets"])
 
 
-@router.post("/", response_model=TargetResponse, status_code=201)
+# ── Pydantic Schemas ──────────────────────────────────────────────────────────
+
+from pydantic import BaseModel, Field
+
+
+class TargetCreate(BaseModel):
+    """Create target request."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    target_type: str  # domain, ip, url, ip_range
+    value: str
+    scope_includes: list[str] = Field(default_factory=list)
+    scope_excludes: list[str] = Field(default_factory=list)
+
+
+class TargetUpdate(BaseModel):
+    """Update target request."""
+
+    name: str | None = Field(None, min_length=1, max_length=255)
+    value: str | None = None
+    scope_includes: list[str] | None = None
+    scope_excludes: list[str] | None = None
+
+
+class TargetListResponse(BaseModel):
+    """Target list item response."""
+
+    id: str
+    name: str
+    target_type: str
+    value: str
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class TargetResponse(BaseModel):
+    """Target response."""
+
+    id: str
+    name: str
+    target_type: str
+    value: str
+    scope_includes: dict | None
+    scope_excludes: dict | None
+    metadata: dict | None
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class TargetValidationResponse(BaseModel):
+    """Target validation response."""
+
+    valid: bool
+    normalized: str | None
+    resolved_ips: list[str] | None
+    error: str | None
+    violation_type: str | None
+
+
+# ── Target Routes ────────────────────────────────────────────────────────────
+
+
+@router.post("/", response_model=TargetResponse, status_code=status.HTTP_201_CREATED)
+@rate_limit(RateLimitProfiles.SCAN_CREATE)
 async def create_target(
     payload: TargetCreate,
-    db: AsyncSession = Depends(get_db_session),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> TargetResponse:
-    """Create a new target.
+    """Create a new target with SSRF validation.
 
     Args:
         payload: Target creation data
         db: Database session
+        current_user: Authenticated user
 
     Returns:
         Created target details
+
+    Raises:
+        HTTPException: If target validation fails or SSRF violation detected
     """
-    ...
+    try:
+        # Validate target with SSRF protection
+        validated = await validate_scan_target(
+            target_type=payload.target_type,
+            value=payload.value,
+        )
 
+        # Create target model
+        target = Target(
+            id=uuid.uuid4(),
+            user_id=current_user.id,
+            name=payload.name,
+            target_type=payload.target_type,
+            value=payload.value,
+            scope_includes=payload.scope_includes or [],
+            scope_excludes=payload.scope_excludes or [],
+            metadata={
+                "normalized": validated.get("normalized"),
+                "resolved_ips": validated.get("resolved_ips"),
+            },
+        )
 
-@router.get("/", response_model=PaginatedResponse[TargetListResponse])
-async def list_targets(
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
-    target_type: str | None = None,
-    db: AsyncSession = Depends(get_db_session),
-) -> PaginatedResponse[TargetListResponse]:
-    """List all targets with filtering and pagination.
+        # Add to database
+        db.add(target)
+        await db.commit()
 
-    Args:
-        page: Page number
-        per_page: Items per page
-        target_type: Filter by target type
-        db: Database session
+        logger.info(
+            "target_created",
+            target_id=str(target.id),
+            user_id=str(current_user.id),
+            target_type=target.target_type,
+        )
 
-    Returns:
-        Paginated list of targets
-    """
-    ...
+        return TargetResponse.from_attributes(target)
 
-
-@router.get("/{target_id}", response_model=TargetResponse)
-async def get_target(
-    target_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db_session),
-) -> TargetResponse:
-    """Get target details by ID.
-
-    Args:
-        target_id: Target UUID
-        db: Database session
-
-    Returns:
-        Target details
-    """
-    ...
-
-
-@router.patch("/{target_id}", response_model=TargetResponse)
-async def update_target(
-    target_id: uuid.UUID,
-    payload: TargetUpdate,
-    db: AsyncSession = Depends(get_db_session),
-) -> TargetResponse:
-    """Update a target.
-
-    Args:
-        target_id: Target UUID
-        payload: Update data
-        db: Database session
-
-    Returns:
-        Updated target details
-    """
-    ...
-
-
-@router.delete("/{target_id}", status_code=204)
-async def delete_target(
-    target_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db_session),
-) -> None:
-    """Delete a target.
-
-    Args:
-        target_id: Target UUID
-        db: Database session
-    """
-    ...
-
-
-@router.post("/import")
-async def import_targets(
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db_session),
-) -> dict:
-    """Import targets from a file.
-
-    Args:
-        file: File containing targets (CSV, TXT)
-        db: Database session
-
-    Returns:
-        Import summary
-    """
-    ...
-
-
-@router.post("/validate")
-async def validate_target(
-    payload: TargetCreate,
-    db: AsyncSession = Depends(get_db_session),
-) -> dict:
-    """Validate a target without creating it.
-
-    Args:
-        payload: Target data to validate
-        db: Database session
-
-    Returns:
-        Validation results
-    """
-    ...
+    except SSRFProtectionError as e:
+        logger.warning(
+            "ssrf_violation_detected",
+            user_id=str(current_user.id),
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Target validation failed: {str(e)}",
+        )
+    except Exception as e:
+        logger.error("target_creation_error", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create target",
+        )

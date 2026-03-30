@@ -1,26 +1,30 @@
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { ArrowLeftRight } from 'lucide-react'
 import { scansApi } from '@/api/scans'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
-import { formatDate, formatRelativeTime } from '@/utils/formatters'
-import type { ScanList, ScanStatus } from '@/types'
+import { formatRelativeTime } from '@/utils/formatters'
+import type { ScanList } from '@/types'
 
 export function ScansList() {
-  const [statusFilter, setStatusFilter] = useState<ScanStatus | ''>('')
-
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['scans', { status: statusFilter || undefined }],
-    queryFn: () => scansApi.list({ status: statusFilter || undefined }),
+    queryKey: ['scans'],
+    queryFn: () => scansApi.list({}),
   })
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Scans</h1>
-        <Button onClick={() => refetch()}>Refresh</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => window.location.href = '/scans/compare'}>
+            <ArrowLeftRight className="h-4 w-4 mr-2" />
+            Compare
+          </Button>
+          <Button onClick={() => refetch()}>Refresh</Button>
+        </div>
       </div>
 
       <Card>

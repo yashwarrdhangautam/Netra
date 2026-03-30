@@ -3,15 +3,14 @@ import { useParams } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUpRight,
-  Calendar,
   CheckCircle,
-  Clock,
   Copy,
   Download,
   Flag,
   MessageSquare,
   AlertCircle,
   ChevronDown,
+  Calendar,
 } from 'lucide-react';
 
 import { findingsApi } from '@/api/findings';
@@ -27,12 +26,13 @@ import { SeverityBadge } from '@/components/findings/SeverityBadge';
 import { AIAnalysisPanel } from '@/components/findings/AIAnalysisPanel';
 import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { CopyCurlButton } from '@/components/findings/CopyCurlButton';
 import { cn } from '@/utils/formatters';
+import type { Finding } from '@/types/findings';
 
 type TabType = 'evidence' | 'ai_analysis' | 'remediation' | 'compliance' | 'history';
-type StatusType = 'new' | 'confirmed' | 'in_progress' | 'resolved' | 'false_positive';
 
-const STATUS_LABELS: Record<StatusType, string> = {
+const STATUS_LABELS: Record<string, string> = {
   new: 'New',
   confirmed: 'Confirmed',
   in_progress: 'In Progress',
@@ -40,7 +40,7 @@ const STATUS_LABELS: Record<StatusType, string> = {
   false_positive: 'False Positive',
 };
 
-const STATUS_COLORS: Record<StatusType, string> = {
+const STATUS_COLORS: Record<string, string> = {
   new: 'bg-blue-500/20 text-blue-300',
   confirmed: 'bg-yellow-500/20 text-yellow-300',
   in_progress: 'bg-purple-500/20 text-purple-300',
@@ -61,7 +61,7 @@ export function FindingDetail() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload: Partial<typeof finding>) =>
+    mutationFn: (payload: Partial<Finding>) =>
       findingsApi.update(findingId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['finding', findingId] });
@@ -78,8 +78,8 @@ export function FindingDetail() {
     },
   });
 
-  const handleStatusChange = (status: StatusType) => {
-    updateMutation.mutate({ status });
+  const handleStatusChange = (status: string) => {
+    updateMutation.mutate({ status: status as any });
   };
 
   const handleMarkFalsePositive = () => {
@@ -132,8 +132,8 @@ export function FindingDetail() {
               className="flex items-center gap-2"
               onClick={() => setShowStatusMenu(!showStatusMenu)}
             >
-              <Badge className={cn('', STATUS_COLORS[finding.status])}>
-                {STATUS_LABELS[finding.status]}
+              <Badge className={cn('', STATUS_COLORS[finding.status as string])}>
+                {STATUS_LABELS[finding.status as string]}
               </Badge>
               <ChevronDown className="h-4 w-4" />
             </Button>
@@ -143,7 +143,7 @@ export function FindingDetail() {
                 {Object.entries(STATUS_LABELS).map(([status, label]) => (
                   <button
                     key={status}
-                    onClick={() => handleStatusChange(status as StatusType)}
+                    onClick={() => handleStatusChange(status)}
                     className={cn(
                       'w-full px-4 py-2 text-left text-sm transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-surface-3',
                       finding.status === status && 'bg-surface-2'
@@ -204,8 +204,9 @@ export function FindingDetail() {
           <MessageSquare className="h-4 w-4" />
           Add Note
         </Button>
+        <CopyCurlButton findingId={finding.id} variant="outline" size="sm" />
         <Button
-          variant="secondary"
+          variant="outline"
           size="sm"
           className="flex items-center gap-2"
         >
@@ -278,7 +279,7 @@ export function FindingDetail() {
                       Request
                     </h3>
                     <button
-                      onClick={() => copyToClipboard(finding.request || '')}
+                      onClick={() => copyToClipboard(JSON.stringify(finding.request, null, 2))}
                       className="text-surface-10 hover:text-surface-11"
                       title="Copy to clipboard"
                     >
@@ -286,7 +287,7 @@ export function FindingDetail() {
                     </button>
                   </div>
                   <pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 font-mono text-sm text-surface-11">
-                    {finding.request}
+                    {JSON.stringify(finding.request, null, 2)}
                   </pre>
                 </div>
               ) : null}
@@ -298,7 +299,7 @@ export function FindingDetail() {
                       Response
                     </h3>
                     <button
-                      onClick={() => copyToClipboard(finding.response || '')}
+                      onClick={() => copyToClipboard(JSON.stringify(finding.response, null, 2))}
                       className="text-surface-10 hover:text-surface-11"
                       title="Copy to clipboard"
                     >
@@ -306,7 +307,7 @@ export function FindingDetail() {
                     </button>
                   </div>
                   <pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 font-mono text-sm text-surface-11">
-                    {finding.response}
+                    {JSON.stringify(finding.response, null, 2)}
                   </pre>
                 </div>
               ) : null}
@@ -320,7 +321,7 @@ export function FindingDetail() {
 
         {/* AI Analysis Tab */}
         {activeTab === 'ai_analysis' && finding.ai_analysis && (
-          <AIAnalysisPanel analysis={finding.ai_analysis} />
+          <AIAnalysisPanel analysis={finding.ai_analysis as any} />
         )}
 
         {/* Remediation Tab */}
@@ -337,11 +338,11 @@ export function FindingDetail() {
                       Fix Summary
                     </h3>
                     <p className="text-sm text-surface-11">
-                      {finding.ai_analysis.defender.fix_summary}
+                      {(finding.ai_analysis.defender as any).fix_summary}
                     </p>
                   </div>
 
-                  {finding.ai_analysis.defender.before_code && (
+                  {(finding.ai_analysis.defender as any).before_code && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <h4 className="text-sm font-semibold text-surface-12">
@@ -364,7 +365,7 @@ export function FindingDetail() {
                     </div>
                   )}
 
-                  {finding.ai_analysis.defender.after_code && (
+                  {(finding.ai_analysis.defender as any).after_code && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <h4 className="text-sm font-semibold text-surface-12">
@@ -373,7 +374,7 @@ export function FindingDetail() {
                         <button
                           onClick={() =>
                             copyToClipboard(
-                              finding.ai_analysis?.defender?.after_code || ''
+                              (finding.ai_analysis?.defender as any)?.after_code || ''
                             )
                           }
                           className="text-surface-10 hover:text-surface-11"
@@ -382,19 +383,19 @@ export function FindingDetail() {
                         </button>
                       </div>
                       <pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 font-mono text-sm text-surface-11">
-                        {finding.ai_analysis.defender.after_code}
+                        {(finding.ai_analysis.defender as any).after_code}
                       </pre>
                     </div>
                   )}
 
-                  {finding.ai_analysis.defender.steps && (
+                  {(finding.ai_analysis.defender as any).steps && (
                     <div>
                       <h4 className="mb-3 text-sm font-semibold text-surface-12">
                         Implementation Steps
                       </h4>
                       <ol className="space-y-2">
-                        {finding.ai_analysis.defender.steps.map(
-                          (step, idx) => (
+                        {(finding.ai_analysis.defender as any).steps.map(
+                          (step: any, idx: number) => (
                             <li
                               key={idx}
                               className="flex gap-3 text-sm text-surface-11"
@@ -426,13 +427,13 @@ export function FindingDetail() {
               <CardTitle>Compliance Mappings</CardTitle>
             </CardHeader>
             <CardContent>
-              {finding.ai_analysis?.analyst?.framework_mappings &&
-              Object.keys(finding.ai_analysis.analyst.framework_mappings)
+              {(finding.ai_analysis as any)?.analyst?.framework_mappings &&
+              Object.keys((finding.ai_analysis as any).analyst.framework_mappings)
                 .length > 0 ? (
                 <div className="space-y-4">
                   {Object.entries(
-                    finding.ai_analysis.analyst.framework_mappings
-                  ).map(([framework, controls]) => (
+                    (finding.ai_analysis as any).analyst.framework_mappings
+                  ).map(([framework, controls]: [string, any]) => (
                     <div key={framework} className="space-y-2">
                       <h4 className="text-sm font-semibold text-surface-12">
                         {framework}
@@ -517,7 +518,7 @@ export function FindingDetail() {
                           {new Date(finding.updated_at).toLocaleString()}
                         </p>
                         <p className="text-xs text-surface-9">
-                          Status: {STATUS_LABELS[finding.status]}
+                          Status: {STATUS_LABELS[finding.status as string]}
                         </p>
                       </div>
                     </div>

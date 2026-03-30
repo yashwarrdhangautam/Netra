@@ -1,12 +1,12 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# NETRA .gitignore — Exclude sensitive data, build artifacts, and cache files
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -20,108 +20,103 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
-.pytest_cache/
-.coverage
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
 htmlcov/
-.mypy_cache/
-.dmypy.json
-dmypy.json
-.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
 
-# Virtual environments
-venv/
-env/
-ENV/
+# Translations
+*.mo
+*.pot
+
+# Environments
+.env
 .venv
-.env.local
-.env.*.local
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# IDE
-.vscode/
+# IDEs
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
+
+# macOS
 .DS_Store
-*.sublime-project
-*.sublime-workspace
 
-# NETRA runtime data (keep dir structure, ignore files)
-netra_output/
-~/.netra.conf.yaml
-~/.netra/
-findings.db
-findings.db-wal
-findings.db-shm
+# Windows
+Thumbs.db
+
+# Project specific
+*.db
+*.sqlite
+*.sqlite3
+netra.db
+reports/
+evidence/
+tools/
+wordlists/
+
+# Logs
 *.log
+logs/
 
-# Credentials & secrets
-.env
-.env.production
-*.key
+# Secrets
+.secrets
 *.pem
-*.pfx
-secrets.yaml
-credentials.json
-aws_credentials
-
-# Test artifacts
-test_results/
-test_output/
-.hypothesis/
-
-# Package managers
-poetry.lock
-Pipfile.lock
-yarn.lock
-package-lock.json
+*.key
 
 # Docker
-.dockerignore
-docker-compose.override.yml
+.docker/
 
-# Git
-.git/
-.gitmodules
+# Node (for frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
 
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.backup
-*~
-.swp
-.swo
+# Accidental directories (command artifacts)
+-p/
+mkdir/
+Frontend directories created/
+$null/
+"Directory created or already exists"/
 
-# OS-specific
-Thumbs.db
-.DS_Store
-.AppleDouble
-.LSOverride
-._*
-
-# Editor backups
-.#*
-*.#
-
-# System files
-.vagrant/
-Vagrantfile
-
-# Build outputs (keep if versioned)
-dist/
-build/
-*.egg-info/
-
-# ── NETRA: Project-specific excludes ──────────────────────────────────────
-_archive/
-config.yaml
+# Internal development files (keep local only)
+CLAUDE.md
+FIX_*.md
+NETRA_*.md
+NETRA_v1_*.md
+.claude/
 claude_desktop_config.json
-*.netra-session
+UPLOAD_PLAN.md
 
-# Local scan output (never commit scan data)
-~/.netra/
+# Development artifacts
+.archive/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class

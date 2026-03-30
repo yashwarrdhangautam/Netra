@@ -31,12 +31,6 @@ const SCAN_PROFILES = [
   { value: 'custom', label: 'Custom' },
 ]
 
-interface ApiKeyField {
-  key: string
-  label: string
-  placeholder: string
-}
-
 interface NotificationMessage {
   type: 'success' | 'error'
   text: string

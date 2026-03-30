@@ -5,7 +5,123 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.0.0] - 2026-03-17
+## [1.0.0] - 2026-03-28
+
+### Added
+
+**Phase 3: Dashboard + Agent + Launch**
+
+- **React Dashboard** — 10 pages with real-time WebSocket updates
+  - Dashboard overview with risk gauge and severity charts
+  - Scans list with filters and pagination
+  - Scan detail with phase timeline
+  - Findings list with bulk actions
+  - Finding detail with AI analysis tabs
+  - Reports generator with 11 types
+  - Compliance dashboard with framework tabs
+  - Targets management
+  - Attack graph visualization
+  - Settings page
+
+- **Autonomous Pentest Agent**
+  - Claude Agent SDK orchestration
+  - Human-in-the-loop approval workflow
+  - Safety limits (50 tool calls, 30 min, $5 cost)
+  - Audit trail logging
+  - WebSocket conversation streaming
+  - Tools requiring approval: sqlmap, dalfox, ffuf
+
+- **CI/CD Integration**
+  - GitHub Actions workflow
+  - Reusable workflow for other repos
+  - SARIF output for GitHub Security tab
+  - CLI exit codes for pipeline failure
+
+- **Documentation Site**
+  - MkDocs with Material theme
+  - Installation, Quick Start, Configuration guides
+  - Scan Profiles, Reports, Compliance docs
+  - Dashboard, Agent, CI/CD guides
+  - Full API reference
+
+**Phase 2: Full Coverage**
+
+- **White-Box Testing**
+  - Semgrep SAST wrapper
+  - Gitleaks secret detection
+  - Dependency scanning (pip-audit, npm audit, govulncheck)
+
+- **Cloud Security (CSPM)**
+  - Prowler wrapper (AWS, Azure, GCP)
+  - Trivy container/filesystem scanning
+  - Checkov IaC scanning
+
+- **AI/LLM Security**
+  - OWASP LLM Top 10 scanner
+  - Prompt injection testing
+  - Jailbreak detection
+  - Data exfiltration tests
+  - Excessive agency detection
+
+- **Compliance Expansion**
+  - 100+ CWE-to-control mappings
+  - 6 frameworks: ISO 27001, PCI DSS, SOC 2, HIPAA, NIST CSF, CIS Controls
+  - Framework-specific gap analysis
+
+- **Report Generators (8 new)**
+  - HTML interactive dashboard
+  - Excel 9-sheet workbook
+  - Evidence ZIP with SHA256 chain of custody
+  - Delta/Diff scan comparison
+  - API Security report
+  - Cloud Security report
+  - Compliance Gap report
+  - Full Comprehensive report
+
+**Phase 1: Scanning Engine**
+
+- **10 Tool Wrappers**
+  - Nuclei, Nmap, Subfinder, Httpx, Ffuf
+  - Dalfox, Nikto, Sqlmap, Amass, Shodan
+
+- **Scan Orchestrator**
+  - 6-phase pipeline with checkpoint resume
+  - 4 scan profiles: quick, standard, deep, api_only
+
+- **Finding Service**
+  - SHA256 deduplication
+  - Lifecycle management (NEW → VERIFIED)
+  - SLA tracking by severity
+
+- **AI Brain**
+  - 4 personas: Attacker, Defender, Analyst, Skeptic
+  - Consensus voting system
+  - Attack chain discovery
+
+- **Initial Reports**
+  - Executive PDF
+  - Technical Word
+  - Pentest PDF
+
+- **MCP Server**
+  - 14 tool endpoints
+  - 6 prompt templates
+
+### Changed
+
+- Updated version to 1.0.0
+- Updated README with full documentation
+- Added comprehensive docs site
+
+### Security
+
+- Self-scan with zero critical findings
+- Dependency audit clean
+- Secret scan clean
+
+---
+
+## [0.1.0] - 2026-03-17
 
 ### Added
 

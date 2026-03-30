@@ -1,3 +1,4 @@
+import React from 'react'
 import { CheckCircle, Circle, Loader2, XCircle, PauseCircle } from 'lucide-react'
 import { cn } from '@/utils/formatters'
 
@@ -13,22 +14,6 @@ interface Phase {
 interface PhaseTimelineProps {
   phases: Phase[]
   className?: string
-}
-
-const PHASE_ICONS: Record<string, React.ElementType> = {
-  recon_subdomains: Circle,
-  recon_discovery: Circle,
-  recon_ports: Circle,
-  vuln_scan: Circle,
-  pentest: Circle,
-  ai_analysis: Circle,
-  sast: Circle,
-  secrets: Circle,
-  dependencies: Circle,
-  cspm: Circle,
-  container: Circle,
-  iac: Circle,
-  ai_llm: Circle,
 }
 
 const STATUS_ICONS: Record<string, React.ElementType> = {

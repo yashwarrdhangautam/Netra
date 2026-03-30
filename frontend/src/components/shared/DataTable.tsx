@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-table'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
+import React from 'react'
 import { cn } from '@/utils/formatters'
 
 interface DataTableProps<TData, TValue> {
@@ -51,8 +52,8 @@ export function DataTable<TData, TValue>({
                 {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
-                    onClick={() => header.column.toggleSorting()}
                     className="cursor-pointer hover:bg-surface-2"
+                    onClick={() => header.column.toggleSorting()}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>

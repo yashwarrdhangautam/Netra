@@ -1,0 +1,94 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "netra"
+version = "1.0.0"
+description = "NETRA — AI-augmented unified cybersecurity platform"
+authors = ["Yash Wardhan Gautam <gicokoxowej19@gmail.com>"]
+license = "AGPL-3.0"
+readme = "README.md"
+homepage = "https://github.com/yashwg/netra"
+repository = "https://github.com/yashwg/netra"
+packages = [
+    { include = "netra", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = { version = "^0.34.0", extras = ["standard"] }
+sqlalchemy = { version = "^2.0.35", extras = ["asyncio"] }
+asyncpg = "^0.30.0"
+aiosqlite = "^0.20.0"
+alembic = "^1.14.0"
+pydantic = "^2.10.0"
+pydantic-settings = "^2.6.0"
+celery = { version = "^5.4.0", extras = ["redis"] }
+redis = "^5.2.0"
+rich = "^13.9.0"
+httpx = "^0.28.0"
+python-jose = { version = "^3.3.0", extras = ["cryptography"] }
+passlib = { version = "^1.7.4", extras = ["bcrypt"] }
+python-multipart = "^0.0.17"
+mcp = { version = "^1.0.0", extras = ["cli"] }
+structlog = "^24.4.0"
+cryptography = "^43.0.0"
+reportlab = "^4.2.0"
+python-docx = "^1.1.0"
+openpyxl = "^3.1.0"
+slowapi = "^0.1.9"
+aiohttp = "^3.9.0"
+click = "^8.1.7"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+httpx = "^0.28.0"
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+pre-commit = "^4.0.0"
+factory-boy = "^3.3.1"
+
+[tool.poetry.scripts]
+netra = "netra.cli.main:main"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "S", "T20"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v --cov=netra --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["netra"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

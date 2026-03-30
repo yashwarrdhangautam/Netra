@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # ── App ──
     app_name: str = "NETRA"
-    app_version: str = "0.1.0"
+    app_version: str = "1.0.0"
     environment: Literal["development", "staging", "production"] = "development"
     debug: bool = False
     log_level: str = "INFO"

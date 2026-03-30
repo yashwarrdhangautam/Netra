@@ -1,5 +1,6 @@
 """Finding routes for managing security findings."""
 import uuid
+from json import dumps as json_dumps
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -281,4 +282,74 @@ async def retest_finding(
         "status": "not_implemented",
         "message": "Re-test functionality is planned for Phase 2",
         "finding_id": str(finding_id),
+    }
+
+
+@router.get("/{finding_id}/curl")
+async def export_finding_curl(
+    finding_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Export finding as cURL command.
+
+    Args:
+        finding_id: Finding UUID
+        db: Database session
+
+    Returns:
+        cURL command string
+    """
+    finding = await db.get(Finding, finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    # Extract request data from evidence
+    evidence = finding.evidence or {}
+    
+    # Build cURL command
+    curl_parts = ["curl"]
+    
+    # Add method if specified
+    method = evidence.get("method", "GET")
+    if method != "GET":
+        curl_parts.append(f"-X {method}")
+    
+    # Add URL
+    url = finding.url or evidence.get("url", "")
+    if url:
+        curl_parts.append(f'"{url}"')
+    
+    # Add headers
+    headers = evidence.get("headers", {})
+    for header_name, header_value in headers.items():
+        curl_parts.append(f'-H "{header_name}: {header_value}"')
+    
+    # Add cookies if present
+    cookies = evidence.get("cookies", {})
+    if cookies:
+        cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+        curl_parts.append(f'-H "Cookie: {cookie_string}"')
+    
+    # Add body if present (for POST/PUT/PATCH)
+    body = evidence.get("body") or evidence.get("data") or evidence.get("payload")
+    if body and method in ["POST", "PUT", "PATCH"]:
+        if isinstance(body, (dict, list)):
+            body_str = json_dumps(body)
+        else:
+            body_str = str(body)
+        curl_parts.append(f"-d '{body_str}'")
+    
+    # Add user agent if present
+    user_agent = evidence.get("user_agent")
+    if user_agent:
+        curl_parts.append(f'-A "{user_agent}"')
+    
+    curl_command = " ".join(curl_parts)
+    
+    return {
+        "finding_id": str(finding_id),
+        "curl_command": curl_command,
+        "method": method,
+        "url": url,
+        "has_body": bool(body),
     }

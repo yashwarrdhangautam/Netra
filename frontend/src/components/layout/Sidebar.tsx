@@ -1,14 +1,15 @@
-import { NavLink } from '@tanstack/react-router'
-import { 
-  LayoutDashboard, 
-  Scan, 
-  FileText, 
-  ShieldCheck, 
-  Target, 
-  Network, 
+import { Link } from '@tanstack/react-router'
+import {
+  LayoutDashboard,
+  Scan,
+  FileText,
+  ShieldCheck,
+  Target,
+  Network,
   Settings,
   Bug,
-  LogOut
+  LogOut,
+  Users
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/formatters'
@@ -21,11 +22,12 @@ const navigation = [
   { name: 'Compliance', href: '/compliance', icon: ShieldCheck },
   { name: 'Targets', href: '/targets', icon: Target },
   { name: 'Attack Graph', href: '/attack-graph', icon: Network },
+  { name: 'Users', href: '/users', icon: Users, adminOnly: true },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
 export function Sidebar() {
-  const { logout } = useAuthStore()
+  const { logout, isAdmin } = useAuthStore()
 
   return (
     <div className="flex h-full w-64 flex-col border-r border-border bg-surface">
@@ -37,23 +39,26 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {navigation.map((item) => (
-          <NavLink
-            key={item.name}
-            to={item.href}
-            className={({ isActive }) =>
-              cn(
-                'group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-accent text-white'
-                  : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground'
-              )
-            }
-          >
-            <item.icon className="mr-3 h-5 w-5" />
-            {item.name}
-          </NavLink>
-        ))}
+        {navigation
+          .filter(item => !item.adminOnly || isAdmin())
+          .map((item) => (
+            <Link
+              key={item.name}
+              to={item.href}
+            >
+              {({ isActive }) => (
+                <span className={cn(
+                  'group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-accent text-white'
+                    : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground'
+                )}>
+                  <item.icon className="mr-3 h-5 w-5" />
+                  {item.name}
+                </span>
+              )}
+            </Link>
+          ))}
       </nav>
 
       {/* Logout */}

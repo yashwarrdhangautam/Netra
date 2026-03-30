@@ -2,63 +2,86 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches: [main, develop]
   pull_request:
-    branches:
-      - main
-      - develop
+    branches: [main]
+
+permissions:
+  contents: read
+  checks: write
+  actions: read
 
 jobs:
-  lint:
+  lint-and-type-check:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.11']
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install linting tools
-        run: pip install ruff black
-      - name: Run ruff
-        run: ruff check netra/ netra.py
-      - name: Run black format check
-        run: black --check netra/ netra.py
-
-  syntax-check:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.11']
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
       - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Check Python syntax
-        run: python3 -c "import ast; [ast.parse(open(f).read()) for f in __import__('pathlib').Path('netra').rglob('*.py')]"
-      - name: Test module import
-        run: python3 -c "import netra; print('Import OK')"
+        run: |
+          pip install poetry
+          poetry install
+      - name: Lint
+        run: poetry run ruff check src/
+      - name: Type check
+        run: poetry run mypy src/
 
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.11']
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: netra
+          POSTGRES_PASSWORD: netra
+          POSTGRES_DB: netra_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest
-      - name: Run pytest
-        run: pytest tests/ -v --tb=short
+        run: |
+          pip install poetry
+          poetry install
+      - name: Run tests
+        env:
+          NETRA_DATABASE_URL: postgresql+asyncpg://netra:netra@localhost:5432/netra_test
+          NETRA_CELERY_BROKER_URL: redis://localhost:6379/0
+        run: poetry run pytest --cov=netra --cov-report=xml
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [lint-and-type-check, test]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -f docker/Dockerfile -t netra:test .
+      - name: Test Docker Compose
+        run: |
+          docker compose up -d
+          sleep 15
+          curl -f http://localhost:8000/health || exit 1
+          docker compose down

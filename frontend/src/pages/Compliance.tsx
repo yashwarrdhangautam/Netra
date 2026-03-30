@@ -1,8 +1,6 @@
 import { useState } from 'react'
-import { complianceApi } from '@/api/reports'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 
 const frameworks = [
   { id: 'iso27001', name: 'ISO 27001' },

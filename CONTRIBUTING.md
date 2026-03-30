@@ -1,116 +1,142 @@
-# Contributing to NETRA नेत्र
+# Contributing to NETRA
 
-Thank you for your interest in contributing! NETRA is built by the security community, for the security community.
+Thank you for your interest in contributing to NETRA! This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
-Be respectful, constructive, and inclusive. We are here to build great security tools together.
+By participating in this project, you agree to abide by our Code of Conduct:
+- Be respectful and inclusive
+- Focus on constructive feedback
+- Welcome newcomers and help them learn
 
 ## Getting Started
 
-```bash
-# 1. Fork the repo on GitHub, then clone your fork
-git clone https://github.com/YOUR_USERNAME/netra.git
-cd netra
+### Prerequisites
+- Python 3.12+
+- Poetry for dependency management
+- Docker and Docker Compose (for containerized development)
+- Git
 
-# 2. Create a feature branch
-git checkout -b feature/your-feature-name
+### Setting Up Development Environment
 
-# 3. Set up development environment
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install ruff black pytest pytest-asyncio
+1. **Fork and clone the repository:**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/netra.git
+   cd netra
+   ```
 
-# 4. Install Ollama and pull Qwen (for AI tests)
-ollama pull qwen:14b
+2. **Install dependencies:**
+   ```bash
+   poetry install
+   ```
+
+3. **Set up pre-commit hooks:**
+   ```bash
+   make pre-commit-install
+   ```
+
+4. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your settings
+   ```
+
+## Development Workflow
+
+### Making Changes
+
+1. **Create a branch:**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make your changes** following the coding standards below.
+
+3. **Run tests:**
+   ```bash
+   make test
+   ```
+
+4. **Run linting and type checking:**
+   ```bash
+   make lint
+   make typecheck
+   ```
+
+5. **Commit your changes:**
+   ```bash
+   git commit -m "feat: add your feature description"
+   ```
+
+### Coding Standards
+
+- **Type hints:** All functions must have type hints for parameters and return values
+- **Documentation:** Add docstrings to public functions and classes
+- **Testing:** Write tests for new functionality
+- **Formatting:** Code is automatically formatted with ruff
+- **Security:** Follow OWASP Top 10 secure coding practices
+
+### Commit Message Convention
+
+We use conventional commits:
+- `feat:` New feature
+- `fix:` Bug fix
+- `docs:` Documentation changes
+- `style:` Code style changes (formatting, etc.)
+- `refactor:` Code refactoring
+- `test:` Test additions or modifications
+- `chore:` Maintenance tasks
+
+Example:
+```
+feat: add SQL injection testing with sqlmap
+
+- Implement sqlmap tool wrapper
+- Add configuration for risk levels
+- Include safe mode for detection-only scans
 ```
 
-## Branch Naming
+## Submitting Changes
 
-| Prefix | Use for |
-|--------|---------|
-| `feature/` | New features |
-| `fix/` | Bug fixes |
-| `docs/` | Documentation only |
-| `test/` | Tests only |
-| `refactor/` | Code refactoring |
+1. **Push to your fork:**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
 
-## Code Standards
+2. **Open a Pull Request** on GitHub with:
+   - Clear title following conventional commits
+   - Description of changes
+   - Reference to any related issues
+   - Screenshots if UI changes
 
-**Type hints** — Every function must have type annotations:
-```python
-def my_func(host: str, port: int = 80) -> dict:
-```
-
-**Docstrings** — Every function and class needs a docstring:
-```python
-def my_func(host: str) -> dict:
-    """Run a probe against host and return findings dict."""
-```
-
-**Formatting** — Run before committing:
-```bash
-black netra/ netra.py
-ruff check netra/ netra.py --fix
-```
-
-**No credentials** — Never hardcode API keys, passwords, or tokens.
-
-**No `sentinal` references** — The old codebase used this name. NETRA only.
-
-## Adding a New Scan Module
-
-1. Create `netra/modules/vapt/your_module.py`
-2. Follow the pattern of existing modules (e.g. `injection.py`)
-3. Use `netra.core.utils.run_cmd()` for all external tool calls
-4. Use `netra.core.database.FindingsDB` for all DB writes
-5. Add type hints + docstrings
-6. Register in `netra/modules/vapt/__init__.py`
-
-## Adding a Compliance Standard
-
-1. Open `netra/ai_brain/config_audit.py`
-2. Add a new `YOUR_STANDARD_CHECKS` dict following the pattern
-3. Add to `STANDARDS_MAP`
-4. Update `config.yaml` and `README.md`
+3. **Address review feedback** promptly
 
 ## Testing
 
+### Running Tests
 ```bash
 # Run all tests
-pytest tests/ -v
+make test
 
-# Run a specific test file
-pytest tests/test_analyzer.py -v
+# Run with coverage
+make test-cov
 
-# Check syntax across all files
-python3 -c "
-import ast
-from pathlib import Path
-for f in Path('netra').rglob('*.py'):
-    ast.parse(f.read_text())
-print('All files clean')
-"
+# Run specific test file
+pytest tests/test_api/test_scans.py
 ```
 
-## Submitting a Pull Request
+### Writing Tests
+- Place tests in the `tests/` directory
+- Mirror the source structure
+- Use fixtures from `conftest.py`
+- Mark async tests with `@pytest.mark.asyncio`
 
-1. Make sure tests pass and code is formatted
-2. Update `CHANGELOG.md` under `[Unreleased]`
-3. Push to your fork and open a PR against `main`
-4. Fill in the PR template
-5. Link any related issues
+## Questions?
 
-## Reporting Issues
+- Check existing issues and discussions
+- Read the documentation in `docs/`
+- Ask in GitHub Discussions
 
-Use GitHub Issues with the bug report or feature request template. Include:
-- Your OS and Python version
-- `python3 netra.py --version` output
-- Full error output (redact any sensitive data)
+## License
 
-## Contact
-
-- GitHub Issues (preferred)
-- Email: yash@netra.security
-
+By contributing, you agree that your contributions will be licensed under the AGPL-3.0 License.

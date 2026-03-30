@@ -1,7 +1,7 @@
 import { cn } from '@/utils/formatters'
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'default' | 'outline' | 'ghost' | 'destructive'
+  variant?: 'default' | 'outline' | 'ghost' | 'destructive' | 'secondary' | 'accent'
   size?: 'sm' | 'md' | 'lg'
   children: React.ReactNode
 }
@@ -20,6 +20,8 @@ export function Button({
     outline: 'border border-border bg-transparent hover:bg-surface-2',
     ghost: 'hover:bg-surface-2',
     destructive: 'bg-red-600 text-white hover:bg-red-700',
+    secondary: 'bg-surface-2 text-foreground hover:bg-surface-3 border border-border',
+    accent: 'bg-blue-600 text-white hover:bg-blue-700',
   }
 
   const sizes = {

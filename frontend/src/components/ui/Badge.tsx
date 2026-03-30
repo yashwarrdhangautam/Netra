@@ -1,8 +1,9 @@
+import React from 'react'
 import { cn } from '@/utils/formatters'
 
 interface BadgeProps {
   children: React.ReactNode
-  variant?: 'default' | 'secondary' | 'outline' | 'destructive' | 'accent'
+  variant?: 'default' | 'secondary' | 'outline' | 'destructive' | 'accent' | 'ghost'
   className?: string
 }
 
@@ -13,6 +14,7 @@ export function Badge({ children, variant = 'default', className }: BadgeProps) 
     outline: 'border border-border text-foreground',
     destructive: 'bg-red-600 text-white',
     accent: 'bg-accent-2 text-white',
+    ghost: 'bg-transparent text-muted-foreground',
   }
 
   return (

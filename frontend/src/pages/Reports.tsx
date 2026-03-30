@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { reportsApi, type ReportType } from '@/api/reports'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 
 const reportTypes: { value: ReportType; label: string; description: string }[] = [
   { value: 'executive', label: 'Executive', description: '1-page PDF summary for leadership' },

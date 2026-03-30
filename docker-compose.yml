@@ -1,4 +1,5 @@
 services:
+  # ── FastAPI Application ─────────────────────────────────────────────────────
   api:
     build:
       context: .
@@ -11,6 +12,24 @@ services:
       - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
       - NETRA_ENVIRONMENT=development
       - NETRA_DEBUG=true
+      # Auth
+      - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:-change-me-in-production}
+      - NETRA_JWT_EXPIRE_MINUTES=60
+      # Notifications
+      - NETRA_SLACK_WEBHOOK_URL=${NETRA_SLACK_WEBHOOK_URL:-}
+      - NETRA_SMTP_HOST=${NETRA_SMTP_HOST:-}
+      - NETRA_SMTP_PORT=587
+      - NETRA_SMTP_USER=${NETRA_SMTP_USER:-}
+      - NETRA_SMTP_PASSWORD=${NETRA_SMTP_PASSWORD:-}
+      - NETRA_NOTIFICATION_EMAIL_FROM=${NETRA_NOTIFICATION_EMAIL_FROM:-}
+      - NETRA_NOTIFICATION_EMAIL_TO=${NETRA_NOTIFICATION_EMAIL_TO:-}
+      # Integrations
+      - NETRA_DEFECTDOJO_URL=${NETRA_DEFECTDOJO_URL:-}
+      - NETRA_DEFECTDOJO_API_KEY=${NETRA_DEFECTDOJO_API_KEY:-}
+      - NETRA_JIRA_URL=${NETRA_JIRA_URL:-}
+      - NETRA_JIRA_EMAIL=${NETRA_JIRA_EMAIL:-}
+      - NETRA_JIRA_API_TOKEN=${NETRA_JIRA_API_TOKEN:-}
+      - NETRA_JIRA_PROJECT_KEY=SEC
     depends_on:
       postgres:
         condition: service_healthy
@@ -20,7 +39,13 @@ services:
       - netra-data:/home/netra/.netra
     networks:
       - netra-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # ── Celery Worker ──────────────────────────────────────────────────────────
   worker:
     build:
       context: .
@@ -29,6 +54,21 @@ services:
       - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
       - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
       - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - NETRA_CELERY_WORKER_CONCURRENCY=4
+      # Auth
+      - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:-change-me-in-production}
+      # Notifications
+      - NETRA_SLACK_WEBHOOK_URL=${NETRA_SLACK_WEBHOOK_URL:-}
+      - NETRA_SMTP_HOST=${NETRA_SMTP_HOST:-}
+      - NETRA_SMTP_PORT=587
+      - NETRA_SMTP_USER=${NETRA_SMTP_USER:-}
+      - NETRA_SMTP_PASSWORD=${NETRA_SMTP_PASSWORD:-}
+      # Integrations
+      - NETRA_DEFECTDOJO_URL=${NETRA_DEFECTDOJO_URL:-}
+      - NETRA_DEFECTDOJO_API_KEY=${NETRA_DEFECTDOJO_API_KEY:-}
+      - NETRA_JIRA_URL=${NETRA_JIRA_URL:-}
+      - NETRA_JIRA_EMAIL=${NETRA_JIRA_EMAIL:-}
+      - NETRA_JIRA_API_TOKEN=${NETRA_JIRA_API_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,6 +79,26 @@ services:
     networks:
       - netra-net
 
+  # ── Celery Flower (Monitoring) ─────────────────────────────────────────────
+  flower:
+    image: netra-worker:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    command: celery -A netra.worker.celery_app flower --port=5555 --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    environment:
+      - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - worker
+      - redis
+    networks:
+      - netra-net
+    profiles:
+      - monitoring
+
+  # ── PostgreSQL Database ────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     environment:
@@ -57,6 +117,7 @@ services:
     networks:
       - netra-net
 
+  # ── Redis (Cache + Message Broker) ─────────────────────────────────────────
   redis:
     image: redis:7-alpine
     ports:
@@ -69,6 +130,7 @@ services:
     networks:
       - netra-net
 
+  # ── Nginx Frontend ─────────────────────────────────────────────────────────
   frontend:
     image: nginx:alpine
     ports:
@@ -80,9 +142,29 @@ services:
     networks:
       - netra-net
 
+  # ── Ollama (Local LLM) ─────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - netra-net
+    profiles:
+      - ai
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
 volumes:
   pg-data:
   netra-data:
+  ollama-data:
 
 networks:
   netra-net:

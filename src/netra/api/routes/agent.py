@@ -16,9 +16,18 @@ async def start_agent(
     """Start a new autonomous pentest agent session."""
     from netra.ai.agent import create_agent_session
 
-    agent = create_agent_session()
-    result = await agent.start(target, profile)
-    return result
+    try:
+        agent = create_agent_session()
+        result = await agent.start(target, profile)
+        return result
+    except Exception as e:
+        # Log full error internally but return sanitized message to user
+        import logging
+        logging.error(f"Agent session creation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create agent session. Check logs for details."
+        )
 
 
 @router.get("/{session_id}/status")

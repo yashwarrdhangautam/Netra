@@ -6,6 +6,7 @@ from netra.api.routes.findings import router as findings
 from netra.api.routes.health import router as health
 from netra.api.routes.reports import router as reports
 from netra.api.routes.scans import router as scans
+from netra.api.routes.schedules import router as schedules
 from netra.api.routes.targets import router as targets
 from netra.api.routes.websocket import router as websocket
 
@@ -17,6 +18,7 @@ __all__ = [
     "health",
     "reports",
     "scans",
+    "schedules",
     "targets",
     "websocket",
 ]
