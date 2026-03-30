@@ -15,6 +15,9 @@ async def start_agent(
 ) -> dict:
     """Start a new autonomous pentest agent session."""
     from netra.ai.agent import create_agent_session
+    import structlog
+
+    logger = structlog.get_logger()
 
     try:
         agent = create_agent_session()
@@ -22,11 +25,16 @@ async def start_agent(
         return result
     except Exception as e:
         # Log full error internally but return sanitized message to user
-        import logging
-        logging.error(f"Agent session creation failed: {str(e)}")
+        # Never expose exception details to prevent information leakage
+        logger.error(
+            "agent_session_creation_failed",
+            target=target,
+            profile=profile,
+            error_type=type(e).__name__,
+        )
         raise HTTPException(
             status_code=500,
-            detail="Failed to create agent session. Check logs for details."
+            detail="Failed to create agent session. Please check server logs.",
         )
 
 

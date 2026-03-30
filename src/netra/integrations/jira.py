@@ -40,7 +40,26 @@ class JiraClient:
             api_token: Jira API token (Cloud) or password (Server)
             project_key: Default Jira project key (e.g., "SEC")
         """
-        self.base_url = base_url.rstrip("/") if base_url else ""
+        # Validate and sanitize base_url to prevent URL injection
+        if base_url:
+            # Remove trailing slashes and validate scheme
+            base_url = base_url.rstrip("/")
+            if not base_url.startswith(("http://", "https://")):
+                base_url = "https://" + base_url
+            # Extract hostname for validation
+            from urllib.parse import urlparse
+            parsed = urlparse(base_url)
+            if not parsed.hostname:
+                raise ValueError("Invalid Jira base URL")
+            # Block private/internal IPs to prevent SSRF
+            from netra.core.ssrf_protection import SSRFProtection, SSRFProtectionError
+            try:
+                SSRFProtection.validate_url(base_url)
+            except SSRFProtectionError:
+                raise ValueError(f"Jira base URL points to internal/private address: {base_url}")
+            self.base_url = base_url
+        else:
+            self.base_url = ""
         self.email = email or ""
         self.api_token = api_token or ""
         self.project_key = project_key or "SEC"
