@@ -1,61 +1,69 @@
-# NETRA Assets
+# Assets Directory
 
-This directory contains visual assets for NETRA documentation.
+This directory contains images and assets referenced in the documentation.
 
 ## Required Assets (To Be Added)
 
+### Dashboard Screenshots
+- [ ] `dashboard-overview.png` - Main dashboard with risk gauge
+- [ ] `dashboard-findings.png` - Findings table with filters
+- [ ] `dashboard-scan-detail.png` - Scan timeline view
+- [ ] `dashboard-attack-graph.png` - Attack chain visualization
+- [ ] `dashboard-compliance.png` - Compliance framework status
+
+### Report Previews
+- [ ] `sample-executive.png` - Executive PDF preview
+- [ ] `sample-technical.png` - Technical PDF preview
+- [ ] `sample-excel.png` - Excel workbook preview
+- [ ] `sample-sarif.png` - SARIF GitHub Security preview
+- [ ] `sample-html.png` - Interactive HTML preview
+
+### Architecture Diagrams
+- [ ] `architecture-high-level.png` - Clean, modern architecture diagram
+- [ ] `workflow-pipeline.png` - 6-phase scanning pipeline
+- [ ] `ai-consensus-flow.png` - 4-persona consensus workflow
+
+### Demo Media
+- [ ] `demo-scan.gif` - 30-second scan execution GIF
+- [ ] `demo-dashboard.gif` - Dashboard navigation GIF
+- [ ] `demo-report.gif` - Report generation GIF
+
+### Icons/Badges
+- [ ] `netra-logo.svg` - High-resolution logo
+- [ ] `netra-logo-dark.svg` - Dark mode logo
+- [ ] `netra-icon.svg` - App icon
+
+### Screenshots for README
+- [ ] `hero-screenshot.png` - Above-the-fold hero image
+- [ ] `cli-output.png` - Sample CLI output
+- [ ] `comparison-before-after.png` - Before/after workflow comparison
+
+## Asset Guidelines
+
 ### Screenshots
-- [ ] `dashboard.png` - Main dashboard overview
-- [ ] `scan-results.png` - Scan results view
-- [ ] `report-example.png` - Sample report preview
-- [ ] `agent-workflow.png` - AI agent in action
-- [ ] `compliance-view.png` - Compliance framework mappings
+- Resolution: 1920x1080 or higher
+- Format: PNG (lossless)
+- Include dark mode where applicable
+- Redact any sensitive data
 
 ### Diagrams
-- [ ] `architecture-high-level.svg` - System architecture
-- [ ] `data-flow.svg` - Data flow diagram
-- [ ] `deployment-architecture.svg` - Deployment options
-- [ ] `agent-phases.svg` - AI agent workflow phases
+- Use consistent color scheme (NETRA purple: #8B5CF6)
+- Export as SVG for scalability
+- Include PNG fallback
 
-### Logos
-- [ ] `netra-logo.svg` - Primary logo (SVG)
-- [ ] `netra-logo.png` - Primary logo (PNG, 512x512)
-- [ ] `netra-icon.svg` - Favicon/app icon
-- [ ] `netra-banner.png` - Social media banner (1200x630)
+### GIFs
+- Max 10 seconds loop
+- Optimized for web (< 5MB)
+- Include captions/context
 
-### Icons
-- [ ] `tool-icons/` - Individual tool icons
-- [ ] `compliance-badges/` - Compliance framework badges
+## How to Contribute Assets
 
-## Screenshot Guidelines
-
-### Dashboard Screenshot
-1. Use a clean scan with representative data
-2. Hide any sensitive information
-3. Use a standard browser window size (1920x1080)
-4. Include multiple views if needed
-
-### Report Screenshots
-1. Use sample/placeholder data
-2. Show different report types
-3. Highlight key sections
-
-## Image Optimization
-
-Before committing images:
-- Compress PNGs using tools like TinyPNG
-- Use SVG for diagrams when possible
-- Keep file sizes under 500KB where possible
-- Use consistent styling and color scheme
-
-## Color Scheme
-
-- **Primary:** #2563EB (Blue)
-- **Secondary:** #7C3AED (Purple)
-- **Accent:** #10B981 (Green)
-- **Dark:** #1F2937
-- **Light:** #F9FAFB
+1. Create high-quality screenshots/diagrams
+2. Name files descriptively (lowercase, hyphens)
+3. Add to appropriate subdirectory
+4. Update documentation to reference new assets
+5. Submit via PR
 
 ---
 
-**Note:** This is a placeholder directory. Add actual screenshots and diagrams to enhance the documentation.
+*Last updated: March 2026*

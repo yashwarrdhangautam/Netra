@@ -1,8 +1,8 @@
 # These are supported funding model platforms
 
-github: # Replace with up to 4 GitHub Sponsors-enabled usernames e.g., [user1, user2]
+github: yashwarrdhangautam
 patreon: # Replace with a single Patreon username
-open_collective: # Replace with a single Open Collective username
+open_collective: netra
 ko_fi: # Replace with a single Ko-fi username
 tidelift: # Replace with a single Tidelift platform-name/package-name e.g., npm/babel
 community_bridge: # Replace with a single Community Bridge project-name e.g., cloud-foundry
@@ -12,7 +12,46 @@ lfx_crowdfunding: # Replace with a single LFX Crowdfunding project-name e.g., cl
 polar: # Replace with a single Polar username
 buy_me_a_coffee: # Replace with a single Buy Me a Coffee username
 thanks_dev: # Replace with a single thanks.dev username
-custom: # Replace with up to 4 custom sponsorship URLs e.g., ['link1', 'link2']
+custom: ["https://paypal.me/yashgautam"]
 
-# TODO: Set up funding platforms for NETRA development
-# Recommended: GitHub Sponsors, Open Collective, or Buy Me a Coffee
+---
+
+## Support NETRA Development
+
+NETRA is open-source and free to use. If you find it valuable, consider supporting ongoing development:
+
+### 🟣 GitHub Sponsors
+Support directly through GitHub: [github.com/sponsors/yashwarrdhangautam](https://github.com/sponsors/yashwarrdhangautam)
+
+### 🔵 Open Collective
+Contribute to the NETRA collective: [opencollective.com/netra](https://opencollective.com/netra)
+
+### 💳 PayPal
+One-time donations: [paypal.me/yashgautam](https://paypal.me/yashgautam)
+
+### 💼 Commercial Licensing
+For organizations needing AGPL alternatives: Contact yashwarrdhangautam@gmail.com
+
+---
+
+## Why Sponsor?
+
+Your support helps:
+- ✅ Maintain and improve NETRA
+- ✅ Add new security tool integrations
+- ✅ Enhance AI capabilities
+- ✅ Provide community support
+- ✅ Develop documentation and tutorials
+
+### Sponsor Tiers
+
+| Tier | Monthly | Benefits |
+|------|---------|----------|
+| 🥉 Supporter | $5 | GitHub badge, thank you in release notes |
+| 🥈 Backer | $25 | Priority feature requests, Discord role |
+| 🥇 Champion | $100 | Direct maintainer access for questions, logo in README |
+| 💎 Enterprise | Custom | Commercial license discount, dedicated support |
+
+---
+
+*Thank you for supporting open-source security!*
