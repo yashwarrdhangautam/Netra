@@ -42,8 +42,10 @@ python-jose>=3.3.0             # JWT encoding/decoding (with cryptography extras
 passlib>=1.7.4                 # Password hashing (bcrypt)
 bcrypt>=4.2.0                  # Bcrypt password hashing
 pyotp>=2.9.0                   # TOTP for MFA/2FA
-cryptography>=44.0.1           # CVE-2026-26007 SECT curves + OpenSSL 3.5.5 wheels
-ecdsa>=0.19.2                  # CVE-2024-23342 Minerva timing + CVE-2026-33936 DER DoS
+cryptography>=46.0.5           # CVE-2026-26007 SECT curves + OpenSSL 3.5.5 wheels
+# ecdsa REMOVED — not used directly by NETRA. Maintainers declared Minerva timing
+# (CVE-2024-23342) out of scope; no fix available for CVE-2026-33936.
+# If you need ECDSA, use the `cryptography` library instead.
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 # slack-sdk removed — using httpx directly
