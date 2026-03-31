@@ -261,16 +261,15 @@ netra report --scan-id <id> --type executive
 
 ---
 
-## 🔜 Coming in v2.0
+## 🔜 Coming Soon
 
-- REST API with OAuth 2.0
-- Scheduled scans (cron-based)
+- REST API enhancements
+- Scheduled scans
 - Plugin system for custom modules
-- DefectDojo bidirectional sync
-- Jira ticket auto-creation
-- Slack/Teams native integrations
+- Enhanced integrations (DefectDojo, Jira, Slack)
+- Multi-tenant support
 
-See [ROADMAP.md](docs/ROADMAP.md) for details.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for details.
 
 ---
 
@@ -324,4 +323,3 @@ Report vulnerabilities privately:
 ---
 
 *Made by [Yash Wardhan Gautam](https://github.com/yashwarrdhangautam)*
-*Securing the digital world, one scan at a time.*

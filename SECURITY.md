@@ -17,9 +17,7 @@ We take security seriously. If you discover a security vulnerability in NETRA, p
 
 ### How to Report
 
-Please email security vulnerabilities to: **security@netra.dev**
-
-Alternatively, you may report a private security advisory on GitHub:
+Please report a private security advisory on GitHub:
 1. Go to the NETRA repository
 2. Click "Security" tab → "Report a vulnerability"
 3. Complete the form with details about the vulnerability
@@ -111,6 +109,6 @@ We recognize and thank security researchers who responsibly disclose vulnerabili
 
 ## Questions?
 
-For questions about this security policy, contact us at security@netra.dev.
+For questions about this security policy, open a discussion on GitHub.
 
 Thank you for helping keep NETRA secure.

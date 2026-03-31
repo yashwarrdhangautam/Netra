@@ -338,8 +338,6 @@ For roadmap questions, suggestions, or to get involved:
 
 - 📝 **Issues:** [GitHub Issues](https://github.com/yashwarrdhangautam/netra/issues)
 - 💬 **Discussions:** [GitHub Discussions](https://github.com/yashwarrdhangautam/netra/discussions)
-- 📧 **Email:** roadmap@netra.dev
-- 🐦 **Twitter:** [@NETRA_Sec](https://twitter.com/NETRA_Sec) (coming soon)
 
 ---
 

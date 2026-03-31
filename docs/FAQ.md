@@ -46,7 +46,7 @@ Yes, NETRA is open-source under the AGPL-3.0 license. You can:
 - Modify and distribute the code
 - Contribute improvements back
 
-**Commercial licensing** is available for organizations that cannot comply with AGPL requirements. Contact yashwarrdhangautam@gmail.com for details.
+**Commercial licensing** is available for organizations that cannot comply with AGPL requirements. Contact the maintainer for details.
 
 ### How does NETRA compare to [X]?
 
@@ -636,7 +636,7 @@ You may need a commercial license if:
 - You want to embed NETRA in a proprietary product
 - You need indemnification
 
-Contact yashwarrdhangautam@gmail.com for commercial licensing.
+Contact the maintainer for commercial licensing.
 
 ### Can I use NETRA for client work?
 
@@ -657,8 +657,7 @@ Yes. AGPL-3.0 allows commercial use. You can:
 | 🐛 Bug Reports | [GitHub Issues](https://github.com/yashwarrdhangautam/netra/issues) |
 | 💡 Feature Requests | [GitHub Issues](https://github.com/yashwarrdhangautam/netra/issues) |
 | ❓ Questions | [GitHub Discussions](https://github.com/yashwarrdhangautam/netra/discussions) |
-| 🔒 Security Issues | [security@netra.dev](mailto:security@netra.dev) |
-| 💬 Community | Discord (coming soon) |
+| 🔒 Security Issues | Use GitHub Security Advisories |
 
 ---
 

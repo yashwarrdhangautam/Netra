@@ -300,11 +300,7 @@ Benchmarks are updated quarterly. Latest version: **2026.Q1**
 
 ## Contact
 
-For benchmark methodology questions or to request third-party validation:
-
-- 📧 Email: benchmarks@netra.dev
-- 📝 Issues: [GitHub Issues](https://github.com/yashwarrdhangautam/netra/issues)
-- 📚 Documentation: [docs/](docs/)
+For benchmark methodology questions or to request third-party validation, open an issue on GitHub.
 
 ---
 

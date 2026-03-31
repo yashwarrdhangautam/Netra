@@ -23,11 +23,11 @@ docker compose up -d
 
 ## Features
 
-- **14 Security Tools** orchestrated by AI
-- **200+ Vulnerability Checks** via Nuclei templates
+- **18 Security Tools** orchestrated by AI
+- **9000+ Vulnerability Checks** via Nuclei templates
 - **6 Compliance Frameworks** (ISO 27001, PCI DSS, SOC 2, HIPAA, NIST CSF, CIS)
-- **11 Report Types** (PDF, Word, Excel, HTML, Evidence ZIP)
-- **Autonomous Pentest Agent** with human-in-the-loop
+- **13 Report Types** (PDF, Word, Excel, HTML, Evidence ZIP, SARIF)
+- **4-Persona AI Consensus** for finding validation
 - **CI/CD Integration** with GitHub Actions and SARIF output
 
 ## Scan Profiles
@@ -36,9 +36,9 @@ docker compose up -d
 |---------|-------------|----------|
 | `quick` | Fast pre-release check | 30 min |
 | `standard` | Balanced full scan | 3 hours |
-| `deep` | Comprehensive assessment | 12 hours |
+| `deep` | Comprehensive assessment | 4-6 hours |
 | `api_only` | API-focused testing | 2 hours |
-| `cloud` | Cloud security posture | 6 hours |
+| `cloud` | Cloud security posture | 3-4 hours |
 | `container` | Container image scanning | 2 hours |
 | `ai_llm` | OWASP LLM Top 10 testing | 1 hour |
 
@@ -64,26 +64,32 @@ netra compliance --framework pci --scan-id <ID>
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐
 │                      NETRA Platform                          │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────┐ │
-│  │  CLI    │  │Dashboard│  │   API   │  │  MCP Server     │ │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └────────┬────────┘ │
-│       │            │            │                 │          │
-│       └────────────┴────────────┴─────────────────┘          │
-│                            │                                  │
-│                    ┌───────▼───────┐                         │
-│                    │  Orchestrator │                         │
-│                    └───────┬───────┘                         │
-│                            │                                  │
-│       ┌────────────────────┼────────────────────┐            │
-│       │                    │                    │            │
-│  ┌────▼────┐        ┌─────▼─────┐       ┌──────▼──────┐     │
-│  │  Tools  │        │ AI Brain  │       │  Compliance │     │
-│  │ (14+)   │        │ (4 personas)│      │  Engine     │     │
-│  └─────────┘        └───────────┘       └─────────────┘     │
-└─────────────────────────────────────────────────────────────┘
+├──────────────────────────────────────────────────────────────┤
+│  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────┐ │
+│  │   CLI   │  │Dashboard│  │ REST API │  │  MCP Server   │ │
+│  └────┬────┘  └─────┬────┘  └────┬─────┘  └───────┬───────┘ │
+│       │             │             │                 │         │
+│       └─────────────┴─────────────┴─────────────────┘         │
+│                              │                                 │
+│                    ┌─────────▼─────────┐                      │
+│                    │   Orchestrator    │                      │
+│                    │  (Celery + Redis) │                      │
+│                    └─────────┬─────────┘                      │
+│                              │                                 │
+│         ┌────────────────────┼────────────────────┐           │
+│         │                    │                    │           │
+│    ┌────▼────┐        ┌──────▼──────┐     ┌──────▼──────┐    │
+│    │Scanners │        │  AI Brain   │     │ Compliance  │    │
+│    │  (18)   │        │ (4-Persona) │     │   Mapper    │    │
+│    └─────────┘        └─────────────┘     └─────────────┘    │
+│                              │                                 │
+│                    ┌─────────▼─────────┐                      │
+│                    │   PostgreSQL      │                      │
+│                    │   (SQLAlchemy 2)  │                      │
+│                    └───────────────────┘                      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## Documentation
@@ -92,7 +98,9 @@ netra compliance --framework pci --scan-id <ID>
 - [Configuration](configuration.md)
 - [Scan Profiles](profiles.md)
 - [API Reference](api.md)
-- [Autonomous Agent](agent.md)
+- [Benchmarks](BENCHMARKS.md)
+- [Use Cases](USE_CASES.md)
+- [FAQ](FAQ.md)
 
 ## License
 

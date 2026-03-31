@@ -623,10 +623,7 @@ POST /api/v1/reports/generate
 
 ## Need Custom Formats?
 
-For enterprise customers, we offer custom report format development:
-
-- 📧 Email: reports@netra.dev
-- 📝 Issue: [GitHub](https://github.com/yashwarrdhangautam/netra/issues)
+For enterprise customers, we offer custom report format development. Contact the maintainer for details.
 
 ---
 
