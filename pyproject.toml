@@ -34,7 +34,7 @@ passlib = { version = ">=1.7.4", extras = ["bcrypt"] }
 python-multipart = ">=0.0.22"
 mcp = { version = "^1.0.0", extras = ["cli"] }
 structlog = "^24.4.0"
-cryptography = ">=44.0.1"
+cryptography = ">=46.0.5"
 reportlab = ">=4.2.5"
 python-docx = ">=1.1.2"
 openpyxl = ">=3.1.5"

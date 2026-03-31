@@ -2,106 +2,58 @@
 
 > The Third Eye of Security
 
-NETRA is an open-source, AI-augmented unified cybersecurity platform that combines penetration testing, vulnerability management, cloud security posture management (CSPM), compliance automation, and AI-powered security testing.
+AI-assisted security orchestration that finds vulnerabilities, validates them with AI, maps to compliance, and generates reports — all in one automated workflow.
 
 ## Quick Start
 
-### Install with pip
-
 ```bash
-pip install netra
-netra --help
-```
+# Install
+bash <(curl -s https://raw.githubusercontent.com/yashwarrdhangautam/netra/main/install.sh)
 
-### Run with Docker
-
-```bash
+# Or use Docker
 docker compose up -d
-# Dashboard: http://localhost:5173
-# API: http://localhost:8000/docs
 ```
 
-## Features
+## What You Get
 
-- **18 Security Tools** orchestrated by AI
-- **9000+ Vulnerability Checks** via Nuclei templates
-- **6 Compliance Frameworks** (ISO 27001, PCI DSS, SOC 2, HIPAA, NIST CSF, CIS)
-- **13 Report Types** (PDF, Word, Excel, HTML, Evidence ZIP, SARIF)
-- **4-Persona AI Consensus** for finding validation
-- **CI/CD Integration** with GitHub Actions and SARIF output
+- **18 Security Tools** orchestrated in one pipeline
+- **4-Persona AI** validation (60% fewer false positives)
+- **6 Compliance Frameworks** auto-mapped
+- **13 Report Formats** ready in minutes
 
 ## Scan Profiles
 
-| Profile | Description | Duration |
-|---------|-------------|----------|
-| `quick` | Fast pre-release check | 30 min |
-| `standard` | Balanced full scan | 3 hours |
-| `deep` | Comprehensive assessment | 4-6 hours |
-| `api_only` | API-focused testing | 2 hours |
-| `cloud` | Cloud security posture | 3-4 hours |
-| `container` | Container image scanning | 2 hours |
-| `ai_llm` | OWASP LLM Top 10 testing | 1 hour |
+| Profile | Duration | Best For |
+|---------|----------|----------|
+| `quick` | 30 min | Pre-deployment checks |
+| `standard` | 2-3 hrs | Full VAPT |
+| `deep` | 4-6 hrs | Comprehensive audit |
+| `cloud` | 3-4 hrs | AWS/Azure/GCP |
+| `api_only` | 1-2 hrs | API testing |
 
-## Example Usage
+## Example
 
 ```bash
 # Quick scan
 netra scan --target example.com --profile quick
 
-# Deep scan with source code analysis
-netra scan --target example.com --profile deep --source /path/to/repo
+# View findings
+netra findings --scan-id <id> --severity critical
 
-# Cloud security audit
-netra scan --target aws --profile cloud
-
-# Generate executive report
-netra report --type executive --scan-id <ID>
-
-# Compliance gap analysis
-netra compliance --framework pci --scan-id <ID>
-```
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      NETRA Platform                          │
-├──────────────────────────────────────────────────────────────┤
-│  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────┐ │
-│  │   CLI   │  │Dashboard│  │ REST API │  │  MCP Server   │ │
-│  └────┬────┘  └─────┬────┘  └────┬─────┘  └───────┬───────┘ │
-│       │             │             │                 │         │
-│       └─────────────┴─────────────┴─────────────────┘         │
-│                              │                                 │
-│                    ┌─────────▼─────────┐                      │
-│                    │   Orchestrator    │                      │
-│                    │  (Celery + Redis) │                      │
-│                    └─────────┬─────────┘                      │
-│                              │                                 │
-│         ┌────────────────────┼────────────────────┐           │
-│         │                    │                    │           │
-│    ┌────▼────┐        ┌──────▼──────┐     ┌──────▼──────┐    │
-│    │Scanners │        │  AI Brain   │     │ Compliance  │    │
-│    │  (18)   │        │ (4-Persona) │     │   Mapper    │    │
-│    └─────────┘        └─────────────┘     └─────────────┘    │
-│                              │                                 │
-│                    ┌─────────▼─────────┐                      │
-│                    │   PostgreSQL      │                      │
-│                    │   (SQLAlchemy 2)  │                      │
-│                    └───────────────────┘                      │
-└──────────────────────────────────────────────────────────────┘
+# Generate report
+netra report --scan-id <id> --type executive
 ```
 
 ## Documentation
 
-- [Installation Guide](installation.md)
+- [Installation](installation.md)
 - [Configuration](configuration.md)
-- [Scan Profiles](profiles.md)
-- [API Reference](api.md)
+- [Profiles](profiles.md)
+- [API](api.md)
 - [Benchmarks](BENCHMARKS.md)
 - [Use Cases](USE_CASES.md)
 - [FAQ](FAQ.md)
 
 ## License
 
-AGPL-3.0 — Open Source
+AGPL-3.0
