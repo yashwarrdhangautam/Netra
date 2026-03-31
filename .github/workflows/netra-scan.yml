@@ -27,23 +27,29 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
       - name: Install NETRA
         run: |
           pip install --upgrade pip
           pip install netra
 
-      - name: Install security tools
+      - name: Install security tools (pinned versions)
         run: |
-          # Install Go for nuclei, subfinder, etc.
-          go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-          go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-          go install github.com/projectdiscovery/httpx/cmd/httpx@latest
-          go install github.com/ffuf/ffuf@latest
-          go install github.com/hahwul/dalfox/v2@latest
-          
+          # Install Go-based security tools with pinned versions
+          go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.3.7
+          go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.6.7
+          go install github.com/projectdiscovery/httpx/cmd/httpx@v1.4.2
+          go install github.com/ffuf/ffuf@v2.1.0
+          go install github.com/hahwul/dalfox/v2@v2.10.2
+
           # Install nmap
           sudo apt-get update && sudo apt-get install -y nmap
-          
+
           # Add Go bin to PATH
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
@@ -56,8 +62,7 @@ jobs:
             --target "${{ github.event.repository.html_url }}" \
             --profile quick \
             --output-sarif results.sarif \
-            --fail-on high \
-            || true  # Continue even if scan finds vulnerabilities
+            --fail-on high
 
       - name: Upload SARIF to GitHub Security
         if: always()

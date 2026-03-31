@@ -109,14 +109,24 @@ CLAUDE.md
 FIX_*.md
 NETRA_*.md
 NETRA_v1_*.md
+NETRA_AUDIT_REPORT.md
+NETRA_v2_PRD.docx
+PHASE4_*.md
+PHASE4_100_PERCENT_COMPLETE.md
+PHASE4_IMPLEMENTATION.md
+SECURITY_FIXES.md
+SECURITY_FIX.md
+ARCHITECTURE_REVIEW.md
 .claude/
 claude_desktop_config.json
 UPLOAD_PLAN.md
+ALL_ALERTS_FIXED.md
+DEPENDENCY_FIX.md
+AUDIT_*.md
+SECURITY_AUDIT_*.md
+
+# Shell artifacts
+$null
 
 # Development artifacts
 .archive/
-
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class

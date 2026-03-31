@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/utils/formatters'
+import { settingsApi, type ApiKeySettings, type NotificationSettings, type ScanDefaults as ScanDefaultsType } from '@/api/settings'
 import {
   Settings as SettingsIcon,
   Key,
@@ -81,6 +83,68 @@ export function Settings() {
   })
   const [scanMessage, setScanMessage] = useState<NotificationMessage | null>(null)
 
+  // Mutations for API calls
+  const saveApiKeysMutation = useMutation({
+    mutationFn: (payload: ApiKeySettings) => settingsApi.updateApiKeys(payload),
+    onSuccess: () => {
+      setApiKeyMessage({ type: 'success', text: 'API keys saved successfully' })
+      setTimeout(() => setApiKeyMessage(null), 3000)
+    },
+    onError: (error: any) => {
+      setApiKeyMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save API keys' })
+      setTimeout(() => setApiKeyMessage(null), 3000)
+    },
+  })
+
+  const testSlackMutation = useMutation({
+    mutationFn: (webhookUrl: string) => settingsApi.testSlack(webhookUrl),
+    onSuccess: () => {
+      setNotificationMessage({ type: 'success', text: 'Test notification sent to Slack' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+    },
+    onError: (error: any) => {
+      setNotificationMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to send test notification' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+    },
+  })
+
+  const testSmtpMutation = useMutation({
+    mutationFn: (config: { host: string; port: number; user: string; password?: string }) => 
+      settingsApi.testSmtp(config),
+    onSuccess: () => {
+      setNotificationMessage({ type: 'success', text: 'Test email sent successfully' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+    },
+    onError: (error: any) => {
+      setNotificationMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to send test email' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+    },
+  })
+
+  const saveNotificationsMutation = useMutation({
+    mutationFn: (payload: NotificationSettings) => settingsApi.updateNotifications(payload),
+    onSuccess: () => {
+      setNotificationMessage({ type: 'success', text: 'Notification settings saved' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+    },
+    onError: (error: any) => {
+      setNotificationMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save notification settings' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+    },
+  })
+
+  const saveScanDefaultsMutation = useMutation({
+    mutationFn: (payload: Partial<ScanDefaultsType>) => settingsApi.updateScanDefaults(payload),
+    onSuccess: () => {
+      setScanMessage({ type: 'success', text: 'Scan defaults saved successfully' })
+      setTimeout(() => setScanMessage(null), 3000)
+    },
+    onError: (error: any) => {
+      setScanMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save scan defaults' })
+      setTimeout(() => setScanMessage(null), 3000)
+    },
+  })
+
   // API Keys handlers
   const handleApiKeyChange = (key: keyof ApiKeys, value: string) => {
     setApiKeys(prev => ({ ...prev, [key]: value }))
@@ -91,9 +155,18 @@ export function Settings() {
   }
 
   const handleSaveApiKeys = () => {
-    // Simulate API call
-    setApiKeyMessage({ type: 'success', text: 'API keys saved successfully' })
-    setTimeout(() => setApiKeyMessage(null), 3000)
+    // Validate API key formats
+    if (apiKeys.anthropic && !apiKeys.anthropic.startsWith('sk-')) {
+      setApiKeyMessage({ type: 'error', text: 'Anthropic API key must start with sk-' })
+      setTimeout(() => setApiKeyMessage(null), 3000)
+      return
+    }
+    
+    saveApiKeysMutation.mutate({
+      anthropic_api_key: apiKeys.anthropic || undefined,
+      shodan_api_key: apiKeys.shodan || undefined,
+      wpscan_api_key: apiKeys.wpscan || undefined,
+    })
   }
 
   // Notifications handlers
@@ -103,9 +176,7 @@ export function Settings() {
       setTimeout(() => setNotificationMessage(null), 3000)
       return
     }
-    // Simulate API call
-    setNotificationMessage({ type: 'success', text: 'Test notification sent to Slack' })
-    setTimeout(() => setNotificationMessage(null), 3000)
+    testSlackMutation.mutate(slackWebhook)
   }
 
   const handleTestSmtp = () => {
@@ -114,15 +185,41 @@ export function Settings() {
       setTimeout(() => setNotificationMessage(null), 3000)
       return
     }
-    // Simulate API call
-    setNotificationMessage({ type: 'success', text: 'Test email sent successfully' })
-    setTimeout(() => setNotificationMessage(null), 3000)
+    testSmtpMutation.mutate({
+      host: smtpHost,
+      port: parseInt(smtpPort, 10),
+      user: smtpUsername,
+      password: smtpPassword || undefined,
+    })
   }
 
   const handleSaveNotifications = () => {
-    // Simulate API call
-    setNotificationMessage({ type: 'success', text: 'Notification settings saved' })
-    setTimeout(() => setNotificationMessage(null), 3000)
+    // Validate notification settings
+    if (slackWebhook && !slackWebhook.startsWith('https://hooks.slack.com/')) {
+      setNotificationMessage({ type: 'error', text: 'Invalid Slack webhook URL format' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+      return
+    }
+    
+    if (smtpHost && !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(smtpHost)) {
+      setNotificationMessage({ type: 'error', text: 'Invalid SMTP host format' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+      return
+    }
+    
+    if (smtpPort && (isNaN(parseInt(smtpPort, 10)) || parseInt(smtpPort, 10) < 1 || parseInt(smtpPort, 10) > 65535)) {
+      setNotificationMessage({ type: 'error', text: 'SMTP port must be between 1 and 65535' })
+      setTimeout(() => setNotificationMessage(null), 3000)
+      return
+    }
+
+    saveNotificationsMutation.mutate({
+      slack_webhook_url: slackWebhook || undefined,
+      smtp_host: smtpHost || undefined,
+      smtp_port: parseInt(smtpPort, 10),
+      smtp_user: smtpUsername || undefined,
+      smtp_password: smtpPassword || undefined,
+    })
   }
 
   // Scan Defaults handlers
@@ -131,9 +228,24 @@ export function Settings() {
   }
 
   const handleSaveScanDefaults = () => {
-    // Simulate API call
-    setScanMessage({ type: 'success', text: 'Scan defaults saved successfully' })
-    setTimeout(() => setScanMessage(null), 3000)
+    // Validate scan defaults
+    if (scanDefaults.maxConcurrentScans < 1 || scanDefaults.maxConcurrentScans > 10) {
+      setScanMessage({ type: 'error', text: 'Max concurrent scans must be between 1 and 10' })
+      setTimeout(() => setScanMessage(null), 3000)
+      return
+    }
+    
+    if (scanDefaults.timeout < 300 || scanDefaults.timeout > 259200) {
+      setScanMessage({ type: 'error', text: 'Timeout must be between 300 seconds (5 min) and 259200 seconds (72 hrs)' })
+      setTimeout(() => setScanMessage(null), 3000)
+      return
+    }
+
+    saveScanDefaultsMutation.mutate({
+      default_scan_profile: scanDefaults.profile,
+      max_concurrent_scans: scanDefaults.maxConcurrentScans,
+      scan_timeout_hours: scanDefaults.timeout / 3600,
+    })
   }
 
   return (
@@ -298,9 +410,14 @@ export function Settings() {
 
               {/* Save Button */}
               <div className="flex justify-end">
-                <Button onClick={handleSaveApiKeys} size="lg" className="gap-2">
+                <Button 
+                  onClick={handleSaveApiKeys} 
+                  size="lg" 
+                  className="gap-2"
+                  disabled={saveApiKeysMutation.isPending}
+                >
                   <Save className="w-4 h-4" />
-                  Save API Keys
+                  {saveApiKeysMutation.isPending ? 'Saving...' : 'Save API Keys'}
                 </Button>
               </div>
             </div>
@@ -350,8 +467,9 @@ export function Settings() {
                     variant="outline"
                     onClick={handleTestSlack}
                     className="w-full"
+                    disabled={testSlackMutation.isPending}
                   >
-                    Test Slack Webhook
+                    {testSlackMutation.isPending ? 'Sending...' : 'Test Slack Webhook'}
                   </Button>
                 </CardContent>
               </Card>
@@ -441,17 +559,23 @@ export function Settings() {
                     variant="outline"
                     onClick={handleTestSmtp}
                     className="w-full"
+                    disabled={testSmtpMutation.isPending}
                   >
-                    Test SMTP Configuration
+                    {testSmtpMutation.isPending ? 'Sending...' : 'Test SMTP Configuration'}
                   </Button>
                 </CardContent>
               </Card>
 
               {/* Save Button */}
               <div className="flex justify-end">
-                <Button onClick={handleSaveNotifications} size="lg" className="gap-2">
+                <Button 
+                  onClick={handleSaveNotifications} 
+                  size="lg" 
+                  className="gap-2"
+                  disabled={saveNotificationsMutation.isPending}
+                >
                   <Save className="w-4 h-4" />
-                  Save Notification Settings
+                  {saveNotificationsMutation.isPending ? 'Saving...' : 'Save Notification Settings'}
                 </Button>
               </div>
             </div>
@@ -564,9 +688,14 @@ export function Settings() {
 
               {/* Save Button */}
               <div className="flex justify-end">
-                <Button onClick={handleSaveScanDefaults} size="lg" className="gap-2">
+                <Button 
+                  onClick={handleSaveScanDefaults} 
+                  size="lg" 
+                  className="gap-2"
+                  disabled={saveScanDefaultsMutation.isPending}
+                >
                   <Save className="w-4 h-4" />
-                  Save Scan Defaults
+                  {saveScanDefaultsMutation.isPending ? 'Saving...' : 'Save Scan Defaults'}
                 </Button>
               </div>
             </div>

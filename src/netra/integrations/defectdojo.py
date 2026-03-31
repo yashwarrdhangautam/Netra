@@ -1,6 +1,6 @@
 """DefectDojo integration for bidirectional vulnerability sync."""
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -8,9 +8,9 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from netra.core.config import settings
 from netra.db.models.finding import Finding
 from netra.db.models.scan import Scan
-from netra.core.config import settings
 
 logger = structlog.get_logger()
 
@@ -169,7 +169,7 @@ class DefectDojoClient:
             return result["results"][0]
 
         # Create new engagement
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         engagement_data = {
             "product": product_id,
             "name": name,
@@ -208,14 +208,6 @@ class DefectDojoClient:
         }
 
         # Map NETRA status to DefectDojo
-        status_map = {
-            "new": "Active",
-            "confirmed": "Active",
-            "resolved": "Mitigated",
-            "verified": "Verified",
-            "false_positive": "False Positive",
-            "wont_fix": "Risk Accepted",
-        }
 
         dojo_finding = {
             "title": finding.get("title", "Unknown Finding"),
@@ -360,7 +352,8 @@ class DefectDojoClient:
 
         for finding in findings:
             # Check if finding already exists in DefectDojo
-            dojo_finding_id = finding.metadata.get("defectdojo_id") if hasattr(finding, "metadata") else None
+            has_metadata = hasattr(finding, "metadata")
+            dojo_finding_id = finding.metadata.get("defectdojo_id") if has_metadata else None
 
             if dojo_finding_id:
                 # Update existing finding

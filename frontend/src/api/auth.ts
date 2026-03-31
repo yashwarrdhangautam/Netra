@@ -21,24 +21,23 @@ export interface AuthUser {
 
 export interface LoginResponse {
   access_token: string
+  refresh_token: string
   token_type: string
   expires_in: number
+  user_id: string
+  email: string
+  mfa_required: boolean
 }
 
 export const authApi = {
   login: async (email: string, password: string): Promise<LoginResponse> => {
+    // Tokens are now set in HttpOnly cookies by the backend
     const { data } = await apiClient.post('/api/v1/auth/login', { email, password })
-    if (data.access_token) {
-      localStorage.setItem('netra_token', data.access_token)
-    }
     return data
   },
 
   register: async (email: string, password: string, full_name: string): Promise<AuthUser> => {
     const { data } = await apiClient.post('/api/v1/auth/register', { email, password, full_name })
-    if (data.access_token) {
-      localStorage.setItem('netra_token', data.access_token)
-    }
     return data
   },
 
@@ -52,7 +51,9 @@ export const authApi = {
     return data
   },
 
-  logout: (): void => {
-    localStorage.removeItem('netra_token')
+  logout: async (): Promise<{ message: string }> => {
+    // Backend will clear HttpOnly cookies
+    const { data } = await apiClient.post('/api/v1/auth/logout')
+    return data
   },
 }

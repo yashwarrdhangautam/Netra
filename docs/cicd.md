@@ -63,7 +63,7 @@ on: [push]
 
 jobs:
   scan:
-    uses: yashwg/netra/.github/workflows/netra-reusable.yml@main
+    uses: yashwarrdhangautam/netra/.github/workflows/netra-reusable.yml@main
     with:
       target: ${{ github.event.repository.html_url }}
       profile: quick

@@ -61,7 +61,7 @@ netra --install-deps
 
 ```bash
 # Clone repository
-git clone https://github.com/yashwg/netra.git
+git clone https://github.com/yashwarrdhangautam/netra.git
 cd netra
 
 # Start all services

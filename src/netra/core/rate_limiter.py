@@ -2,16 +2,15 @@
 
 Provides rate limiting for API endpoints to prevent abuse.
 """
-from typing import Callable
+from collections.abc import Callable
 
+import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
-
-import structlog
+from slowapi.util import get_remote_address
 
 logger = structlog.get_logger()
 
@@ -33,7 +32,7 @@ def setup_rate_limiting(app: FastAPI) -> None:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
-    
+
     logger.info("rate_limiting_enabled", default_limits="100/minute, 1000/hour")
 
 
@@ -83,7 +82,7 @@ async def custom_rate_limit_handler(
         client_ip=get_remote_address(request),
         limit=str(exc.detail),
     )
-    
+
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={
@@ -167,13 +166,13 @@ def get_rate_limit_key(request: Request) -> str:
     api_key = request.headers.get("X-API-Key")
     if api_key:
         return f"api_key:{api_key}"
-    
+
     # Check for Bearer token
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header[7:]
         return f"token:{token[:32]}"  # Use first 32 chars of token
-    
+
     # Fall back to IP address
     return get_remote_address(request)
 

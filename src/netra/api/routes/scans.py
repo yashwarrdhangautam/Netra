@@ -2,10 +2,10 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.api.deps import get_db_session
+from netra.api.deps import CurrentUser, get_current_active_user, get_db_session
 from netra.db.models.scan import Scan, ScanStatus
 from netra.db.models.target import Target
 from netra.schemas.common import PaginatedResponse
@@ -26,8 +26,9 @@ router = APIRouter()
 async def create_scan(
     payload: ScanCreate,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> ScanResponse:
-    """Create and start a new scan.
+    """Create and start a new scan (requires authentication).
 
     Args:
         payload: Scan creation data
@@ -101,14 +102,14 @@ async def list_scans(
     result = await db.execute(query)
     scans = list(result.scalars().all())
 
-    # Get total count
-    count_query = select(Scan)
+    # Get total count using SQL COUNT() instead of len()
+    count_query = select(func.count(Scan.id))
     if status:
         count_query = count_query.where(Scan.status == status)
     if profile:
         count_query = count_query.where(Scan.profile == profile)
     total_result = await db.execute(count_query)
-    total = len(list(total_result.scalars().all()))
+    total = total_result.scalar() or 0
 
     return PaginatedResponse(
         items=[ScanListResponse.model_validate(s) for s in scans],

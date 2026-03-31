@@ -1,10 +1,10 @@
 """Compliance routes for compliance framework analysis."""
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.api.deps import get_db_session
+from netra.api.deps import CurrentUser, get_current_active_user, get_db_session
 from netra.db.models.scan import Scan
 from netra.schemas.compliance import (
     ComplianceFrameworkResponse,
@@ -20,6 +20,7 @@ router = APIRouter()
 async def map_findings_to_compliance(
     payload: ComplianceMapRequest,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> dict:
     """Map findings from a scan to compliance frameworks.
 
@@ -50,6 +51,7 @@ async def get_compliance_score(
     scan_id: uuid.UUID,
     framework: str,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> ComplianceScoreResponse:
     """Get compliance score for a scan and framework.
 
@@ -89,6 +91,7 @@ async def get_framework_status(
     scan_id: uuid.UUID,
     framework: str,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> ComplianceFrameworkResponse:
     """Get full framework compliance status.
 
@@ -128,6 +131,7 @@ async def get_gap_analysis(
     scan_id: uuid.UUID,
     framework: str,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> ComplianceGapAnalysisResponse:
     """Get detailed gap analysis for a framework.
 

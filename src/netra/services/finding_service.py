@@ -1,6 +1,6 @@
 """Finding service for business logic."""
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -132,7 +132,7 @@ class FindingService:
 
         finding.status = new_status
         if notes:
-            finding.notes = (finding.notes or "") + f"\n[{datetime.now(timezone.utc).isoformat()}] {notes}"
+            finding.notes = (finding.notes or "") + f"\n[{datetime.now(UTC).isoformat()}] {notes}"
 
         await self.db.commit()
         return finding
@@ -146,7 +146,7 @@ class FindingService:
         Returns:
             List of findings that have breached SLA
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         breached: list[Finding] = []
 
         result = await self.db.execute(

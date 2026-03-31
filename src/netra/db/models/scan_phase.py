@@ -2,12 +2,16 @@
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.scan import Scan
 
 
 class PhaseType(StrEnum):

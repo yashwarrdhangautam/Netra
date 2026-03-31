@@ -7,10 +7,10 @@ Prevents Server-Side Request Forgery attacks by blocking:
 - Cloud metadata endpoints (AWS, GCP, Azure)
 - Internal hostnames
 """
+import asyncio
 import ipaddress
 import socket
 from urllib.parse import urlparse
-from typing import Literal
 
 import structlog
 
@@ -24,13 +24,10 @@ CLOUD_METADATA_ENDPOINTS = {
     "169.254.170.2",  # AWS ECS
     "169.254.169.253",  # AWS EKS
     # GCP
-    "169.254.169.254",
     "metadata.google.internal",
     # Azure
-    "169.254.169.254",
     "168.63.129.16",  # Azure DNS
     # DigitalOcean
-    "169.254.169.254",
     # Kubernetes
     "kubernetes.default.svc",
 }
@@ -78,30 +75,30 @@ class SSRFProtection:
         """
         try:
             ip_obj = ipaddress.ip_address(ip)
-            
+
             # Check if it's a private address
             if ip_obj.is_private:
                 return True
-            
+
             # Check if it's a loopback address
             if ip_obj.is_loopback:
                 return True
-            
+
             # Check if it's a link-local address
             if ip_obj.is_link_local:
                 return True
-            
+
             # Check against explicit private ranges
             for network in PRIVATE_IP_RANGES:
                 if ip_obj in network:
                     return True
-            
+
             # Check cloud metadata endpoints
             if str(ip_obj) in CLOUD_METADATA_ENDPOINTS:
                 return True
-            
+
             return False
-            
+
         except ValueError:
             # Invalid IP address
             return True
@@ -117,11 +114,11 @@ class SSRFProtection:
             True if hostname is blocked
         """
         hostname_lower = hostname.lower()
-        
+
         # Check cloud metadata endpoints
         if hostname_lower in CLOUD_METADATA_ENDPOINTS:
             return True
-        
+
         # Check for internal hostnames
         internal_suffixes = [
             ".internal",
@@ -131,15 +128,15 @@ class SSRFProtection:
             ".corp",
             ".intra",
         ]
-        
+
         for suffix in internal_suffixes:
             if hostname_lower.endswith(suffix):
                 return True
-        
+
         return False
 
     @staticmethod
-    def resolve_and_validate(hostname: str) -> tuple[bool, list[str]]:
+    async def resolve_and_validate(hostname: str) -> tuple[bool, list[str]]:
         """Resolve hostname and validate all IPs.
 
         Args:
@@ -152,10 +149,12 @@ class SSRFProtection:
             SSRFProtectionError: If validation fails
         """
         try:
-            # Get all IP addresses for the hostname
-            addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET)
+            # Use asyncio.to_thread to run blocking socket call in thread pool
+            addr_info = await asyncio.to_thread(
+                socket.getaddrinfo, hostname, None, socket.AF_INET
+            )
             ips = list(set([info[4][0] for info in addr_info]))
-            
+
             # Validate each IP
             for ip in ips:
                 if SSRFProtection.is_private_ip(ip):
@@ -163,19 +162,19 @@ class SSRFProtection:
                         f"Target resolves to private/internal IP: {ip}",
                         "private_ip"
                     )
-            
+
             return True, ips
-            
+
         except socket.gaierror as e:
             raise SSRFProtectionError(
                 f"Failed to resolve hostname: {hostname}",
                 "resolution_failed"
-            )
+            ) from e
         except socket.herror as e:
             raise SSRFProtectionError(
                 f"DNS error for hostname: {hostname}",
                 "dns_error"
-            )
+            ) from e
 
     @staticmethod
     def validate_url(url: str) -> tuple[bool, str]:
@@ -192,30 +191,30 @@ class SSRFProtection:
         """
         try:
             parsed = urlparse(url)
-            
+
             # Check scheme
             if parsed.scheme not in ["http", "https"]:
                 raise SSRFProtectionError(
                     f"Invalid scheme: {parsed.scheme}. Only http/https allowed.",
                     "invalid_scheme"
                 )
-            
+
             # Check if hostname exists
             if not parsed.hostname:
                 raise SSRFProtectionError(
                     "Missing hostname in URL",
                     "missing_hostname"
                 )
-            
+
             hostname = parsed.hostname
-            
+
             # Check for blocked hostnames
             if SSRFProtection.is_blocked_hostname(hostname):
                 raise SSRFProtectionError(
                     f"Blocked hostname: {hostname}",
                     "blocked_hostname"
                 )
-            
+
             # Check if hostname is an IP address
             try:
                 if SSRFProtection.is_private_ip(hostname):
@@ -226,10 +225,10 @@ class SSRFProtection:
             except ValueError:
                 # Not an IP, continue with hostname validation
                 pass
-            
+
             # Resolve and validate hostname
             SSRFProtection.resolve_and_validate(hostname)
-            
+
             # Reconstruct normalized URL
             normalized = f"{parsed.scheme}://{hostname}"
             if parsed.port:
@@ -238,19 +237,19 @@ class SSRFProtection:
                 normalized += parsed.path
             if parsed.query:
                 normalized += f"?{parsed.query}"
-            
+
             return True, normalized
-            
+
         except SSRFProtectionError:
             raise
         except Exception as e:
             raise SSRFProtectionError(
                 f"URL validation failed: {str(e)}",
                 "validation_error"
-            )
+            ) from e
 
     @staticmethod
-    def validate_domain(domain: str) -> tuple[bool, str]:
+    async def validate_domain(domain: str) -> tuple[bool, str]:
         """Validate a domain name for SSRF vulnerabilities.
 
         Args:
@@ -265,14 +264,14 @@ class SSRFProtection:
         # Remove protocol if present
         domain = domain.replace("http://", "").replace("https://", "")
         domain = domain.split("/")[0].split(":")[0]
-        
+
         # Check for blocked hostnames
         if SSRFProtection.is_blocked_hostname(domain):
             raise SSRFProtectionError(
                 f"Blocked domain: {domain}",
                 "blocked_domain"
             )
-        
+
         # Check if it's an IP address
         try:
             if SSRFProtection.is_private_ip(domain):
@@ -283,10 +282,10 @@ class SSRFProtection:
         except ValueError:
             # Not an IP, continue with domain validation
             pass
-        
-        # Resolve and validate
-        SSRFProtection.resolve_and_validate(domain)
-        
+
+        # Resolve and validate (async)
+        await SSRFProtection.resolve_and_validate(domain)
+
         return True, domain
 
     @staticmethod
@@ -303,21 +302,21 @@ class SSRFProtection:
             SSRFProtectionError: If validation fails
         """
         try:
-            ip_obj = ipaddress.ip_address(ip)
-            
+            ipaddress.ip_address(ip)
+
             if SSRFProtection.is_private_ip(ip):
                 raise SSRFProtectionError(
                     f"Cannot scan private/internal IP: {ip}",
                     "private_ip"
                 )
-            
+
             return True, ip
-            
-        except ValueError:
+
+        except ValueError as e:
             raise SSRFProtectionError(
                 f"Invalid IP address format: {ip}",
                 "invalid_ip_format"
-            )
+            ) from e
 
     @staticmethod
     def validate_ip_range(cidr: str) -> tuple[bool, str]:
@@ -334,7 +333,7 @@ class SSRFProtection:
         """
         try:
             network = ipaddress.ip_network(cidr, strict=False)
-            
+
             # Check if the network is private
             first_ip = str(network.network_address)
             if SSRFProtection.is_private_ip(first_ip):
@@ -342,7 +341,7 @@ class SSRFProtection:
                     f"Cannot scan private IP range: {cidr}",
                     "private_ip_range"
                 )
-            
+
             # Check if range is too large (prevent accidental large scans)
             max_hosts = 65536  # /16
             if network.num_addresses > max_hosts:
@@ -351,17 +350,17 @@ class SSRFProtection:
                     f"Maximum allowed: /16 ({max_hosts} hosts)",
                     "range_too_large"
                 )
-            
+
             return True, cidr
-            
-        except ValueError:
+
+        except ValueError as e:
             raise SSRFProtectionError(
                 f"Invalid CIDR notation: {cidr}",
                 "invalid_cidr"
-            )
+            ) from e
 
     @staticmethod
-    def validate_target(value: str, target_type: str) -> tuple[bool, str, list[str]]:
+    async def validate_target(value: str, target_type: str) -> tuple[bool, str, list[str]]:
         """Validate a scan target based on its type.
 
         Args:
@@ -375,28 +374,28 @@ class SSRFProtection:
             SSRFProtectionError: If validation fails
         """
         resolved_ips = []
-        
+
         if target_type == "url":
             is_valid, normalized = SSRFProtection.validate_url(value)
             # Extract hostname for resolution
             parsed = urlparse(normalized)
             if parsed.hostname:
-                _, resolved_ips = SSRFProtection.resolve_and_validate(parsed.hostname)
+                _, resolved_ips = await SSRFProtection.resolve_and_validate(parsed.hostname)
             return is_valid, normalized, resolved_ips
-            
+
         elif target_type == "domain":
-            is_valid, normalized = SSRFProtection.validate_domain(value)
-            _, resolved_ips = SSRFProtection.resolve_and_validate(normalized)
+            is_valid, normalized = await SSRFProtection.validate_domain(value)
+            _, resolved_ips = await SSRFProtection.resolve_and_validate(normalized)
             return is_valid, normalized, resolved_ips
-            
+
         elif target_type == "ip":
             is_valid, normalized = SSRFProtection.validate_ip(value)
             return is_valid, normalized, [normalized]
-            
+
         elif target_type == "ip_range":
             is_valid, normalized = SSRFProtection.validate_ip_range(value)
             return is_valid, normalized, []
-            
+
         else:
             raise SSRFProtectionError(
                 f"Unknown target type: {target_type}",
@@ -404,7 +403,7 @@ class SSRFProtection:
             )
 
 
-def validate_scan_target(value: str, target_type: str) -> dict:
+async def validate_scan_target(value: str, target_type: str) -> dict:
     """Convenience function to validate a scan target.
 
     Args:
@@ -418,24 +417,24 @@ def validate_scan_target(value: str, target_type: str) -> dict:
         SSRFProtectionError: If validation fails
     """
     try:
-        is_valid, normalized, resolved_ips = SSRFProtection.validate_target(
+        is_valid, normalized, resolved_ips = await SSRFProtection.validate_target(
             value, target_type
         )
-        
+
         logger.info(
             "ssrf_validation_passed",
             target_type=target_type,
             normalized=normalized,
             resolved_ips=resolved_ips,
         )
-        
+
         return {
             "valid": True,
             "normalized": normalized,
             "resolved_ips": resolved_ips,
             "message": "Target validated successfully",
         }
-        
+
     except SSRFProtectionError as e:
         logger.warning(
             "ssrf_validation_failed",
@@ -444,7 +443,7 @@ def validate_scan_target(value: str, target_type: str) -> dict:
             violation_type=e.violation_type,
             error=e.message,
         )
-        
+
         return {
             "valid": False,
             "error": e.message,

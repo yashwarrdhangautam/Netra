@@ -1,4 +1,5 @@
 """AI Brain orchestrator for NETRA."""
+import asyncio
 import json
 from typing import Any
 
@@ -49,18 +50,15 @@ class AIBrain:
             )
             return results
 
-        # Run all 4 personas
-        results["attacker"] = await self._query_persona(
-            "attacker", ATTACKER_PROMPT, finding_context
-        )
-        results["defender"] = await self._query_persona(
-            "defender", DEFENDER_PROMPT, finding_context
-        )
-        results["analyst"] = await self._query_persona(
-            "analyst", ANALYST_PROMPT, finding_context
-        )
-        results["skeptic"] = await self._query_persona(
-            "skeptic", SKEPTIC_PROMPT, finding_context
+        # Run all 4 personas in parallel for 3-4x speedup
+        persona_tasks = [
+            self._query_persona("attacker", ATTACKER_PROMPT, finding_context),
+            self._query_persona("defender", DEFENDER_PROMPT, finding_context),
+            self._query_persona("analyst", ANALYST_PROMPT, finding_context),
+            self._query_persona("skeptic", SKEPTIC_PROMPT, finding_context),
+        ]
+        results["attacker"], results["defender"], results["analyst"], results["skeptic"] = (
+            await asyncio.gather(*persona_tasks)
         )
 
         # Consensus voting
@@ -85,9 +83,12 @@ class AIBrain:
 
         context = "Analyze these findings for attack chains:\n\n"
         for i, f in enumerate(findings[:50]):  # Limit to 50 findings for token budget
-            context += f"{i+1}. [{f.severity}] {f.title} at {f.url or 'N/A'} (CWE: {f.cwe_id or 'N/A'})\n"
+            url_info = f.url or 'N/A'
+            cwe_info = f.cwe_id or 'N/A'
+            context += f"{i+1}. [{f.severity}] {f.title} at {url_info} (CWE: {cwe_info})\n"
 
-        chain_prompt = """Identify attack chains — sequences of findings that together create a more severe attack than any individual finding.
+        chain_prompt = """Identify attack chains — sequences of findings that together create
+a more severe attack than any individual finding.
 
 For each chain, provide:
 - Chain name and description
@@ -184,7 +185,8 @@ Output JSON array of chains."""
                         {"role": "system", "content": system_prompt},
                         {
                             "role": "user",
-                            "content": f"Analyze this finding:\n\n{context}\n\nRespond with JSON only.",
+                            "content": f"Analyze this finding:\n\n{context}\n\n"
+                                       "Respond with JSON only.",
                         },
                     ],
                     "stream": False,
@@ -223,7 +225,7 @@ Output JSON array of chains."""
         confidences = []
         for persona in ["attacker", "defender", "analyst", "skeptic"]:
             conf = results.get(persona, {}).get("confidence", 50)
-            if isinstance(conf, (int, float)):
+            if isinstance(conf, int | float):
                 confidences.append(conf)
 
         avg_confidence = sum(confidences) / len(confidences) if confidences else 50

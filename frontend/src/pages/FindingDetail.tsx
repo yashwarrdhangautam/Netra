@@ -78,8 +78,8 @@ export function FindingDetail() {
     },
   });
 
-  const handleStatusChange = (status: string) => {
-    updateMutation.mutate({ status: status as any });
+  const handleStatusChange = (newStatus: string) => {
+    updateMutation.mutate({ status: newStatus as Finding['status'] });
   };
 
   const handleMarkFalsePositive = () => {
@@ -321,7 +321,7 @@ export function FindingDetail() {
 
         {/* AI Analysis Tab */}
         {activeTab === 'ai_analysis' && finding.ai_analysis && (
-          <AIAnalysisPanel analysis={finding.ai_analysis as any} />
+          <AIAnalysisPanel analysis={finding.ai_analysis} />
         )}
 
         {/* Remediation Tab */}
@@ -338,11 +338,11 @@ export function FindingDetail() {
                       Fix Summary
                     </h3>
                     <p className="text-sm text-surface-11">
-                      {(finding.ai_analysis.defender as any).fix_summary}
+                      {finding.ai_analysis.defender.fix_summary}
                     </p>
                   </div>
 
-                  {(finding.ai_analysis.defender as any).before_code && (
+                  {finding.ai_analysis.defender.before_code && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <h4 className="text-sm font-semibold text-surface-12">
@@ -365,7 +365,7 @@ export function FindingDetail() {
                     </div>
                   )}
 
-                  {(finding.ai_analysis.defender as any).after_code && (
+                  {finding.ai_analysis.defender.after_code && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <h4 className="text-sm font-semibold text-surface-12">
@@ -374,7 +374,7 @@ export function FindingDetail() {
                         <button
                           onClick={() =>
                             copyToClipboard(
-                              (finding.ai_analysis?.defender as any)?.after_code || ''
+                              finding.ai_analysis?.defender?.after_code || ''
                             )
                           }
                           className="text-surface-10 hover:text-surface-11"
@@ -383,19 +383,19 @@ export function FindingDetail() {
                         </button>
                       </div>
                       <pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 font-mono text-sm text-surface-11">
-                        {(finding.ai_analysis.defender as any).after_code}
+                        {finding.ai_analysis.defender.after_code}
                       </pre>
                     </div>
                   )}
 
-                  {(finding.ai_analysis.defender as any).steps && (
+                  {finding.ai_analysis.defender.steps && (
                     <div>
                       <h4 className="mb-3 text-sm font-semibold text-surface-12">
                         Implementation Steps
                       </h4>
                       <ol className="space-y-2">
-                        {(finding.ai_analysis.defender as any).steps.map(
-                          (step: any, idx: number) => (
+                        {finding.ai_analysis.defender.steps.map(
+                          (step: string, idx: number) => (
                             <li
                               key={idx}
                               className="flex gap-3 text-sm text-surface-11"
@@ -427,13 +427,13 @@ export function FindingDetail() {
               <CardTitle>Compliance Mappings</CardTitle>
             </CardHeader>
             <CardContent>
-              {(finding.ai_analysis as any)?.analyst?.framework_mappings &&
-              Object.keys((finding.ai_analysis as any).analyst.framework_mappings)
+              {finding.ai_analysis?.analyst?.framework_mappings &&
+              Object.keys(finding.ai_analysis.analyst.framework_mappings)
                 .length > 0 ? (
                 <div className="space-y-4">
                   {Object.entries(
-                    (finding.ai_analysis as any).analyst.framework_mappings
-                  ).map(([framework, controls]: [string, any]) => (
+                    finding.ai_analysis.analyst.framework_mappings
+                  ).map(([framework, controls]) => (
                     <div key={framework} className="space-y-2">
                       <h4 className="text-sm font-semibold text-surface-12">
                         {framework}

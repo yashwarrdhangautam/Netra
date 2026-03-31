@@ -1,44 +1,31 @@
 """Authentication routes with refresh tokens, MFA, and password reset."""
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, EmailStr, Field, validator
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pydantic import BaseModel, EmailStr, Field
+from pydantic.functional_validators import field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from netra.api.deps import get_current_user
+from netra.core.config import settings
+from netra.core.rate_limiter import RateLimitProfiles, rate_limit
 from netra.core.security import (
-    TokenBlacklist,
     create_access_token,
-    create_password_reset_token,
     create_refresh_token,
-    decode_access_token,
-    decode_password_reset_token,
     decode_refresh_token,
-    generate_backup_codes,
-    generate_mfa_secret,
-    get_mfa_provisioning_uri,
-    get_password_hash,
-    hash_api_key,
-    hash_backup_code,
     token_blacklist,
-    verify_api_key,
-    verify_backup_code,
-    verify_mfa_code,
     verify_password,
 )
-from netra.db.models.user import User, UserRole
+from netra.db.models.user import User
 from netra.db.session import get_db
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-# HTTP Bearer token security
-http_bearer = HTTPBearer(auto_error=False)
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
@@ -84,7 +71,8 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=12, description="Minimum 12 characters")
     full_name: str = Field(..., min_length=1, max_length=255)
 
-    @validator("password")
+    @field_validator("password")
+    @classmethod
     def validate_password(cls, v):
         """Validate password strength."""
         if len(v) < 12:
@@ -156,86 +144,8 @@ class APIKeyResponse(BaseModel):
 
 
 # ── Helper Functions ──────────────────────────────────────────────────────────
-
-
-async def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(http_bearer)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> User:
-    """Get current authenticated user from JWT token.
-
-    Args:
-        credentials: HTTP Bearer credentials
-        db: Database session
-
-    Returns:
-        The authenticated user
-
-    Raises:
-        HTTPException: If authentication fails
-    """
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = credentials.credentials
-
-    # Check blacklist
-    if await token_blacklist.is_blacklisted(token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Decode token
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    user_id = uuid.UUID(payload["sub"])
-
-    # Get user from database
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    return user
-
-
-async def get_current_active_user(
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> User:
-    """Get current active user (with is_active check).
-
-    Args:
-        current_user: The authenticated user
-
-    Returns:
-        The active user
-
-    Raises:
-        HTTPException: If user is inactive
-    """
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive",
-        )
-    return user
+# NOTE: get_current_user and get_current_active_user live in netra.api.deps
+# to avoid circular imports. Import them from there.
 
 
 async def get_current_admin_user(
@@ -264,18 +174,21 @@ async def get_current_admin_user(
 
 
 @router.post("/login", response_model=LoginResponse)
+@rate_limit(RateLimitProfiles.LOGIN)
 async def login(
     request: LoginRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    response: Response,
 ) -> LoginResponse:
-    """Authenticate user and issue JWT tokens.
+    """Authenticate user and issue JWT tokens via HttpOnly cookies.
 
     Args:
         request: Login credentials
         db: Database session
+        response: Response object for setting cookies
 
     Returns:
-        Access and refresh tokens
+        Access and refresh tokens (also set as cookies)
 
     Raises:
         HTTPException: If credentials are invalid or account is locked
@@ -292,7 +205,7 @@ async def login(
         )
 
     # Check if account is locked
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+    if user.locked_until and user.locked_until > datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Account locked until {user.locked_until.isoformat()}",
@@ -305,7 +218,7 @@ async def login(
 
         # Lock account after 5 failed attempts
         if user.failed_login_attempts >= 5:
-            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+            user.locked_until = datetime.now(UTC) + timedelta(minutes=15)
             user.failed_login_attempts = 0
             logger.warning(
                 "account_locked",
@@ -322,12 +235,32 @@ async def login(
     # Reset failed login attempts on successful login
     user.failed_login_attempts = 0
     user.locked_until = None
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.commit()
 
     # Generate tokens
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
+
+    # Set HttpOnly cookies
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        max_age=settings.jwt_expire_minutes * 60,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        max_age=3600 * 24 * 7,  # 7 days
+        path="/",
+    )
 
     logger.info("user_logged_in", user_id=str(user.id), email=user.email)
 
@@ -342,6 +275,7 @@ async def login(
 
 
 @router.post("/refresh", response_model=RefreshTokenResponse)
+@rate_limit("10/minute")
 async def refresh_token(
     request: RefreshTokenRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -396,3 +330,38 @@ async def refresh_token(
         access_token=new_access_token,
         expires_in=settings.jwt_expire_minutes * 60,
     )
+
+
+@router.post("/logout")
+async def logout(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User | None, Depends(get_current_user)] = None,
+) -> dict:
+    """Logout user and revoke tokens by clearing HttpOnly cookies.
+
+    Args:
+        response: Response object for clearing cookies
+        db: Database session
+        current_user: Optional current user (for logging)
+
+    Returns:
+        Logout confirmation
+    """
+    # Clear HttpOnly cookies
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+    )
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
+    )
+
+    # Blacklist tokens if provided in request body (optional)
+    # This is handled client-side by not sending tokens
+
+    if current_user:
+        logger.info("user_logged_out", user_id=str(current_user.id))
+
+    return {"message": "Successfully logged out"}

@@ -1,8 +1,10 @@
 """Application configuration via Pydantic Settings."""
+import secrets
+import warnings
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,9 +39,42 @@ class Settings(BaseSettings):
     api_rate_limit: str = "100/minute"
 
     # ── Auth ──
-    jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"
+    jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
+    csrf_secret_key: str = ""
+    cookie_secure: bool = False  # Set to True in production with HTTPS
+    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
+    @model_validator(mode="after")
+    def validate_jwt_secret(self) -> "Settings":
+        """Ensure JWT secret is set properly.
+
+        In production, require an explicit secret key.
+        In development, generate a random one if not provided.
+        """
+        insecure_defaults = {"", "CHANGE-ME-IN-PRODUCTION", "change-me-in-production", "secret"}
+        if self.jwt_secret_key in insecure_defaults:
+            if self.environment == "production":
+                raise ValueError(
+                    "NETRA_JWT_SECRET_KEY must be set to a strong secret in "
+                    "production. Generate one with: "
+                    "python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+                )
+            # Auto-generate for development only
+            self.jwt_secret_key = secrets.token_urlsafe(64)
+            warnings.warn(
+                "JWT secret not set — auto-generated for development. "
+                "Set NETRA_JWT_SECRET_KEY for persistent sessions.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Auto-generate CSRF secret if not provided
+        if not self.csrf_secret_key:
+            self.csrf_secret_key = secrets.token_urlsafe(64)
+
+        return self
 
     # ── AI ──
     anthropic_api_key: str = ""

@@ -1,12 +1,10 @@
 """FastAPI middleware configuration."""
-from collections.abc import Callable
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 
-from netra.core.config import settings
 from netra.core.exceptions import NetraException
 from netra.core.logging import get_logger
 

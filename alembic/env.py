@@ -3,9 +3,9 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, engine_from_config
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 
 from netra.db.models import Base
 
@@ -64,9 +64,13 @@ async def run_async_migrations() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
-    connectable = async_engine_from_config(
+    sync_engine = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    connectable = create_async_engine(
+        sync_engine.url.render_as_string(hide_password=False),
         poolclass=pool.NullPool,
     )
 

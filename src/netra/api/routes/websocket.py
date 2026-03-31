@@ -2,8 +2,8 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import structlog
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = structlog.get_logger()
 

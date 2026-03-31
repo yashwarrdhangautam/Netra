@@ -30,13 +30,12 @@ export function ScanCompare() {
   const [scanBId, setScanBId] = useState<string>('')
   const [comparison, setComparison] = useState<ScanComparison | null>(null)
 
-  const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000'
+  const API_BASE = import.meta.env?.VITE_API_URL || 'http://localhost:8000'
 
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('netra_token')
+    // Cookies are sent automatically with credentials: include
     return {
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     }

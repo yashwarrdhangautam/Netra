@@ -10,14 +10,13 @@ import { UserPlus, Trash2, Shield, UserCheck, UserX } from 'lucide-react'
 export function Users() {
   const { user: currentUser, isAdmin } = useAuthStore()
   const queryClient = useQueryClient()
-  const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000'
+  const API_BASE = import.meta.env?.VITE_API_URL || 'http://localhost:8000'
 
-  // Get auth header
+  // Get auth headers (cookies sent automatically)
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('netra_token')
     return {
+      credentials: 'include' as const,
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     }

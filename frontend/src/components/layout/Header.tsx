@@ -43,7 +43,11 @@ export function Header({ onMenuClick }: HeaderProps) {
           </button>
 
           {/* Notifications */}
-          <button className="relative rounded-full p-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground">
+          <button 
+            className="relative rounded-full p-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+            aria-label="Notifications"
+            title="Notifications"
+          >
             <Bell className="h-5 w-5" />
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent" />
           </button>

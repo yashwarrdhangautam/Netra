@@ -1,10 +1,14 @@
 """ComplianceMapping model for mapping findings to compliance frameworks."""
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.finding import Finding
 
 
 class ComplianceMapping(Base):

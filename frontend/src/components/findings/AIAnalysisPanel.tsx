@@ -3,37 +3,7 @@ import { ChevronDown, ChevronUp, Brain, Target, FileText, UserX } from 'lucide-r
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/utils/formatters'
-
-interface AIAnalysis {
-  attacker?: {
-    exploitability?: string
-    business_impact?: string
-    mitre_techniques?: string[]
-    confidence?: number
-  }
-  defender?: {
-    root_cause?: string
-    immediate_fix?: string
-    long_term_fix?: string
-    priority?: string
-    confidence?: number
-  }
-  analyst?: {
-    framework_mappings?: Record<string, any[]>
-    regulatory_risk?: string
-    compliance_priority?: string
-    confidence?: number
-  }
-  skeptic?: {
-    verdict?: string
-    reasoning?: string
-    confidence?: number
-  }
-  consensus?: {
-    status?: string
-    final_confidence?: number
-  }
-}
+import type { AIAnalysis } from '@/types/findings'
 
 interface AIAnalysisPanelProps {
   analysis: AIAnalysis

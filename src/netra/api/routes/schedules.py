@@ -1,17 +1,17 @@
 """Schedule management API routes."""
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field, validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.db.session import get_db
-from netra.api.routes.auth import get_current_active_user
+from netra.api.deps import get_current_active_user
 from netra.db.models.user import User
-from netra.db.models.scan import Scan
+from netra.db.session import get_db
 from netra.worker.scheduler import (
     ScanSchedule,
     ScheduleManager,
@@ -24,8 +24,6 @@ router = APIRouter(prefix="/schedules", tags=["Schedules"])
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
-
-from pydantic import BaseModel, Field, validator
 
 
 class CronScheduleCreate(BaseModel):
@@ -43,7 +41,7 @@ class CronScheduleCreate(BaseModel):
     notify_emails: list[str] = Field(default_factory=list)
 
     @validator("cron_expression")
-    def validate_cron(cls, v):
+    def validate_cron(self, v):
         parts = v.split()
         if len(parts) != 5:
             raise ValueError("Cron expression must have 5 parts: minute hour day month weekday")
@@ -60,7 +58,7 @@ class IntervalScheduleCreate(BaseModel):
     profile: str = "standard"
 
     @validator("interval_seconds")
-    def validate_interval(cls, v):
+    def validate_interval(self, v):
         if v < 300:
             raise ValueError("Minimum interval is 300 seconds (5 minutes)")
         return v
@@ -76,8 +74,8 @@ class OneTimeScheduleCreate(BaseModel):
     profile: str = "standard"
 
     @validator("scheduled_at")
-    def validate_future(cls, v):
-        if v < datetime.now(timezone.utc):
+    def validate_future(self, v):
+        if v < datetime.now(UTC):
             raise ValueError("Scheduled time must be in the future")
         return v
 
@@ -144,7 +142,7 @@ async def create_cron_schedule(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post("/interval", response_model=ScheduleResponse, status_code=status.HTTP_201_CREATED)
@@ -179,7 +177,7 @@ async def create_interval_schedule(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post("/once", response_model=ScheduleResponse, status_code=status.HTTP_201_CREATED)
@@ -214,7 +212,7 @@ async def create_one_time_schedule(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.get("", response_model=list[ScheduleResponse])

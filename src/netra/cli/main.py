@@ -274,6 +274,7 @@ def main() -> None:
                 sys.exit(2)
     elif args.command == "server":
         import uvicorn
+
         from netra.api.app import create_app
 
         app = create_app()

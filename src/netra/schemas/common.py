@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 T = TypeVar("T")
 
@@ -41,3 +41,5 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     db: str
+    ai_provider: str = "none"
+    ai_status: str = "unknown"

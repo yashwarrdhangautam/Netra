@@ -1,12 +1,16 @@
 """Report model for storing generated reports."""
 import uuid
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.scan import Scan
 
 
 class ReportType(StrEnum):

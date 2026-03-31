@@ -3,16 +3,16 @@ import uuid
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.db.session import get_db
-from netra.api.routes.auth import get_current_active_user
+from netra.api.deps import get_current_active_user
+from netra.core.rate_limiter import RateLimitProfiles, rate_limit
+from netra.core.ssrf_protection import SSRFProtectionError, validate_scan_target
+from netra.db.models.target import Target
 from netra.db.models.user import User
-from netra.db.models.target import Target, TargetType
-from netra.core.ssrf_protection import validate_scan_target, SSRFProtectionError
-from netra.core.rate_limiter import rate_limit, RateLimitProfiles
+from netra.db.session import get_db
 
 logger = structlog.get_logger()
 
@@ -20,8 +20,6 @@ router = APIRouter(prefix="/targets", tags=["Targets"])
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
-
-from pydantic import BaseModel, Field
 
 
 class TargetCreate(BaseModel):
@@ -149,10 +147,10 @@ async def create_target(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Target validation failed: {str(e)}",
-        )
+        ) from e
     except Exception as e:
         logger.error("target_creation_error", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create target",
-        )
+        ) from e

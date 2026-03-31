@@ -1,7 +1,7 @@
 site_name: NETRA Documentation
 site_description: AI-augmented unified cybersecurity platform
-site_url: https://yashwg.github.io/netra
-repo_url: https://github.com/yashwg/netra
+site_url: https://yashwarrdhangautam.github.io/netra
+repo_url: https://github.com/yashwarrdhangautam/netra
 edit_uri: edit/main/docs/
 
 theme:

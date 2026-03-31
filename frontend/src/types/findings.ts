@@ -81,7 +81,74 @@ export interface AIAnalysis {
   remediation?: string
   confidence?: number
   personas?: PersonaResponse[]
-  [key: string]: any
+
+  // Attacker persona analysis
+  attacker?: {
+    vote?: string
+    rationale?: string
+    attack_vector?: string
+    exploit_availability?: string
+    impact?: string
+    exploitability?: string
+    business_impact?: string
+    mitre_techniques?: string[]
+    confidence?: number
+    attack_chains?: AttackChain[]
+  }
+
+  // Defender persona analysis
+  defender?: {
+    vote?: string
+    rationale?: string
+    detection_method?: string
+    remediation_cost?: string
+    fix_summary?: string
+    before_code?: string
+    after_code?: string
+    steps?: string[]
+    root_cause?: string
+    immediate_fix?: string
+    long_term_fix?: string
+    priority?: string
+    confidence?: number
+  }
+
+  // Analyst persona analysis
+  analyst?: {
+    vote?: string
+    rationale?: string
+    business_impact?: string
+    cvss_justification?: string
+    framework_mappings?: Record<string, string[] | Record<string, string> | string>
+    regulatory_risk?: string
+    compliance_priority?: string
+    confidence?: number
+  }
+
+  // Skeptic persona analysis
+  skeptic?: {
+    vote?: string
+    rationale?: string
+    detection_confidence?: string
+    false_positive_likelihood?: string
+    verdict?: string
+    reasoning?: string
+    confidence?: number
+  }
+
+  // Consensus result
+  consensus?: {
+    status?: string
+    final_confidence?: number
+  }
+}
+
+export interface AttackChain {
+  name: string
+  description: string
+  steps: string[]
+  combined_cvss?: number
+  narrative?: string
 }
 
 export interface PersonaResponse {

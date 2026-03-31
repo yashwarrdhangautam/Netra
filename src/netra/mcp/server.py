@@ -7,26 +7,27 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from netra.scanner.tools.amass import AmassTool
+from netra.scanner.tools.checkov import CheckovTool
+from netra.scanner.tools.dalfox import DalfoxTool
+from netra.scanner.tools.dependency_scan import PipAuditTool
+from netra.scanner.tools.ffuf import FfufTool
+from netra.scanner.tools.gitleaks import GitleaksTool
+from netra.scanner.tools.httpx import HttpxTool
+from netra.scanner.tools.llm_security import LLMSecurityTool
+from netra.scanner.tools.nikto import NiktoTool
+from netra.scanner.tools.nmap import NmapTool
+
 # Phase 1 tools
 from netra.scanner.tools.nuclei import NucleiTool
-from netra.scanner.tools.nmap import NmapTool
-from netra.scanner.tools.subfinder import SubfinderTool
-from netra.scanner.tools.httpx import HttpxTool
-from netra.scanner.tools.ffuf import FfufTool
-from netra.scanner.tools.dalfox import DalfoxTool
-from netra.scanner.tools.nikto import NiktoTool
-from netra.scanner.tools.sqlmap import SqlmapTool
-from netra.scanner.tools.amass import AmassTool
-from netra.scanner.tools.shodan import ShodanTool
+from netra.scanner.tools.prowler import ProwlerTool
 
 # Phase 2 tools
 from netra.scanner.tools.semgrep import SemgrepTool
-from netra.scanner.tools.gitleaks import GitleaksTool
-from netra.scanner.tools.dependency_scan import PipAuditTool
-from netra.scanner.tools.prowler import ProwlerTool
+from netra.scanner.tools.shodan import ShodanTool
+from netra.scanner.tools.sqlmap import SqlmapTool
+from netra.scanner.tools.subfinder import SubfinderTool
 from netra.scanner.tools.trivy import TrivyTool
-from netra.scanner.tools.checkov import CheckovTool
-from netra.scanner.tools.llm_security import LLMSecurityTool
 
 mcp = FastMCP(
     "netra",
@@ -593,7 +594,7 @@ async def llm_security_scan(
 # ══════════════════════════════════════════════════════════
 async def wpscan_check(
     url: str,
-    enumerate: str = "vp,vt,u",
+    enum_options: str = "vp,vt,u",
     api_token: str = "",
 ) -> dict[str, Any]:
     """WordPress-specific vulnerability scanning.
@@ -602,7 +603,7 @@ async def wpscan_check(
 
     Args:
         url: WordPress site URL
-        enumerate: Enumeration options (vp=plugins, vt=themes, u=users)
+        enum_options: Enumeration options (vp=plugins, vt=themes, u=users)
         api_token: WPScan API token for vulnerability data
     """
     return {

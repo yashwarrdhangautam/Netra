@@ -130,4 +130,4 @@ Planned improvements:
 
 **Added**: March 29, 2026  
 **Version**: 1.0.0  
-**Maintained By**: @yashwg
+**Maintained By**: @yashwarrdhangautam

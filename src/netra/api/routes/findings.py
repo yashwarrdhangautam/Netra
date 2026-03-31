@@ -3,10 +3,10 @@ import uuid
 from json import dumps as json_dumps
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.api.deps import get_db_session
+from netra.api.deps import CurrentUser, get_current_active_user, get_db_session
 from netra.db.models.finding import Finding, FindingStatus
 from netra.schemas.common import PaginatedResponse
 from netra.schemas.finding import (
@@ -24,8 +24,9 @@ router = APIRouter()
 async def create_finding(
     payload: FindingCreate,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> FindingResponse:
-    """Create a new finding.
+    """Create a new finding (requires authentication).
 
     Args:
         payload: Finding creation data
@@ -101,8 +102,8 @@ async def list_findings(
     result = await db.execute(query)
     findings = list(result.scalars().all())
 
-    # Get total count
-    count_query = select(Finding)
+    # Get total count using SQL COUNT() instead of len()
+    count_query = select(func.count(Finding.id))
     if severity:
         count_query = count_query.where(Finding.severity == severity)
     if status:
@@ -110,7 +111,7 @@ async def list_findings(
     if scan_id:
         count_query = count_query.where(Finding.scan_id == scan_id)
     total_result = await db.execute(count_query)
-    total = len(list(total_result.scalars().all()))
+    total = total_result.scalar() or 0
 
     return PaginatedResponse(
         items=[FindingListResponse.model_validate(f) for f in findings],
@@ -305,47 +306,47 @@ async def export_finding_curl(
 
     # Extract request data from evidence
     evidence = finding.evidence or {}
-    
+
     # Build cURL command
     curl_parts = ["curl"]
-    
+
     # Add method if specified
     method = evidence.get("method", "GET")
     if method != "GET":
         curl_parts.append(f"-X {method}")
-    
+
     # Add URL
     url = finding.url or evidence.get("url", "")
     if url:
         curl_parts.append(f'"{url}"')
-    
+
     # Add headers
     headers = evidence.get("headers", {})
     for header_name, header_value in headers.items():
         curl_parts.append(f'-H "{header_name}: {header_value}"')
-    
+
     # Add cookies if present
     cookies = evidence.get("cookies", {})
     if cookies:
         cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
         curl_parts.append(f'-H "Cookie: {cookie_string}"')
-    
+
     # Add body if present (for POST/PUT/PATCH)
     body = evidence.get("body") or evidence.get("data") or evidence.get("payload")
     if body and method in ["POST", "PUT", "PATCH"]:
-        if isinstance(body, (dict, list)):
+        if isinstance(body, dict | list):
             body_str = json_dumps(body)
         else:
             body_str = str(body)
         curl_parts.append(f"-d '{body_str}'")
-    
+
     # Add user agent if present
     user_agent = evidence.get("user_agent")
     if user_agent:
         curl_parts.append(f'-A "{user_agent}"')
-    
+
     curl_command = " ".join(curl_parts)
-    
+
     return {
         "finding_id": str(finding_id),
         "curl_command": curl_command,

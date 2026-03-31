@@ -2250,7 +2250,7 @@ netra -t example.com --profile standard
 **API:** FastAPI (on port 8000)
 
 ```bash
-git clone https://github.com/yashwg/netra.git && cd netra
+git clone https://github.com/yashwarrdhangautam/netra.git && cd netra
 docker compose up -d
 # Wait 30s for services to start
 docker compose exec api alembic upgrade head  # Migrations
@@ -2641,4 +2641,4 @@ VACUUM ANALYZE;
 
 **END OF DOCUMENT**
 
-This PRD is a living document. For the latest version, visit: https://github.com/yashwg/netra/docs/PRD.md
+This PRD is a living document. For the latest version, visit: https://github.com/yashwarrdhangautam/netra/docs/PRD.md

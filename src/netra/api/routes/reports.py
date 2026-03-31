@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.api.deps import get_db_session
+from netra.api.deps import CurrentUser, get_current_active_user, get_db_session
 from netra.db.models.finding import Finding
 from netra.db.models.report import Report, ReportStatus, ReportType
 from netra.db.models.scan import Scan
@@ -19,6 +19,7 @@ async def generate_report(
     scan_id: uuid.UUID,
     report_type: ReportType = Query(...),
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> ReportResponse:
     """Generate a report for a scan.
 
@@ -59,17 +60,17 @@ async def _generate_report_async(
     """Generate report asynchronously."""
     try:
         from netra.services.report_service import (
-            generate_executive_report,
-            generate_pentest_report,
-            generate_technical_report,
-            generate_html_report,
-            generate_excel_report,
-            generate_evidence_zip,
-            generate_delta_report,
             generate_api_report,
             generate_cloud_report,
             generate_compliance_report,
+            generate_delta_report,
+            generate_evidence_zip,
+            generate_excel_report,
+            generate_executive_report,
             generate_full_report,
+            generate_html_report,
+            generate_pentest_report,
+            generate_technical_report,
         )
 
         # Get findings
@@ -122,7 +123,9 @@ async def _generate_report_async(
             output_path = await generate_evidence_zip(scan_data, findings_data)
         elif report.report_type == ReportType.DELTA:
             # Delta needs two scans - use previous scan if available
-            output_path = await generate_delta_report(scan_data, scan_data, findings_data, findings_data)
+            output_path = await generate_delta_report(
+                scan_data, scan_data, findings_data, findings_data
+            )
         elif report.report_type == ReportType.API:
             output_path = await generate_api_report(scan_data, findings_data)
         elif report.report_type == ReportType.CLOUD:
@@ -131,8 +134,12 @@ async def _generate_report_async(
             # Get compliance data from service
             from netra.services.compliance_service import ComplianceService
             service = ComplianceService(db)
-            compliance_data = await service.get_framework_gap_analysis(scan.id, "iso27001")
-            output_path = await generate_compliance_report("iso27001", scan_data, compliance_data, findings_data)
+            compliance_data = await service.get_framework_gap_analysis(
+                scan.id, "iso27001"
+            )
+            output_path = await generate_compliance_report(
+                "iso27001", scan_data, compliance_data, findings_data
+            )
         elif report.report_type == ReportType.FULL:
             output_path = await generate_full_report(scan_data, findings_data)
         else:
@@ -159,6 +166,7 @@ async def _generate_report_async(
 async def get_report(
     report_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> ReportResponse:
     """Get report details by ID.
 
@@ -180,6 +188,7 @@ async def get_report(
 async def list_reports_for_scan(
     scan_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> list[ReportResponse]:
     """List all reports for a scan.
 
@@ -202,6 +211,7 @@ async def list_reports_for_scan(
 async def delete_report(
     report_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ) -> None:
     """Delete a report.
 

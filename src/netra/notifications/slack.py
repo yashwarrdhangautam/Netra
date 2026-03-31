@@ -1,5 +1,4 @@
 """Slack notification sender with real webhook implementation."""
-import json
 from typing import Any
 
 import httpx

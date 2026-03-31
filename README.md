@@ -1,255 +1,238 @@
-# NETRA नेत्र
+<p align="center">
+  <img src="https://img.shields.io/badge/NETRA-%E0%A4%A8%E0%A5%87%E0%A4%A4%E0%A5%8D%E0%A4%B0-8B5CF6?style=for-the-badge&labelColor=1e1e2e" alt="NETRA" />
+</p>
 
-**The Third Eye of Security**
+<h1 align="center">NETRA &nbsp;<sub>The Third Eye of Security</sub></h1>
 
-[![version](https://img.shields.io/badge/version-1.0.0-blue?logo=semver)](https://github.com/yashwarrdhangautam/netra/releases)
-[![license](https://img.shields.io/badge/license-AGPL--3.0-green)](LICENSE)
-[![python](https://img.shields.io/badge/python-3.11+-yellow?logo=python)](https://www.python.org/)
-[![maintained](https://img.shields.io/badge/maintained-yes-success)](https://github.com/yashwarrdhangautam/netra)
-[![stars](https://img.shields.io/github/stars/yashwarrdhangautam/netra?style=flat)](https://github.com/yashwarrdhangautam/netra)
+<p align="center">
+  <a href="https://github.com/yashwarrdhangautam/netra/releases"><img src="https://img.shields.io/badge/version-1.0.0-8B5CF6?style=flat-square&logo=semver&logoColor=white" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-22c55e?style=flat-square" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white" /></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react&logoColor=black" /></a>
+  <a href="https://github.com/yashwarrdhangautam/netra"><img src="https://img.shields.io/github/stars/yashwarrdhangautam/netra?style=flat-square&color=f59e0b" /></a>
+  <a href="https://github.com/yashwarrdhangautam/netra/actions"><img src="https://img.shields.io/github/actions/workflow/status/yashwarrdhangautam/netra/ci.yml?style=flat-square&label=CI" /></a>
+</p>
 
-Open-source AI-augmented vulnerability assessment and penetration testing platform. Combines 23 security tools, local AI consensus analysis, and compliance mapping. No API keys. No cloud. 100% offline.
+<p align="center">
+  Open-source, AI-augmented vulnerability assessment &amp; penetration testing platform.<br/>
+  Orchestrates 18 security tools, applies 4-persona AI consensus analysis, maps findings to 6 compliance frameworks, and exports 13 report formats &mdash; all from a single CLI command or dashboard.
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#features">Features</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
+  <a href="docs/api.md">API Docs</a> &bull;
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+---
+
+## What's New in v1.0.0
+
+- 18 scanner tool wrappers with phased pipeline orchestration and checkpoint-based resumption
+- 4-persona AI consensus engine (Attacker, Defender, Analyst, Skeptic) with parallel execution via asyncio.gather
+- 13 report formats (Executive PDF, Technical PDF, Interactive HTML, SARIF, Excel, Pentest, Cloud, Delta, and more)
+- Full React 18 dashboard with TypeScript, dark mode, attack chain visualization, and real-time WebSocket updates
+- Enterprise security: JWT + MFA + RBAC + CSRF + SSRF protection + rate limiting + CSP headers
+- 6 compliance frameworks with 101 CWE cross-reference mappings
+- Production-hardened Docker deployment with strict secret enforcement
+- MCP server integration for Claude Desktop (18 tools exposed)
+- CI/CD pipeline with GitHub Actions, SARIF upload, and frontend build verification
 
 ---
 
 ## Why NETRA?
 
-- **Unified platform** — Stop juggling 14+ separate tools, API keys, and manual report aggregation. NETRA orchestrates nmap, nuclei, subfinder, sqlmap, and 19 others into a single workflow.
-- **AI-augmented analysis** — 4-persona consensus voting reduces false positives by ~60%. No ChatGPT API costs. Your Qwen or Llama model runs locally via Ollama.
-- **Compliance built-in** — Auto-map findings to CIS, NIST, PCI-DSS, HIPAA, SOC2, and 101 CWE mappings. Export executive reports in minutes, not weeks.
-- **Open source & transparent** — AGPL-3.0. Audit the code. No vendor lock-in. Community-driven roadmap.
+Most security teams juggle a dozen CLI tools, manually correlate outputs, and spend days writing reports. NETRA replaces that workflow with a unified pipeline: scan, analyze, map, report.
+
+**Unified orchestration** &mdash; 18 tool wrappers (nmap, nuclei, sqlmap, semgrep, trivy, prowler, and more) execute as a phased pipeline with checkpoint-based resumption. No more shell scripts gluing tools together.
+
+**AI-augmented analysis** &mdash; A 4-persona consensus engine (Attacker, Defender, Analyst, Skeptic) evaluates every finding. Supports Claude (Anthropic API) or local models via Ollama. The Skeptic persona aggressively flags false positives, reducing noise by ~60%.
+
+**Compliance out of the box** &mdash; Findings auto-map to CIS Benchmarks, NIST CSF, PCI-DSS v4.0, HIPAA, SOC2, and 101 CWE entries. Generate audit-ready reports without manual mapping.
+
+**API-first architecture** &mdash; CLI, React dashboard, CI/CD workflows, and Claude Desktop (MCP) all call the same FastAPI backend. Build your own integrations with the REST API.
 
 ---
 
-## Key Features
+## Features
 
-**Scanning** — 23 security tools, 7-phase pipeline
-- OSINT recon (subfinder, amass, assetfinder, gau)
-- Port scanning (nmap, naabu) + service enumeration
-- Vulnerability scanning (nuclei: 9000+ templates, nikto, sqlmap)
-- Web crawling (katana, ffuf) + screenshot capture via Playwright
-- Cloud detection (AWS/Azure/GCP) + S3 bucket enumeration
+### Scanning Engine
+18 tool wrappers organized into a multi-phase pipeline: subdomain enumeration (subfinder, amass), HTTP probing (httpx), port scanning (nmap), vulnerability scanning (nuclei with 9000+ templates, nikto), active testing (sqlmap, dalfox XSS, ffuf fuzzing), SAST (semgrep), secrets detection (gitleaks), dependency scanning (dependency_scan), cloud security (prowler, checkov), container scanning (trivy), OSINT (shodan), WordPress (wpscan), and AI/LLM security testing (llm_security).
 
-**AI Brain** — 4-persona consensus voting
-- Bug Bounty Hunter, Code Auditor, Pentester, Skeptic personas
-- CVSS scoring + attack chain discovery (DFS graph analysis)
-- MITRE ATT&CK technique mapping
-- ~60% fewer false positives vs. single-model analysis
+### AI Consensus Engine
+Four specialized personas analyze each finding independently, then vote. The Attacker persona assesses exploitability and builds attack chains via DFS graph analysis. The Defender proposes remediation with effort estimates. The Analyst maps to compliance frameworks. The Skeptic challenges evidence quality. Consensus requires 3/4 agreement. Supports Anthropic (Claude Sonnet 4) and Ollama (Llama 3.1, Mistral, Qwen).
 
-**Reports** — 13 professional formats
-- Interactive HTML with evidence, screenshots, proof-of-concept
-- PDF (executive + technical) • Word documents • Excel (9 sheets)
-- Compliance audit PDF • Evidence ZIP archive with raw tool output
-- Integrates with DefectDojo, GitHub Issues (planned v2.0)
+### 13 Report Formats
+Executive PDF (C-level summary with risk gauge), technical PDF (full findings with CVSS/CWE/MITRE), interactive HTML (searchable tables + attack chain graph), Word document, Excel workbook (9 sheets), compliance audit PDF, evidence ZIP (raw tool output), SARIF (GitHub Security tab), pentest report, cloud security report, API security report, delta report (scan comparison), and full combined report.
 
-**Compliance** — 6 frameworks, 101 CWE mappings
-- CIS Benchmarks (Linux, Docker, Kubernetes)
-- NIST CSF (PR.AC, PR.DS, DE.AE, RS.AN)
-- PCI-DSS v4.0 (encryption, segmentation, scanning)
-- HIPAA §164.312 (workforce, access, PHI)
-- SOC2 Type II (change management, monitoring)
+### 6 Compliance Frameworks
+CIS Benchmarks (Linux, Docker, Kubernetes), NIST Cybersecurity Framework (PR.AC, PR.DS, DE.AE, RS.AN), PCI-DSS v4.0 (12 requirement areas), HIPAA §164.312 (technical safeguards), SOC2 Type II (trust services criteria), and 101 CWE cross-reference mappings. Each finding automatically links to applicable controls.
 
-**Dashboard** — 13 pages, real-time updates
-- Finding timeline + risk heat map
-- Scan history with phase-aware resumption
-- Attack chain visualization
-- Compliance control status dashboard (v2.0)
+### React Dashboard
+Dark-mode-only React 18 frontend with TypeScript, Vite, Tailwind CSS, and shadcn/ui components. Pages include: overview dashboard with risk gauge and severity charts, findings table with filters and AI analysis panels, scan history with phase timeline and resume capability, compliance control status, report generation, attack chain visualization (react-force-graph-2d), and real-time WebSocket progress updates.
 
-**CI/CD Integration** — GitHub Actions + SARIF export
-- Auto-trigger scans on PR/push
-- Reusable workflow: `.github/workflows/netra.yml`
-- SARIF output for GitHub code scanning
-- Slack/email notifications
+### Enterprise Security
+JWT authentication with refresh tokens, TOTP-based MFA with backup codes, role-based access control (Admin/Analyst/Viewer/Client), CSRF protection, SSRF detection, Content Security Policy headers, rate limiting (SlowAPI), account lockout after 5 failed attempts, and encrypted credential storage for third-party API keys.
 
-**MCP (Claude Desktop)** — AI assistant integration
-- Query findings via natural language
-- Generate narratives + attack chain summaries
-- Ask Claude: "What are the critical findings?"
+### Integrations
+DefectDojo (finding import), Jira (ticket creation), Slack (webhook notifications), email (SMTP), Claude Desktop via MCP server (18 tool wrappers exposed), and GitHub Actions CI/CD with SARIF upload.
 
 ---
 
 ## Quick Start
 
-**Option 1: One-Command Install** (recommended)
+### Option 1: One-command install (recommended)
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/yashwarrdhangautam/netra/main/install.sh)
 netra --help
 ```
 
-**Option 2: pip Install**
+### Option 2: pip + Poetry
 
 ```bash
-pip install netra
+git clone https://github.com/yashwarrdhangautam/netra.git && cd netra
+poetry install
+cp .env.example .env
 netra --help
-netra scan --target scanme.nmap.org --profile quick
 ```
 
-**Option 3: Docker**
+### Option 3: Docker (full stack)
 
 ```bash
-git clone https://github.com/yashwarrdhangautam/netra.git
-cd netra
+git clone https://github.com/yashwarrdhangautam/netra.git && cd netra
+cp .env.example .env
 docker compose up -d
-docker compose exec netra netra scan --target scanme.nmap.org --profile quick
+# API: http://localhost:8000/docs
+# Dashboard: http://localhost:5173
+# Flower (task monitor): http://localhost:5555
 ```
 
----
-
-## First Scan
+### Your first scan
 
 ```bash
-# Start a scan
+# Quick scan (~30 min)
 netra scan --target scanme.nmap.org --profile quick
-# ✓ Recon phase: 2 min  (subfinder, assetfinder)
-# ✓ Port scan: 3 min    (nmap -sV)
-# ✓ Vuln scan: 5 min    (nuclei + nikto)
-# ✓ AI analysis: 2 min  (consensus voting)
-# → Scan ID: scan_20260329_scanme.nmap.org
 
-# Generate report
-netra report --scan-id scan_20260329_scanme.nmap.org --type executive
-# → Executive summary: 3 critical, 7 high, 12 medium findings
-# → compliance_audit.pdf: CIS fails on 4 controls
+# Standard VAPT (~2-3 hrs)
+netra scan --target example.com --profile standard
 
 # View findings
-netra findings --scan-id scan_20260329_scanme.nmap.org --severity critical
+netra findings --scan-id <scan-id> --severity critical
+
+# Generate executive report
+netra report --scan-id <scan-id> --type executive
 ```
-
----
-
-## Dashboard Preview
-
-After a scan completes, browse to `http://localhost:3000`:
-
-- **Overview** — risk gauge (critical, high, medium, low counts)
-- **Findings** — filterable table with CVSS, CWE, affected systems
-- **Attack Chains** — graph visualization of chained vulnerabilities
-- **Compliance** — control-by-control audit status (red/yellow/green)
-- **Screenshots** — web page thumbnails with highlighted findings
-- **Scan History** — phase timeline, tool execution logs, resume option
-- **Reports** — one-click download (HTML, PDF, Word, Excel, ZIP)
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  CLI / Dashboard / REST API / MCP (Claude Desktop)          │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-        ┌──────────────────┴──────────────────┐
-        │      Scan Orchestrator              │
-        │   (phase control + checkpoints)     │
-        └──────────────────┬──────────────────┘
-                           │
-    ┌──────────────────────┼──────────────────────┐
-    │                      │                      │
-┌───▼─────┐          ┌────▼────┐          ┌─────▼──┐
-│ Tools   │          │ AI Brain │          │Compliance
-│ (23)    │          │(Ollama)  │          │Mapper
-├─────────┤          ├──────────┤          ├────────┤
-│nmap     │          │Consensus │          │CIS
-│nuclei   │          │Voting    │          │NIST
-│sqlmap   │          │Personas  │          │PCI
-│ffuf     │          │(4x)      │          │HIPAA
-│...      │          │CVSS      │          │SOC2
-└──┬──────┘          └────┬─────┘          └────┬───┘
-   │                      │                     │
-   └──────────────────────┼─────────────────────┘
-                          │
-              ┌───────────┴──────────┐
-              │                      │
-           ┌──▼──┐           ┌──────▼──┐
-           │  DB │           │ Reports │
-           │     │           │  (13)   │
-           └─────┘           └─────────┘
-           SQLite            HTML/PDF/DOCX
+                    ┌────────────────────────────────────────────┐
+                    │  CLI  |  Dashboard  |  REST API  |  MCP    │
+                    └───────────────────┬────────────────────────┘
+                                        │
+                    ┌───────────────────┴────────────────────────┐
+                    │           FastAPI  (async)                  │
+                    │  JWT + MFA + CSRF + Rate Limit + SSRF      │
+                    └───────────────────┬────────────────────────┘
+                                        │
+              ┌─────────────────────────┼─────────────────────────┐
+              │                         │                         │
+   ┌──────────▼──────────┐  ┌──────────▼──────────┐  ┌──────────▼──────────┐
+   │   Scan Orchestrator  │  │      AI Brain       │  │  Compliance Mapper  │
+   │  (Celery + Redis)    │  │  (4-Persona Vote)   │  │  (6 Frameworks)     │
+   │  18 phases, resume   │  │  Claude / Ollama    │  │  101 CWE mappings   │
+   └──────────┬──────────┘  └──────────┬──────────┘  └──────────┬──────────┘
+              │                         │                         │
+   ┌──────────▼──────────┐              │              ┌─────────▼──────────┐
+   │   18 Tool Wrappers   │             │              │   13 Report Types   │
+   │  nmap, nuclei, sqlmap│             │              │  PDF, HTML, SARIF   │
+   │  semgrep, trivy, ... │             │              │  Excel, Word, ZIP   │
+   └──────────┬──────────┘              │              └─────────┬──────────┘
+              │                         │                         │
+              └─────────────────────────┼─────────────────────────┘
+                                        │
+                            ┌───────────▼───────────┐
+                            │   PostgreSQL / SQLite  │
+                            │   (SQLAlchemy 2.0)     │
+                            └────────────────────────┘
 ```
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0 (async), Pydantic 2 |
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, Zustand |
+| **Task Queue** | Celery 5.3 + Redis 7 |
+| **Database** | PostgreSQL 16 (production) / SQLite (development) |
+| **AI** | Anthropic Claude SDK / Ollama (local LLMs) |
+| **MCP** | FastMCP — 18 tools exposed to Claude Desktop |
+| **CI/CD** | GitHub Actions (lint, test, Docker build) |
+| **Containerization** | Multi-stage Docker (Go builder + Python runtime) |
 
 ---
 
 ## Scan Profiles
 
-| Profile | Duration | Scope | Best For |
-|---------|----------|-------|----------|
-| **quick** | 30 min | Recon only (subdomain enum, DNS resolution) | Initial assessment, tight schedules |
-| **standard** | 2-3 hrs | Full VAPT (recon + ports + vulns + AI) | Regular penetration tests |
-| **deep** | 4-6 hrs | Everything + fuzz + cloud enum + screenshots | Red team, compliance audit |
-| **cloud** | 3-4 hrs | Cloud-focused (S3 enum, IAM, misconfig) | AWS/Azure/GCP assessments |
-| **api_only** | 1-2 hrs | API security (endpoint discovery, auth, fuzz) | API-first / SaaS assessments |
+| Profile | Duration | What It Runs |
+|---------|----------|-------------|
+| `quick` | ~30 min | Subdomain enum + DNS + port scan |
+| `standard` | 2-3 hrs | Full VAPT: recon, ports, vulns, active testing, AI analysis |
+| `deep` | 4-6 hrs | Everything + fuzzing + cloud enum + SAST + container scan |
+| `cloud` | 3-4 hrs | AWS/Azure/GCP focus (prowler, checkov, S3 enum) |
+| `api_only` | 1-2 hrs | API endpoints, auth testing, fuzzing |
+| `container` | 1-2 hrs | Trivy + Checkov + IaC scanning |
+| `ai_llm` | 1-2 hrs | LLM prompt injection, model security |
+| `mobile` | 2-3 hrs | Mobile API + web backend scanning |
+| `custom` | varies | User-defined tool selection |
 
 ---
 
-## Security Tools (23 Total)
+## Security Tools
 
-| Tool | Purpose | Category |
-|------|---------|----------|
-| **nmap** | Port scanning + service/version detection | Scanning |
-| **naabu** | Fast port scanning (Go-based) | Scanning |
-| **nuclei** | Template-based vuln scanner (9000+ CVE/misconfig) | Scanning |
-| **nikto** | Web server scanner (dangerous files, outdated software) | Scanning |
-| **subfinder** | Passive subdomain enum (40+ sources) | Recon |
-| **amass** | Deep subdomain discovery (DNS brute-force) | Recon |
-| **assetfinder** | Cert transparency + API subdomain finder | Recon |
-| **dnsx** | DNS resolver (bulk verification) | Recon |
-| **httpx** | HTTP prober (live hosts, titles, status codes) | Recon |
-| **gau** | Fetch URLs from Wayback, OTX, URLScan | Recon |
-| **katana** | Web crawler (endpoints, forms, JS files) | Recon |
-| **sqlmap** | Automated SQL injection detection | Pentesting |
-| **ffuf** | Web fuzzer (dirs, files, vhost discovery) | Pentesting |
-| **gobuster** | Directory/DNS/S3 brute-force | Pentesting |
-| **gowitness** | Headless browser screenshots (Playwright) | Pentesting |
-| **subzy** | Subdomain takeover detection | Pentesting |
-| **wpscan** | WordPress vulnerability scanner | Pentesting |
-| **theHarvester** | Email + subdomain harvesting | Recon |
-| **massdns** | Bulk DNS resolution | Recon |
-| **shuffledns** | Permutation-based subdomain enum | Recon |
-| **httpprobe** | Simple HTTP prober | Recon |
-| **jq** | JSON query/manipulation | Utility |
-| **curl** | URL data fetching | Utility |
+### Phase 1: Reconnaissance & Vulnerability Scanning
 
----
+| Tool | Purpose |
+|------|---------|
+| **subfinder** | Passive subdomain enumeration (40+ sources) |
+| **amass** | Active/passive subdomain discovery with DNS brute-force |
+| **httpx** | HTTP probing for live hosts, status codes, titles |
+| **nmap** | Port scanning + service/version detection |
+| **nuclei** | Template-based vulnerability scanner (9000+ CVE/misconfig templates) |
+| **nikto** | Web server misconfiguration scanner |
+| **shodan** | Internet-wide port intelligence lookup |
 
-## Compliance Frameworks
+### Phase 2: Active Testing
 
-| Framework | Controls | Audit Scope |
-|-----------|----------|------------|
-| **CIS Benchmarks** | 40+ | Linux, Docker, Kubernetes hardening |
-| **NIST CSF** | 22 | PR.AC (access), PR.DS (data security), DE.AE (anomalies), RS.AN (analysis) |
-| **PCI-DSS v4.0** | 12 | Network segmentation, encryption, scanning, access control |
-| **HIPAA §164.312** | 8 | Workforce security, access management, PHI protection |
-| **SOC2 Type II** | 6 | Change management, system monitoring, audit logging |
-| **CWE Mappings** | 101 | MITRE CWE-to-finding cross-reference |
+| Tool | Purpose |
+|------|---------|
+| **sqlmap** | Automated SQL injection detection and exploitation |
+| **dalfox** | XSS vulnerability scanner with DOM analysis |
+| **ffuf** | Web fuzzer for directories, files, and vhost discovery |
+| **wpscan** | WordPress-specific vulnerability scanner |
 
----
+### Phase 3: Code & Cloud Security
 
-## Report Types (13 Formats)
-
-| Report Type | Format | Audience | Contents |
-|-------------|--------|----------|----------|
-| **Executive Summary** | PDF | C-level | Risk gauge, KPIs, compliance status, top 10 findings |
-| **Technical Report** | PDF | Security team | Full findings, CVSS, CWE, MITRE, PoC, evidence |
-| **Interactive HTML** | HTML | Stakeholders | Searchable tables, screenshots, attack chain graph |
-| **Word Document** | DOCX | Legal/compliance | Formatted report, tables, evidence links |
-| **Excel Workbook** | XLSX | Ops team | 9 sheets (summary, findings, recon, cloud, compliance, etc.) |
-| **Compliance Audit** | PDF | Auditors | Control-by-control status, CIS/NIST/PCI mappings |
-| **Evidence ZIP** | ZIP | Forensics | Raw tool output (nmap.xml, nuclei.json, logs) |
-| **SARIF Export** | JSON | GitHub | GitHub code scanning integration |
-| **DefectDojo** | JSON | DefectDojo | Auto-import findings to DefectDojo |
-| **Slack Summary** | JSON | Notifications | Risk summary + link to findings |
-| **Email Report** | MIME | Email | Formatted email with findings table |
-| **CSV Export** | CSV | Data analysis | Flat findings table for Excel/Splunk |
-| **JSON API** | JSON | Integrations | Full findings + metadata for webhooks |
+| Tool | Purpose |
+|------|---------|
+| **semgrep** | Static analysis with custom security rules |
+| **gitleaks** | Secrets detection in git history |
+| **dependency_scan** | Python dependency vulnerability scanning |
+| **trivy** | Container image + filesystem vulnerability scanner |
+| **prowler** | AWS/Azure/GCP security posture auditing |
+| **checkov** | Infrastructure-as-Code misconfiguration scanner |
+| **llm_security** | AI/LLM model prompt injection testing |
 
 ---
 
 ## CI/CD Integration
 
-### GitHub Actions
-
-Add to `.github/workflows/netra.yml`:
+Add NETRA to your GitHub Actions pipeline:
 
 ```yaml
 name: NETRA Security Scan
@@ -258,67 +241,92 @@ on:
     paths: ['src/**', 'package.json']
 
 jobs:
-  netra-scan:
+  security-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
+      - uses: actions/checkout@v4
       - name: Run NETRA scan
         run: |
-          bash <(curl -s https://raw.githubusercontent.com/yashwarrdhangautam/netra/main/install.sh)
+          pip install netra
           netra scan --target ${{ github.server_url }}/${{ github.repository }} \
-            --profile standard \
-            --output sarif > netra-report.sarif
-
-      - name: Upload SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v2
+            --profile standard --output sarif > results.sarif
+      - name: Upload to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: netra-report.sarif
-
-      - name: Comment PR with findings
-        if: always()
-        run: netra report --scan-id last --type slack-json > pr-comment.json
+          sarif_file: results.sarif
 ```
+
+---
+
+## MCP Server (Claude Desktop)
+
+NETRA exposes all 18 scanner tools as MCP tools for Claude Desktop integration:
+
+```json
+{
+  "mcpServers": {
+    "netra": {
+      "command": "python",
+      "args": ["-m", "netra.mcp.server"]
+    }
+  }
+}
+```
+
+Ask Claude: *"Run a nuclei scan on example.com"* or *"What are the critical findings from the last scan?"*
 
 ---
 
 ## Configuration
 
-### Default Config: `~/.netra/config.yaml`
-
-```yaml
-scanning:
-  timeout: 3600           # seconds per tool
-  threads: 4              # parallel tool execution
-  retries: 2
-
-ai_brain:
-  model: qwen:14b         # options: qwen:14b, llama2, mistral
-  temperature: 0.7
-  consensus_threshold: 3  # 3/4 personas must agree
-
-compliance:
-  frameworks:
-    - cis
-    - nist
-    - pci_dss
-
-reporting:
-  formats: [html, pdf, xlsx, sarif]
-  include_screenshots: true
-```
-
-**Environment variables:**
+Copy `.env.example` to `.env` and customize:
 
 ```bash
-NETRA_DB_PATH=~/.netra/data/findings.db
-OLLAMA_MODEL=qwen:14b
-OLLAMA_BASE_URL=http://localhost:11434
-NETRA_WORKERS=4
-NETRA_LOG_LEVEL=INFO
+# Database (PostgreSQL for production, SQLite for dev)
+NETRA_DATABASE_URL=sqlite+aiosqlite:///./netra.db
+
+# AI Provider: anthropic | ollama | none
+NETRA_AI_PROVIDER=ollama
+NETRA_OLLAMA_BASE_URL=http://localhost:11434
+NETRA_OLLAMA_MODEL=llama3.1:8b
+
+# Auth (auto-generated in dev, REQUIRED in production)
+NETRA_JWT_SECRET_KEY=your-secret-here
+
+# Scanning
+NETRA_DEFAULT_SCAN_PROFILE=standard
+NETRA_MAX_CONCURRENT_SCANS=3
 ```
 
-See [docs/configuration.md](docs/configuration.md) for full reference.
+See [docs/configuration.md](docs/configuration.md) for the full reference.
+
+---
+
+## Project Structure
+
+```
+netra/
+├── src/netra/           # Python package
+│   ├── ai/              # 4-persona AI brain + consensus engine
+│   ├── api/             # FastAPI routes, middleware, auth
+│   ├── cli/             # Rich TUI command-line interface
+│   ├── core/            # Config, security, logging, rate limiting
+│   ├── db/              # SQLAlchemy models, migrations, seeds
+│   ├── integrations/    # DefectDojo, Jira clients
+│   ├── mcp/             # MCP server (Claude Desktop)
+│   ├── notifications/   # Slack, email alerting
+│   ├── reports/         # 13 report generators
+│   ├── scanner/         # Tool wrappers + orchestrator
+│   ├── schemas/         # Pydantic request/response models
+│   ├── services/        # Business logic layer
+│   └── worker/          # Celery tasks + scheduler
+├── frontend/            # React 18 + TypeScript + Vite
+├── tests/               # pytest (API, models, services, MCP)
+├── docs/                # MkDocs documentation site
+├── docker/              # Dockerfile + nginx config
+├── alembic/             # Database migrations
+└── .github/             # CI/CD workflows + issue templates
+```
 
 ---
 
@@ -326,81 +334,67 @@ See [docs/configuration.md](docs/configuration.md) for full reference.
 
 | Topic | Link |
 |-------|------|
-| **Installation** | [docs/installation.md](docs/installation.md) |
-| **Usage Guide** | [docs/usage.md](docs/usage.md) |
-| **Configuration** | [docs/configuration.md](docs/configuration.md) |
-| **Scan Profiles** | [docs/profiles.md](docs/profiles.md) |
-| **Report Templates** | [docs/reports.md](docs/reports.md) |
-| **Compliance Mapping** | [docs/compliance.md](docs/compliance.md) |
-| **API Reference** | [docs/api.md](docs/api.md) |
-| **MCP (Claude)** | [docs/mcp.md](docs/mcp.md) |
-| **Contributing** | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| **Security Policy** | [SECURITY.md](SECURITY.md) |
+| Installation Guide | [docs/installation.md](docs/installation.md) |
+| Configuration Reference | [docs/configuration.md](docs/configuration.md) |
+| Scan Profiles | [docs/profiles.md](docs/profiles.md) |
+| REST API Reference | [docs/api.md](docs/api.md) |
+| AI Agent Guide | [docs/agent.md](docs/agent.md) |
+| Compliance Mapping | [docs/compliance.md](docs/compliance.md) |
+| Report Formats | [docs/reports.md](docs/reports.md) |
+| Dashboard Guide | [docs/dashboard.md](docs/dashboard.md) |
+| CI/CD Setup | [docs/cicd.md](docs/cicd.md) |
 
 ---
 
 ## Requirements
 
-| Requirement | Version | Notes |
+| Requirement | Minimum | Recommended |
 |:---|:---|:---|
-| **Python** | 3.11+ | Core runtime |
-| **Go** | 1.22+ | Go-based tools (subfinder, nuclei, httpx, etc.) — install.sh handles this |
-| **Ollama** | latest | Local LLM backend — install.sh handles this |
-| **Qwen** | 14B | Default model (~8GB). Swap in config.yaml for `llama2` or `mistral` (4GB) |
-| **OS** | Linux / macOS | Windows via Docker |
-| **RAM** | 16GB+ | 8GB minimum; 16GB recommended for Qwen 14B + parallel tools |
+| **Python** | 3.12+ | 3.12 |
+| **OS** | Linux / macOS | Ubuntu 22.04 |
+| **RAM** | 8 GB | 16 GB (for local AI models) |
+| **Go** | 1.22+ | For building Go-based tools (handled by Docker/install.sh) |
+| **Ollama** | latest | Required only if using local AI models |
+| **Docker** | 24+ | For production deployment |
 
 ---
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
-- Development setup
-- Coding standards (type hints, async/await, SQLAlchemy ORM)
-- Test coverage requirements
-- PR review process
-
-Quick start:
+We welcome contributions. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards (type hints, async/await, SQLAlchemy ORM, pytest), and the PR review process.
 
 ```bash
 git clone https://github.com/yashwarrdhangautam/netra.git
 cd netra
 poetry install
-pytest
+pytest                  # Run tests
+ruff check src/         # Lint
+mypy src/               # Type check
 ```
 
 ---
 
 ## Security
 
-Found a vulnerability? Please report privately to [SECURITY.md](SECURITY.md) or email security@netra.dev. Do not open public issues for security vulnerabilities.
+Found a vulnerability? Please report privately via [SECURITY.md](SECURITY.md) or email security@netra.dev. Do not open public issues for security vulnerabilities.
 
 ---
 
 ## License
 
-NETRA is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0).
+NETRA is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 
-**Commercial licensing available.** Contact: yashwarrdhangautam@gmail.com
+Commercial licensing available — contact yashwarrdhangautam@gmail.com.
 
 ---
 
 ## Acknowledgments
 
-Built on the shoulders of giants:
-- [OWASP](https://owasp.org/) — Web security standards
-- [MITRE ATT&CK](https://attack.mitre.org/) — Adversary tactics framework
-- [NVD](https://nvd.nist.gov/) — Vulnerability database
-- [Nuclei](https://github.com/projectdiscovery/nuclei) — Template-based scanning
-- [Nmap](https://nmap.org/) — Port scanning
-- [Ollama](https://ollama.ai/) — Local LLMs
+Built on the shoulders of giants: [OWASP](https://owasp.org/), [MITRE ATT&CK](https://attack.mitre.org/), [NVD](https://nvd.nist.gov/), [ProjectDiscovery](https://github.com/projectdiscovery) (nuclei, subfinder, httpx), [Nmap](https://nmap.org/), [Ollama](https://ollama.ai/), and the open-source security community.
 
 ---
 
-<div align="center">
-
-**Made with care by [Yash Wardhan Gautam](https://github.com/yashwarrdhangautam)**
-
-Securing the digital world, one scan at a time.
-
-</div>
+<p align="center">
+  <strong>Made by <a href="https://github.com/yashwarrdhangautam">Yash Wardhan Gautam</a></strong><br/>
+  <sub>Securing the digital world, one scan at a time.</sub>
+</p>

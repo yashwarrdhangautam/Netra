@@ -1,15 +1,17 @@
 """Enhanced security utilities for JWT, refresh tokens, MFA, and token blacklist."""
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pyotp
+import structlog
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from netra.core.config import settings
 
+logger = structlog.get_logger()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -60,16 +62,16 @@ def create_access_token(
         The encoded JWT token
     """
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = datetime.now(UTC) + timedelta(
             minutes=settings.jwt_expire_minutes
         )
 
     to_encode = {
         "exp": expire,
         "sub": str(subject),
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
         "type": "access",
     }
 
@@ -97,14 +99,14 @@ def create_refresh_token(
         The encoded JWT refresh token
     """
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(days=7)
+        expire = datetime.now(UTC) + timedelta(days=7)
 
     to_encode = {
         "exp": expire,
         "sub": str(subject),
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
         "type": "refresh",
         "jti": str(uuid.uuid4()),  # Unique ID for rotation tracking
     }
@@ -206,7 +208,7 @@ class TokenBlacklist:
         """
         if self._redis:
             try:
-                ttl = int((expires_at - datetime.now(timezone.utc)).total_seconds())
+                ttl = int((expires_at - datetime.now(UTC)).total_seconds())
                 if ttl > 0:
                     await self._redis.setex(f"blacklist:{token}", ttl, "1")
                     return True
@@ -259,7 +261,7 @@ class TokenBlacklist:
 
     def _cleanup_expired(self) -> None:
         """Remove expired tokens from in-memory blacklist."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expired = [k for k, v in self._blacklist.items() if v < now]
         for k in expired:
             del self._blacklist[k]
@@ -409,12 +411,12 @@ def create_password_reset_token(
     Returns:
         The encoded JWT reset token
     """
-    expire = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
+    expire = datetime.now(UTC) + timedelta(hours=expires_hours)
 
     to_encode = {
         "exp": expire,
         "sub": str(user_id),
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
         "type": "password_reset",
         "jti": str(uuid.uuid4()),
     }
@@ -477,10 +479,3 @@ def get_session_fingerprint(user_agent: str, ip_address: str) -> str:
 
     data = f"{user_agent}:{ip_address}"
     return hashlib.sha256(data.encode()).hexdigest()[:16]
-
-
-# ── Logging ───────────────────────────────────────────────────────────────────
-
-import structlog
-
-logger = structlog.get_logger()

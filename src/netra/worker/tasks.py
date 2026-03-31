@@ -1,33 +1,24 @@
 """Celery tasks for distributed scan execution."""
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import structlog
-from celery import chain, group
+from celery import chain
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.worker.celery_app import celery_app
 from netra.db.models.scan import Scan, ScanStatus
 from netra.db.models.scan_phase import PhaseStatus, PhaseType, ScanPhase
-from netra.scanner.tools.subfinder import SubfinderTool
 from netra.scanner.tools.amass import AmassTool
-from netra.scanner.tools.httpx import HttpxTool
-from netra.scanner.tools.nmap import NmapTool
-from netra.scanner.tools.nuclei import NucleiTool
-from netra.scanner.tools.nikto import NiktoTool
-from netra.scanner.tools.sqlmap import SqlmapTool
 from netra.scanner.tools.dalfox import DalfoxTool
 from netra.scanner.tools.ffuf import FfufTool
-from netra.scanner.tools.semgrep import SemgrepTool
-from netra.scanner.tools.gitleaks import GitleaksTool
-from netra.scanner.tools.dependency_scan import PipAuditTool
-from netra.scanner.tools.prowler import ProwlerTool
-from netra.scanner.tools.trivy import TrivyTool
-from netra.scanner.tools.checkov import CheckovTool
-from netra.scanner.tools.llm_security import LLMSecurityTool
+from netra.scanner.tools.httpx import HttpxTool
+from netra.scanner.tools.nikto import NiktoTool
+from netra.scanner.tools.nuclei import NucleiTool
+from netra.scanner.tools.sqlmap import SqlmapTool
+from netra.scanner.tools.subfinder import SubfinderTool
+from netra.worker.celery_app import celery_app
 
 logger = structlog.get_logger()
 
@@ -77,7 +68,6 @@ def scope_resolution(self, scan_id: str) -> dict:
 
 async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dict:
     """Execute scope resolution phase."""
-    from netra.db.models.target import Target
 
     result = await db.execute(select(Scan).where(Scan.id == scan_id))
     scan = result.scalar_one_or_none()
@@ -333,8 +323,8 @@ async def _execute_active_test(db: AsyncSession, scan_id: uuid.UUID, previous_re
     total_findings = 0
 
     try:
-        from netra.services.finding_service import FindingService
         from netra.db.models.finding import Finding
+        from netra.services.finding_service import FindingService
         service = FindingService(db)
 
         # Get parameterized URLs
@@ -558,14 +548,14 @@ async def _update_phase_status(
             scan_id=scan_id,
             phase_type=phase_type,
             status=PhaseStatus.COMPLETED if result.get("status") == "completed" else PhaseStatus.FAILED,
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
             findings_count=result.get("findings_count", result.get("count", 0)),
         )
         db.add(phase)
     else:
         phase.status = PhaseStatus.COMPLETED if result.get("status") == "completed" else PhaseStatus.FAILED
-        phase.completed_at = datetime.now(timezone.utc)
+        phase.completed_at = datetime.now(UTC)
         phase.findings_count = result.get("findings_count", result.get("count", 0))
         if result.get("status") == "failed":
             phase.error_message = result.get("error", "Unknown error")
@@ -617,7 +607,7 @@ def run_scan(self, scan_id: str) -> dict:
             scan = result.scalar_one_or_none()
             if scan:
                 scan.status = ScanStatus.RUNNING
-                scan.started_at = datetime.now(timezone.utc)
+                scan.started_at = datetime.now(UTC)
                 await db.commit()
 
         asyncio.run(update_status())
@@ -632,7 +622,7 @@ def run_scan(self, scan_id: str) -> dict:
             scan = result.scalar_one_or_none()
             if scan:
                 scan.status = ScanStatus.COMPLETED
-                scan.completed_at = datetime.now(timezone.utc)
+                scan.completed_at = datetime.now(UTC)
                 await db.commit()
 
         asyncio.run(complete_scan())
@@ -646,16 +636,16 @@ def run_scan(self, scan_id: str) -> dict:
     except Exception as e:
         logger.error("scan_failed", scan_id=scan_id, error=str(e))
 
-        async def fail_scan():
+        async def fail_scan(error_msg: str):
             result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
             scan = result.scalar_one_or_none()
             if scan:
                 scan.status = ScanStatus.FAILED
-                scan.error_message = str(e)
-                scan.completed_at = datetime.now(timezone.utc)
+                scan.error_message = error_msg
+                scan.completed_at = datetime.now(UTC)
                 await db.commit()
 
-        asyncio.run(fail_scan())
+        asyncio.run(fail_scan(str(e)))
 
         return {"scan_id": scan_id, "status": "failed", "error": str(e)}
     finally:

@@ -1,0 +1,87 @@
+# NETRA Production Docker Compose
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # API Service - Production Configuration
+  api:
+    environment:
+      - NETRA_ENVIRONMENT=production
+      - NETRA_DEBUG=false
+      - NETRA_LOG_LEVEL=INFO
+      - NETRA_LOG_FORMAT=json
+      - NETRA_COOKIE_SECURE=true
+      - NETRA_COOKIE_SAMESITE=strict
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Service - Production Build
+  frontend:
+    environment:
+      - VITE_API_URL=/api
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Celery Worker
+  worker:
+    environment:
+      - NETRA_ENVIRONMENT=production
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - postgres
+
+  # PostgreSQL - Production Configuration
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=netra
+      - POSTGRES_PASSWORD=${NETRA_POSTGRES_PASSWORD:?NETRA_POSTGRES_PASSWORD must be set in production}
+      - POSTGRES_DB=netra
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netra"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No port exposure - internal only
+
+  # Redis - Production Configuration
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass ${NETRA_REDIS_PASSWORD:?NETRA_REDIS_PASSWORD must be set in production}
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No port exposure - internal only
+
+  # Flower - Celery Monitoring (Optional)
+  flower:
+    profiles:
+      - monitoring
+    environment:
+      - FLOWER_BASIC_AUTH=${NETRA_FLOWER_USER:?NETRA_FLOWER_USER must be set}:${NETRA_FLOWER_PASSWORD:?NETRA_FLOWER_PASSWORD must be set}
+    restart: unless-stopped
+    # No port exposure by default - enable if needed
+
+volumes:
+  postgres_data:
+  redis_data:
+
+# Networks
+networks:
+  default:
+    driver: bridge

@@ -1,8 +1,9 @@
 """Scan orchestrator for managing scan pipelines."""
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import structlog
 from sqlalchemy import select
@@ -12,27 +13,29 @@ from netra.db.models.finding import Finding
 from netra.db.models.scan import Scan, ScanStatus
 from netra.db.models.scan_phase import PhaseStatus, PhaseType, ScanPhase
 from netra.scanner.profiles import get_profile_config
-from netra.scanner.tools.base import ToolResult
-from netra.scanner.tools.nuclei import NucleiTool
-from netra.scanner.tools.nmap import NmapTool
-from netra.scanner.tools.subfinder import SubfinderTool
-from netra.scanner.tools.httpx import HttpxTool
-from netra.scanner.tools.ffuf import FfufTool
-from netra.scanner.tools.dalfox import DalfoxTool
-from netra.scanner.tools.nikto import NiktoTool
-from netra.scanner.tools.sqlmap import SqlmapTool
 from netra.scanner.tools.amass import AmassTool
+from netra.scanner.tools.base import BaseTool, ToolResult
+from netra.scanner.tools.checkov import CheckovTool
+from netra.scanner.tools.dalfox import DalfoxTool
+from netra.scanner.tools.dependency_scan import PipAuditTool
+from netra.scanner.tools.ffuf import FfufTool
+from netra.scanner.tools.gitleaks import GitleaksTool
+from netra.scanner.tools.httpx import HttpxTool
+from netra.scanner.tools.llm_security import LLMSecurityTool
+from netra.scanner.tools.nikto import NiktoTool
+from netra.scanner.tools.nmap import NmapTool
+from netra.scanner.tools.nuclei import NucleiTool
+from netra.scanner.tools.prowler import ProwlerTool
 
 # Phase 2 tools
 from netra.scanner.tools.semgrep import SemgrepTool
-from netra.scanner.tools.gitleaks import GitleaksTool
-from netra.scanner.tools.dependency_scan import PipAuditTool
-from netra.scanner.tools.prowler import ProwlerTool
+from netra.scanner.tools.sqlmap import SqlmapTool
+from netra.scanner.tools.subfinder import SubfinderTool
 from netra.scanner.tools.trivy import TrivyTool
-from netra.scanner.tools.checkov import CheckovTool
-from netra.scanner.tools.llm_security import LLMSecurityTool
 
 logger = structlog.get_logger()
+
+T = TypeVar("T")
 
 
 class ScanOrchestrator:
@@ -41,6 +44,81 @@ class ScanOrchestrator:
     def __init__(self, db: AsyncSession, scan_id: uuid.UUID) -> None:
         self.db = db
         self.scan_id = scan_id
+
+    async def _run_tool_with_retry(
+        self,
+        tool: BaseTool,
+        target: str,
+        max_retries: int = 3,
+        base_delay: float = 2.0,
+        max_delay: float = 30.0,
+        **kwargs: Any,
+    ) -> ToolResult:
+        """Run a scanner tool with exponential backoff retry.
+
+        Args:
+            tool: Tool instance to run
+            target: Target for the scan
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay between retries in seconds
+            max_delay: Maximum delay between retries
+            **kwargs: Arguments passed to tool.run()
+
+        Returns:
+            ToolResult from successful run or last failed attempt
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(max_retries):
+            try:
+                result = await tool.run(target, **kwargs)
+                if result.success:
+                    return result
+
+                # Tool ran but failed - may still be useful data
+                logger.warning(
+                    "tool_partial_failure",
+                    tool=tool.name,
+                    target=target,
+                    attempt=attempt + 1,
+                    error=result.error,
+                )
+                return result
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    delay = min(base_delay * (2 ** attempt), max_delay)
+                    logger.warning(
+                        "tool_retry",
+                        tool=tool.name,
+                        target=target,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        delay=delay,
+                        error=str(e),
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        "tool_exhausted_retries",
+                        tool=tool.name,
+                        target=target,
+                        error=str(e),
+                    )
+
+        # Return failed result if available, else raise
+        if last_error:
+            # Create a failed ToolResult for graceful degradation
+            return ToolResult(
+                tool_name=tool.name if hasattr(tool, "name") else "unknown",
+                target=target,
+                success=False,
+                started_at=datetime.now(UTC),
+                completed_at=datetime.now(UTC),
+                error=str(last_error),
+            )
+        raise last_error
 
     async def execute(self) -> None:
         """Run the full scan pipeline."""
@@ -53,7 +131,7 @@ class ScanOrchestrator:
 
         # Update scan status
         scan.status = ScanStatus.RUNNING
-        scan.started_at = datetime.now(timezone.utc)
+        scan.started_at = datetime.now(UTC)
         await self.db.commit()
 
         try:
@@ -115,7 +193,7 @@ class ScanOrchestrator:
 
             # Complete
             scan.status = ScanStatus.COMPLETED
-            scan.completed_at = datetime.now(timezone.utc)
+            scan.completed_at = datetime.now(UTC)
 
         except Exception as e:
             logger.error("scan_failed", scan_id=str(self.scan_id), error=str(e))
@@ -136,7 +214,7 @@ class ScanOrchestrator:
         try:
             # Subfinder
             subfinder = SubfinderTool(work_dir=self._phase_dir(phase))
-            result = await subfinder.run(target)
+            result = await self._run_tool_with_retry(subfinder, target)
             await self._save_findings(scan, result)
             for f in result.findings:
                 if hostname := f.get("hostname") or f.get("url", ""):
@@ -145,7 +223,7 @@ class ScanOrchestrator:
             # Amass (if deep profile)
             if profile.get("use_amass", False):
                 amass = AmassTool(work_dir=self._phase_dir(phase))
-                result = await amass.run(target)
+                result = await self._run_tool_with_retry(amass, target)
                 await self._save_findings(scan, result)
                 for f in result.findings:
                     if hostname := f.get("hostname") or f.get("url", ""):
@@ -182,8 +260,9 @@ class ScanOrchestrator:
                 return []
 
             httpx_tool = HttpxTool(work_dir=self._phase_dir(phase))
-            result = await httpx_tool.run(
-                target=",".join(subdomains[:profile.get("max_targets", 50)]),
+            result = await self._run_tool_with_retry(
+                httpx_tool,
+                ",".join(subdomains[:profile.get("max_targets", 50)]),
                 follow_redirects=True,
                 tech_detect=True,
             )
@@ -220,7 +299,8 @@ class ScanOrchestrator:
         try:
             nmap = NmapTool(work_dir=self._phase_dir(phase))
             for target in targets[:profile.get("max_targets", 50)]:
-                result = await nmap.run(
+                result = await self._run_tool_with_retry(
+                    nmap,
                     target=target,
                     ports=profile.get("port_range", "top-1000"),
                 )
@@ -244,7 +324,8 @@ class ScanOrchestrator:
             # Nuclei
             nuclei = NucleiTool(work_dir=self._phase_dir(phase))
             for target in targets[:profile.get("max_targets", 50)]:
-                result = await nuclei.run(
+                result = await self._run_tool_with_retry(
+                    nuclei,
                     target=target,
                     severity=profile.get("severity_filter", "critical,high,medium"),
                     rate_limit=profile.get("rate_limit", 150),
@@ -256,7 +337,7 @@ class ScanOrchestrator:
             if profile.get("use_nikto", True):
                 nikto = NiktoTool(work_dir=self._phase_dir(phase))
                 for target in targets[:10]:  # Nikto is slow, limit targets
-                    result = await nikto.run(target=target)
+                    result = await self._run_tool_with_retry(nikto, target=target)
                     await self._save_findings(scan, result)
                     total_findings += len(result.findings)
 
@@ -518,64 +599,52 @@ class ScanOrchestrator:
             scan_id=scan.id,
             phase_type=phase_type,
             status=PhaseStatus.RUNNING,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
         self.db.add(phase)
         await self.db.commit()
+        logger.info("phase_started", scan_id=str(scan.id), phase=phase_type.value)
         return phase
 
     async def _complete_phase(
         self, phase: ScanPhase, findings_count: int = 0
     ) -> None:
-        """Mark a phase as completed."""
+        """Mark a scan phase as completed."""
         phase.status = PhaseStatus.COMPLETED
-        phase.completed_at = datetime.now(timezone.utc)
-        phase.progress = 1.0
+        phase.completed_at = datetime.now(UTC)
         phase.findings_count = findings_count
         await self.db.commit()
+        logger.info(
+            "phase_completed",
+            phase=phase.phase_type.value,
+            findings=findings_count,
+        )
 
     async def _fail_phase(self, phase: ScanPhase, error: str) -> None:
-        """Mark a phase as failed."""
+        """Mark a scan phase as failed."""
         phase.status = PhaseStatus.FAILED
-        phase.completed_at = datetime.now(timezone.utc)
+        phase.completed_at = datetime.now(UTC)
         phase.error_message = error
         await self.db.commit()
-
-    def _should_run_phase(
-        self, scan: Scan, phase_type: PhaseType, profile: dict[str, Any]
-    ) -> bool:
-        """Check if phase should run (not already completed in checkpoint)."""
-        checkpoint = scan.checkpoint_data or {}
-        completed = checkpoint.get("completed_phases", [])
-        return phase_type not in completed
+        logger.error("phase_failed", phase=phase.phase_type.value, error=error)
 
     async def _save_findings(self, scan: Scan, result: ToolResult) -> None:
-        """Save tool results as Finding records with deduplication."""
-        from netra.services.finding_service import FindingService
-
-        service = FindingService(self.db)
-        for f_data in result.findings:
-            await service.create_finding_from_tool(
+        """Save tool results as findings in the database."""
+        for finding_data in result.findings:
+            finding = Finding(
                 scan_id=scan.id,
-                tool_name=result.tool_name,
-                finding_data=f_data,
+                target_id=scan.target_id,
+                title=finding_data.get("title", "Unknown"),
+                description=finding_data.get("description", ""),
+                severity=finding_data.get("severity", "info"),
+                confidence=finding_data.get("confidence", 50),
+                tool_source=result.tool_name,
+                evidence=finding_data.get("evidence", {}),
+                cwe_id=finding_data.get("cwe_id"),
+                cvss_score=finding_data.get("cvss_score"),
             )
-
-    def _phase_dir(self, phase: ScanPhase) -> Path:
-        """Get working directory for a phase."""
-        d = Path.home() / ".netra" / "scans" / str(phase.scan_id)[:8] / phase.phase_type
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
-    async def _get_parameterized_urls(self, scan: Scan) -> list[str]:
-        """Get URLs with query parameters from discovery phase."""
-        result = await self.db.execute(
-            select(Finding.url)
-            .where(Finding.scan_id == scan.id)
-            .where(Finding.url.isnot(None))
-            .where(Finding.url.contains("?"))
-        )
-        return [row[0] for row in result.fetchall() if row[0]]
+            self.db.add(finding)
+        await self.db.commit()
 
     async def _get_scan_findings(self, scan: Scan) -> list[Finding]:
         """Get all findings for a scan."""
@@ -584,10 +653,45 @@ class ScanOrchestrator:
         )
         return list(result.scalars().all())
 
-    async def _get_cached_subdomains(self, scan: Scan) -> list[str]:
-        """Get subdomains from checkpoint data."""
-        return (scan.checkpoint_data or {}).get("subdomains", [scan.target.value])
+    async def _get_parameterized_urls(self, scan: Scan) -> list[str]:
+        """Extract URLs with parameters from scan findings for injection testing."""
+        findings = await self._get_scan_findings(scan)
+        urls: list[str] = []
+        for f in findings:
+            if f.evidence and "url" in f.evidence:
+                url = f.evidence["url"]
+                if "?" in url or "=" in url:
+                    urls.append(url)
+        return urls
 
-    async def _get_cached_hosts(self, scan: Scan) -> list[str]:
-        """Get live hosts from checkpoint data."""
-        return (scan.checkpoint_data or {}).get("live_hosts", [])
+    async def _run_tool_with_retry(
+        self, tool: Any, *args: Any, max_retries: int = 2, **kwargs: Any
+    ) -> ToolResult:
+        """Run a tool with retry logic."""
+        last_error: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                return await tool.run(*args, **kwargs)
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    logger.warning(
+                        "tool_retry",
+                        tool=tool.__class__.__name__,
+                        attempt=attempt + 1,
+                        error=str(e),
+                    )
+        return ToolResult(
+            tool_name=tool.__class__.__name__,
+            success=False,
+            findings=[],
+            error=str(last_error),
+        )
+
+    def _phase_dir(self, phase: ScanPhase) -> Path:
+        """Get working directory for a phase."""
+        from netra.core.config import settings
+
+        base = settings.evidence_dir / str(phase.scan_id) / phase.phase_type.value
+        base.mkdir(parents=True, exist_ok=True)
+        return base

@@ -30,5 +30,7 @@ def get_engine() -> AsyncEngine:
             echo=settings.db_echo,
             pool_size=settings.db_pool_size,
             max_overflow=settings.db_max_overflow,
+            pool_recycle=3600,  # Recycle connections after 1 hour
+            pool_pre_ping=True,  # Verify connection before each use
         )
     return engine

@@ -1,6 +1,6 @@
 """Autonomous pentest agent — Claude Agent SDK orchestration."""
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -14,13 +14,18 @@ MAX_TOOL_CALLS = 50
 MAX_DURATION_MINUTES = 30
 MAX_COST_USD = 5.0
 
-AGENT_SYSTEM_PROMPT = """You are NETRA's autonomous penetration testing agent. Your goal is to methodically discover and validate security vulnerabilities in the target.
+AGENT_SYSTEM_PROMPT = """You are NETRA's autonomous penetration testing agent.
+Your goal is to methodically discover and validate security vulnerabilities
+in the target.
 
 ## Process
-1. **Reconnaissance**: Start with passive recon (subdomains, OSINT, DNS). Analyze what you find before proceeding.
+1. **Reconnaissance**: Start with passive recon (subdomains, OSINT, DNS).
+   Analyze what you find before proceeding.
 2. **Discovery**: Probe for live hosts, identify technologies, detect WAFs.
-3. **Vulnerability Scanning**: Run targeted scans based on what you discovered. Choose the right tools for the tech stack.
-4. **Active Testing**: Test for injection flaws, auth issues, misconfigs. ALWAYS require human approval before active exploitation.
+3. **Vulnerability Scanning**: Run targeted scans based on what you discovered.
+   Choose the right tools for the tech stack.
+4. **Active Testing**: Test for injection flaws, auth issues, misconfigs.
+   ALWAYS require human approval before active exploitation.
 5. **Analysis**: Connect findings into attack chains. Assess business impact.
 6. **Reporting**: Generate a narrative of your findings with evidence.
 
@@ -62,13 +67,13 @@ class PentestAgent:
         self.decisions: list[dict[str, Any]] = []  # Audit trail
         self.requires_approval = False
         self.pending_action: dict[str, Any] | None = None
-        self.started_at = datetime.now(timezone.utc)
+        self.started_at = datetime.now(UTC)
         self.status = "initialized"
 
     def _log_decision(self, decision_type: str, data: Any) -> None:
         """Log agent decision for audit trail."""
         self.decisions.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "type": decision_type,
             "data": data,
         })
@@ -100,7 +105,7 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
         # Agent loop
         while self.tool_calls < MAX_TOOL_CALLS:
             # Check duration limit
-            elapsed_minutes = (datetime.now(timezone.utc) - self.started_at).total_seconds() / 60
+            elapsed_minutes = (datetime.now(UTC) - self.started_at).total_seconds() / 60
             if elapsed_minutes > MAX_DURATION_MINUTES:
                 self._log_decision("duration_limit_reached", {"elapsed_minutes": elapsed_minutes})
                 break
@@ -221,7 +226,8 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
             "content": [{
                 "type": "tool_result",
                 "tool_use_id": self.pending_action["tool_use_id"],
-                "content": f"Action REJECTED by operator. Reason: {reason or 'Not approved'}. Choose a different approach.",
+                "content": f"Action REJECTED by operator. Reason: {reason or 'Not approved'}. "
+                           "Choose a different approach.",
                 "is_error": True,
             }],
         })
@@ -234,10 +240,22 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
     async def _execute_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         """Execute a NETRA tool and return results."""
         from netra.scanner.tools import (
-            NucleiTool, NmapTool, SubfinderTool, HttpxTool,
-            FfufTool, DalfoxTool, NiktoTool, SqlmapTool,
-            AmassTool, ShodanTool, SemgrepTool, TrivyTool,
-            ProwlerTool, GitleaksTool, CheckovTool, LLMSecurityTool,
+            AmassTool,
+            CheckovTool,
+            DalfoxTool,
+            FfufTool,
+            GitleaksTool,
+            HttpxTool,
+            LLMSecurityTool,
+            NiktoTool,
+            NmapTool,
+            NucleiTool,
+            ProwlerTool,
+            SemgrepTool,
+            ShodanTool,
+            SqlmapTool,
+            SubfinderTool,
+            TrivyTool,
         )
 
         tool_classes = {
@@ -322,7 +340,8 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "targets": {"type": "array", "items": {"type": "string"}, "description": "List of domains/IPs to probe"},
+                        "targets": {"type": "array", "items": {"type": "string"},
+                                    "description": "List of domains/IPs to probe"},
                         "follow_redirects": {"type": "boolean", "default": True},
                         "tech_detect": {"type": "boolean", "default": True},
                     },
@@ -348,7 +367,8 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "url": {"type": "string", "description": "Target URL with injectable parameter"},
+                        "url": {"type": "string",
+                                "description": "Target URL with injectable parameter"},
                         "method": {"type": "string", "default": "GET"},
                         "parameter": {"type": "string", "default": ""},
                         "level": {"type": "integer", "default": 1},
@@ -393,7 +413,7 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
             "decisions": self.decisions[-20:],  # Last 20 decisions
             "tool_calls": self.tool_calls,
             "conversation_length": len(self.conversation),
-            "elapsed_minutes": (datetime.now(timezone.utc) - self.started_at).total_seconds() / 60,
+            "elapsed_minutes": (datetime.now(UTC) - self.started_at).total_seconds() / 60,
         }
 
 
@@ -407,7 +427,11 @@ def get_agent_session(session_id: str) -> PentestAgent | None:
 
 
 def create_agent_session() -> PentestAgent:
-    """Create a new agent session."""
+    """Create a new agent session.
+
+    Returns:
+        A new PentestAgent instance registered in AGENT_SESSIONS.
+    """
     agent = PentestAgent()
     AGENT_SESSIONS[agent.session_id] = agent
     return agent
