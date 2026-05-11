@@ -132,3 +132,7 @@ UPLOAD_PLAN.md
 __pycache__/
 *.py[cod]
 *$py.class
+
+NETRA_*.docx
+
+NETRA_*.docx
