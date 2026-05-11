@@ -25,6 +25,6 @@ def test_extract_js_endpoints_common_clients() -> None:
 
 
 def test_hunt_secrets_regex_fallback() -> None:
-    hits = hunt_secrets("const key = 'AKIA1234567890ABCDEF';")
+    hits = hunt_secrets("const key = 'AKIAIOSFODNN7EXAMPLE';")
     assert hits[0]["rule"] == "aws_access_key"
 

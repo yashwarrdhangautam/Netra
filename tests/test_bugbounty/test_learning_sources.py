@@ -29,7 +29,7 @@ class FakeHacktivityClient:
             H1HacktivityItem(
                 source_url="https://hackerone.com/reports/123",
                 title="Shopify XSS",
-                body="Reflected XSS with alice@example.com and key AKIA1234567890ABCDEF",
+                body="Reflected XSS with alice@example.com and key AKIAIOSFODNN7EXAMPLE",
                 severity="medium",
                 program_handle="shopify",
                 author_handle="alice",
