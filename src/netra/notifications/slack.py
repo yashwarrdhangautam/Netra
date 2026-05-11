@@ -1,4 +1,5 @@
 """Slack notification sender with real webhook implementation."""
+import json
 from typing import Any
 
 import httpx
@@ -18,7 +19,27 @@ class SlackNotifier:
         Args:
             webhook_url: Slack webhook URL (optional, falls back to settings)
         """
-        self.webhook_url = webhook_url or settings.slack_webhook_url
+        self.webhook_url = webhook_url or settings.slack_webhook_url or None
+
+    def _get_severity_color(self, severity: str) -> str:
+        """Return Slack attachment color for a finding severity."""
+        return {
+            "critical": "#ff0000",
+            "high": "#ff6600",
+            "medium": "#ffcc00",
+            "low": "#00ff00",
+            "info": "#0066ff",
+        }.get(severity.lower(), "#808080")
+
+    def _get_severity_emoji(self, severity: str) -> str:
+        """Return compact visual marker for a finding severity."""
+        return {
+            "critical": "\U0001f534",
+            "high": "\U0001f7e0",
+            "medium": "\U0001f7e1",
+            "low": "\U0001f7e2",
+            "info": "\U0001f535",
+        }.get(severity.lower(), "\u26aa")
 
     async def send(self, message: dict[str, Any]) -> bool:
         """Send notification to Slack via webhook.
@@ -80,18 +101,12 @@ class SlackNotifier:
             return False
 
         try:
-            # Map severity to color
-            severity_colors = {
-                "critical": "#FF0000",
-                "high": "#FF6600",
-                "medium": "#FFCC00",
-                "low": "#00CC00",
-            }
-            color = severity_colors.get(severity.lower(), "#999999")
+            color = self._get_severity_color(severity)
+            emoji = self._get_severity_emoji(severity)
 
             # Build message payload
             message = {
-                "text": f"Finding Alert: {finding.get('title', 'Unknown')}",
+                "text": f"{emoji} Finding Alert: {finding.get('title', 'Unknown')}",
                 "attachments": [
                     {
                         "color": color,

@@ -2,19 +2,12 @@
 import uuid
 from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON as JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
-
-if TYPE_CHECKING:
-    from netra.db.models.finding import Finding
-    from netra.db.models.report import Report
-    from netra.db.models.scan_phase import ScanPhase
-    from netra.db.models.target import Target
 
 
 class ScanStatus(StrEnum):
@@ -39,6 +32,8 @@ class ScanProfile(StrEnum):
     MOBILE = "mobile"
     CONTAINER = "container"
     AI_LLM = "ai_llm"
+    BUGBOUNTY_PASSIVE = "bugbounty_passive"
+    BUGBOUNTY_ACTIVE = "bugbounty_active"
     CUSTOM = "custom"
 
 
@@ -54,6 +49,7 @@ class Scan(Base):
     profile: Mapped[ScanProfile] = mapped_column(
         String(20), default=ScanProfile.STANDARD, nullable=False
     )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     target_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("targets.id"), nullable=False
     )
@@ -64,6 +60,7 @@ class Scan(Base):
     checkpoint_data: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     # Relationships
+    user: Mapped["User | None"] = relationship(back_populates="scans")
     target: Mapped["Target"] = relationship(back_populates="scans")
     phases: Mapped[list["ScanPhase"]] = relationship(
         back_populates="scan", cascade="all, delete-orphan"

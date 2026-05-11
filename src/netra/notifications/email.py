@@ -1,9 +1,10 @@
 """Email notification sender with real SMTP implementation."""
 import smtplib
-from email import encoders
-from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from typing import Any
 from pathlib import Path
 
 import structlog
@@ -154,3 +155,21 @@ class EmailNotifier:
                 html=html,
             )
         return results
+
+    def _generate_report_body(self, findings: list[dict[str, Any]]) -> str:
+        """Generate a small HTML summary for finding report emails."""
+        rows = []
+        for finding in findings:
+            title = finding.get("title", "Untitled finding")
+            severity = str(finding.get("severity", "unknown")).upper()
+            rows.append(f"<li><strong>{severity}</strong> - {title}</li>")
+
+        count = len(findings)
+        noun = "finding" if count == 1 else "findings"
+        return (
+            "<html><body>"
+            "<h1>Findings Report</h1>"
+            f"<p>{count} {noun}</p>"
+            f"<ul>{''.join(rows)}</ul>"
+            "</body></html>"
+        )

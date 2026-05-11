@@ -1,6 +1,7 @@
 """Re-export all route routers for convenient importing."""
 from netra.api.routes.agent import router as agent
 from netra.api.routes.auth import router as auth
+from netra.api.routes.bugbounty import router as bugbounty
 from netra.api.routes.compliance import router as compliance
 from netra.api.routes.findings import router as findings
 from netra.api.routes.health import router as health
@@ -13,6 +14,7 @@ from netra.api.routes.websocket import router as websocket
 __all__ = [
     "agent",
     "auth",
+    "bugbounty",
     "compliance",
     "findings",
     "health",

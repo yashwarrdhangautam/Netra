@@ -1,12 +1,13 @@
 """Phase 4: Add MFA, notification preferences, and token blacklist
 
 Revision ID: 003_phase4_auth_integrations
-Revises: 002_phase2_coverage
+Revises: 002
 Create Date: 2026-03-29
 
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '003_phase4_auth_integrations'
@@ -15,59 +16,42 @@ branch_labels = None
 depends_on = None
 
 
-def _jsonb_column(
-    name: str,
-    server_default_json: str = "'[]'",
-    comment: str | None = None,
-) -> sa.Column:
-    """Create a JSON/JSONB column that works on both PostgreSQL and SQLite.
+def _is_postgres() -> bool:
+    return op.get_bind().dialect.name == "postgresql"
 
-    Args:
-        name: Column name
-        server_default_json: Default JSON value as string literal
-        comment: Optional column comment
 
-    Returns:
-        SQLAlchemy Column with dialect-appropriate type
-    """
-    conn = op.get_bind()
-    dialect = conn.dialect.name
+def _json_type() -> sa.types.TypeEngine:
+    if _is_postgres():
+        return postgresql.JSONB(astext_type=sa.Text())
+    return sa.JSON()
 
-    if dialect == "postgresql":
-        from sqlalchemy.dialects import postgresql
-        return sa.Column(
-            name,
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=True,
-            server_default=sa.text(f"{server_default_json}::jsonb"),
-            comment=comment,
-        )
-    else:
-        # SQLite and other dialects: use generic JSON type
-        return sa.Column(
-            name,
-            sa.JSON(),
-            nullable=True,
-            server_default=server_default_json,
-            comment=comment,
-        )
+
+def _json_default(kind: str):
+    if kind == "array":
+        return sa.text("'[]'::jsonb") if _is_postgres() else sa.text("'[]'")
+    return sa.text("'{}'::jsonb") if _is_postgres() else sa.text("'{}'")
 
 
 def upgrade() -> None:
     """Upgrade database schema for Phase 4 features."""
-
+    
     # ── Add MFA fields to users table ─────────────────────────────────────────
     op.add_column('users', sa.Column('mfa_enabled', sa.Boolean(), nullable=False, server_default='false'))
     op.add_column('users', sa.Column('mfa_secret', sa.String(length=255), nullable=True))
-    op.add_column('users', _jsonb_column('backup_codes_hash', server_default_json="'[]'"))
-
+    op.add_column('users', sa.Column(
+        'backup_codes_hash',
+        _json_type(),
+        nullable=True,
+        server_default=_json_default("array")
+    ))
+    
     # ── Add notification preferences to users table ───────────────────────────
     op.add_column('users', sa.Column('notify_email_critical', sa.Boolean(), nullable=False, server_default='true'))
     op.add_column('users', sa.Column('notify_email_high', sa.Boolean(), nullable=False, server_default='true'))
     op.add_column('users', sa.Column('notify_slack_critical', sa.Boolean(), nullable=False, server_default='true'))
     op.add_column('users', sa.Column('notify_slack_high', sa.Boolean(), nullable=False, server_default='true'))
     op.add_column('users', sa.Column('notify_sla_breach', sa.Boolean(), nullable=False, server_default='true'))
-
+    
     # ── Create token_blacklist table ──────────────────────────────────────────
     op.create_table(
         'token_blacklist',
@@ -79,26 +63,30 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('token_jti')
     )
-
+    
     # ── Create index for token blacklist cleanup ──────────────────────────────
     op.create_index('ix_token_blacklist_expires_at', 'token_blacklist', ['expires_at'])
-
+    
     # ── Add integration metadata to findings ──────────────────────────────────
-    op.add_column('findings', _jsonb_column(
+    op.add_column('findings', sa.Column(
         'external_ids',
-        server_default_json="'{}'",
-        comment='External integration IDs: {defectdojo: 123, jira: SEC-456}',
+        _json_type(),
+        nullable=True,
+        server_default=_json_default("object"),
+        comment='External integration IDs: {defectdojo: 123, jira: SEC-456}'
     ))
-
+    
     # ── Add SLA tracking to findings ──────────────────────────────────────────
     op.add_column('findings', sa.Column('sla_due_at', sa.DateTime(timezone=True), nullable=True))
     op.add_column('findings', sa.Column('sla_breached', sa.Boolean(), nullable=False, server_default='false'))
-
+    
     # ── Add scan statistics to scans table ────────────────────────────────────
-    op.add_column('scans', _jsonb_column(
+    op.add_column('scans', sa.Column(
         'findings_summary',
-        server_default_json="'{}'",
-        comment='Findings by severity: {critical: 5, high: 10, ...}',
+        _json_type(),
+        nullable=True,
+        server_default=_json_default("object"),
+        comment='Findings by severity: {critical: 5, high: 10, ...}'
     ))
 
 

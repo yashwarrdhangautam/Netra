@@ -1,5 +1,4 @@
 """AI Brain orchestrator for NETRA."""
-import asyncio
 import json
 from typing import Any
 
@@ -8,9 +7,11 @@ import structlog
 from netra.ai.prompts import (
     ANALYST_PROMPT,
     ATTACKER_PROMPT,
+    BOUNTY_HUNTER_PROMPT,
     DEFENDER_PROMPT,
     SKEPTIC_PROMPT,
 )
+from netra.bugbounty.triage.bounty_persona import BountyScore
 from netra.core.config import settings
 from netra.db.models.finding import Finding
 
@@ -24,11 +25,18 @@ class AIBrain:
         """Initialize AI Brain."""
         self.provider = settings.ai_provider
 
-    async def analyze_finding(self, finding: Finding) -> dict[str, Any]:
+    async def analyze_finding(
+        self,
+        finding: Finding,
+        program: Any | None = None,
+        similar_reports: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Analyze a finding with all personas.
 
         Args:
             finding: Finding model instance
+            program: Optional bug bounty program context. When present, BountyHunter
+                runs after the base personas and only if Skeptic did not veto.
 
         Returns:
             Analysis results from all personas with consensus
@@ -40,6 +48,7 @@ class AIBrain:
             "defender": {},
             "analyst": {},
             "skeptic": {},
+            "bounty_hunter": {},
             "confidence": finding.confidence,
         }
 
@@ -50,20 +59,31 @@ class AIBrain:
             )
             return results
 
-        # Run all 4 personas in parallel for 3-4x speedup
-        persona_tasks = [
-            self._query_persona("attacker", ATTACKER_PROMPT, finding_context),
-            self._query_persona("defender", DEFENDER_PROMPT, finding_context),
-            self._query_persona("analyst", ANALYST_PROMPT, finding_context),
-            self._query_persona("skeptic", SKEPTIC_PROMPT, finding_context),
-        ]
-        results["attacker"], results["defender"], results["analyst"], results["skeptic"] = (
-            await asyncio.gather(*persona_tasks)
+        # Run all 4 personas
+        results["attacker"] = await self._query_persona(
+            "attacker", ATTACKER_PROMPT, finding_context
+        )
+        results["defender"] = await self._query_persona(
+            "defender", DEFENDER_PROMPT, finding_context
+        )
+        results["analyst"] = await self._query_persona(
+            "analyst", ANALYST_PROMPT, finding_context
+        )
+        results["skeptic"] = await self._query_persona(
+            "skeptic", SKEPTIC_PROMPT, finding_context
         )
 
         # Consensus voting
         results["consensus"] = self._compute_consensus(results)
         results["confidence"] = results["consensus"].get("final_confidence", finding.confidence)
+
+        if program is not None and not self._skeptic_vetoed(results):
+            bounty_raw = await self._query_persona(
+                "bounty_hunter",
+                BOUNTY_HUNTER_PROMPT,
+                self._format_bounty_context(finding_context, program, similar_reports=similar_reports),
+            )
+            results["bounty_hunter"] = self._normalise_bounty_score(bounty_raw)
 
         return results
 
@@ -83,12 +103,9 @@ class AIBrain:
 
         context = "Analyze these findings for attack chains:\n\n"
         for i, f in enumerate(findings[:50]):  # Limit to 50 findings for token budget
-            url_info = f.url or 'N/A'
-            cwe_info = f.cwe_id or 'N/A'
-            context += f"{i+1}. [{f.severity}] {f.title} at {url_info} (CWE: {cwe_info})\n"
+            context += f"{i+1}. [{f.severity}] {f.title} at {f.url or 'N/A'} (CWE: {f.cwe_id or 'N/A'})\n"
 
-        chain_prompt = """Identify attack chains — sequences of findings that together create
-a more severe attack than any individual finding.
+        chain_prompt = """Identify attack chains — sequences of findings that together create a more severe attack than any individual finding.
 
 For each chain, provide:
 - Chain name and description
@@ -124,6 +141,26 @@ Output JSON array of chains."""
         except Exception as e:
             logger.error("ai_query_failed", persona=persona_name, error=str(e))
             return {"error": str(e)}
+
+    async def query_structured(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """Run a general structured JSON query for planner/router style tasks."""
+        selected_provider = provider or self.provider
+        try:
+            if selected_provider == "anthropic":
+                return await self._query_anthropic_generic(system_prompt, user_prompt, model=model)
+            if selected_provider == "ollama":
+                return await self._query_ollama_generic(system_prompt, user_prompt, model=model)
+        except Exception as e:
+            logger.error("ai_structured_query_failed", provider=selected_provider, error=str(e))
+            return {"error": str(e)}
+        return {}
 
     async def _query_anthropic(
         self, persona_name: str, system_prompt: str, context: str
@@ -161,6 +198,26 @@ Output JSON array of chains."""
         text = response.content[0].text
         return self._parse_ai_json(text)
 
+    async def _query_anthropic_generic(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """Query Anthropic with an arbitrary structured task."""
+        import anthropic
+
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        response = await client.messages.create(
+            model=model or settings.anthropic_model,
+            max_tokens=2000,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        text = response.content[0].text
+        return self._parse_ai_json(text)
+
     async def _query_ollama(
         self, persona_name: str, system_prompt: str, context: str
     ) -> dict[str, Any]:
@@ -185,9 +242,34 @@ Output JSON array of chains."""
                         {"role": "system", "content": system_prompt},
                         {
                             "role": "user",
-                            "content": f"Analyze this finding:\n\n{context}\n\n"
-                                       "Respond with JSON only.",
+                            "content": f"Analyze this finding:\n\n{context}\n\nRespond with JSON only.",
                         },
+                    ],
+                    "stream": False,
+                    "format": "json",
+                },
+            )
+            data = response.json()
+            return self._parse_ai_json(data.get("message", {}).get("content", "{}"))
+
+    async def _query_ollama_generic(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """Query Ollama with an arbitrary structured task."""
+        import httpx
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                f"{settings.ollama_base_url}/api/chat",
+                json={
+                    "model": model or settings.ollama_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
                     ],
                     "stream": False,
                     "format": "json",
@@ -225,7 +307,7 @@ Output JSON array of chains."""
         confidences = []
         for persona in ["attacker", "defender", "analyst", "skeptic"]:
             conf = results.get(persona, {}).get("confidence", 50)
-            if isinstance(conf, int | float):
+            if isinstance(conf, (int, float)):
                 confidences.append(conf)
 
         avg_confidence = sum(confidences) / len(confidences) if confidences else 50
@@ -248,6 +330,74 @@ Output JSON array of chains."""
                 persona: results.get(persona, {}).get("confidence", 50)
                 for persona in ["attacker", "defender", "analyst", "skeptic"]
             },
+        }
+
+    def _skeptic_vetoed(self, results: dict[str, Any]) -> bool:
+        """Return true when the Skeptic blocks BountyHunter scoring."""
+        skeptic = results.get("skeptic", {})
+        verdict = str(skeptic.get("verdict", "")).lower()
+        confidence = skeptic.get("confidence", 0)
+        try:
+            confidence_f = float(confidence)
+        except (TypeError, ValueError):
+            confidence_f = 0.0
+        if confidence_f > 1:
+            confidence_f = confidence_f / 100
+        return verdict == "false_positive" or (
+            verdict == "likely_false_positive" and confidence_f >= 0.80
+        )
+
+    def _format_bounty_context(
+        self,
+        finding_context: str,
+        program: Any,
+        *,
+        similar_reports: list[str] | None = None,
+    ) -> str:
+        """Format BountyHunter's two prompt placeholders into one user context."""
+        program_context = self._program_to_context(program)
+        comparable_reports = "\n".join(f"- {item}" for item in (similar_reports or [])[:5]) or "None"
+        return BOUNTY_HUNTER_PROMPT.format(
+            finding_context=finding_context,
+            program_context=program_context,
+            comparable_reports=comparable_reports,
+        )
+
+    def _program_to_context(self, program: Any) -> str:
+        """Convert a BB program ORM row/dict into compact text for the LLM."""
+        if isinstance(program, dict):
+            data = program
+        else:
+            data = {
+                "platform": getattr(program, "platform", None),
+                "handle": getattr(program, "handle", None),
+                "name": getattr(program, "name", None),
+                "policy_url": getattr(program, "policy_url", None),
+                "payout_min": getattr(program, "payout_min", None),
+                "payout_max": getattr(program, "payout_max", None),
+                "currency": getattr(program, "currency", None),
+                "metadata": getattr(program, "metadata_", None),
+            }
+        return json.dumps(data, default=str, indent=2)[:2000]
+
+    def _normalise_bounty_score(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Normalize BountyHunter persona output into the PRD shape."""
+        try:
+            score = BountyScore(
+                impact=max(1, min(10, int(raw.get("impact", 1)))),
+                novelty=max(1, min(10, int(raw.get("novelty", 1)))),
+                payout=max(1, min(10, int(raw.get("payout", 1)))),
+                rationale=str(raw.get("rationale") or raw.get("rationale_short") or "")[:280],
+            )
+        except (TypeError, ValueError):
+            return {"error": "invalid_bounty_hunter_response", "raw": raw}
+        return {
+            "impact": score.impact,
+            "novelty": score.novelty,
+            "payout": score.payout,
+            "composite": score.composite,
+            "tier": score.tier,
+            "rationale": score.rationale,
         }
 
     def _finding_to_context(self, finding: Finding) -> str:

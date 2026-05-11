@@ -1,7 +1,9 @@
-import { Bell, Plus, HelpCircle, Menu } from 'lucide-react'
+import { Bell, Plus, HelpCircle, Menu, Square } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/stores/authStore'
 import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { bugBountyApi } from '@/api/bugbounty'
 
 interface HeaderProps {
   onMenuClick?: () => void
@@ -10,6 +12,15 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const { user } = useAuthStore()
   const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const [killConfirm, setKillConfirm] = useState('')
+  const [showKillConfirm, setShowKillConfirm] = useState(false)
+  const killSwitch = useMutation({
+    mutationFn: () => bugBountyApi.killSwitch(killConfirm),
+    onSuccess: () => {
+      setShowKillConfirm(false)
+      setKillConfirm('')
+    },
+  })
 
   const handleOpenShortcuts = () => {
     window.dispatchEvent(new CustomEvent('netra:show-shortcuts'))
@@ -43,10 +54,9 @@ export function Header({ onMenuClick }: HeaderProps) {
           </button>
 
           {/* Notifications */}
-          <button 
+          <button
             className="relative rounded-full p-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-            aria-label="Notifications"
-            title="Notifications"
+            aria-label="View notifications"
           >
             <Bell className="h-5 w-5" />
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent" />
@@ -70,6 +80,16 @@ export function Header({ onMenuClick }: HeaderProps) {
             aria-label="New Scan"
           >
             <Plus className="h-5 w-5" />
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowKillConfirm(true)}
+            className="border-red-900 text-red-300 hover:bg-red-950/40"
+          >
+            <Square className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Kill</span>
           </Button>
 
           {/* User */}
@@ -106,6 +126,26 @@ export function Header({ onMenuClick }: HeaderProps) {
           </div>
         </div>
       )}
+
+      {showKillConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-sm rounded border border-red-900 bg-surface p-4">
+            <h2 className="text-lg font-semibold text-red-300">Kill switch</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Type STOP to cancel all active NETRA-BB hunts.</p>
+            <input
+              value={killConfirm}
+              onChange={(event) => setKillConfirm(event.target.value)}
+              className="mt-3 w-full rounded border border-border bg-surface-2 px-3 py-2 font-mono text-sm"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowKillConfirm(false)}>Cancel</Button>
+              <Button variant="destructive" disabled={killConfirm !== 'STOP' || killSwitch.isPending} onClick={() => killSwitch.mutate()}>
+                Stop hunts
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }

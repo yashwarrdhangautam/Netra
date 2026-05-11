@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 T = TypeVar("T")
 
@@ -15,7 +15,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     total: int
     page: int
     per_page: int
-    pages: int
+    pages: int = 0
 
 
 class SeverityLevel(StrEnum):
@@ -41,5 +41,3 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     db: str
-    ai_provider: str = "none"
-    ai_status: str = "unknown"

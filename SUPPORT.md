@@ -41,9 +41,19 @@ Found a security issue? **Do not open a public GitHub issue.**
 
 See **SECURITY.md** for responsible disclosure instructions.
 
+Email: **security@netra.dev**
+
 ## Commercial Support & Services
 
-For commercial support inquiries, consulting, or enterprise deployments, contact the maintainer.
+For commercial support inquiries, consulting, or enterprise deployments:
+
+Email: **support@netra.dev**
+
+We can discuss:
+- Priority support contracts
+- Custom features
+- Managed deployments
+- Training and onboarding
 
 ---
 

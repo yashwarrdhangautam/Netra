@@ -1,6 +1,7 @@
 """Shared test fixtures."""
-import asyncio
 from collections.abc import AsyncGenerator
+import asyncio
+import sys
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -14,11 +15,11 @@ TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
 
 @pytest.fixture(scope="session")
-def event_loop():
-    """Create an event loop for the test session."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+def event_loop_policy():
+    """Use the selector policy on Windows to avoid Proactor teardown crashes in tests."""
+    if sys.platform.startswith("win") and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+        return asyncio.WindowsSelectorEventLoopPolicy()
+    return asyncio.get_event_loop_policy()
 
 
 @pytest.fixture
@@ -39,6 +40,12 @@ async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
     session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
     async with session_factory() as session:
         yield session
+
+
+@pytest.fixture
+async def async_db_session(db_session: AsyncSession) -> AsyncSession:
+    """Backward-compatible alias for older phase tests."""
+    return db_session
 
 
 @pytest.fixture

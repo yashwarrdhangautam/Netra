@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export type UserRole = 'admin' | 'analyst' | 'viewer' | 'client'
 
@@ -14,6 +15,7 @@ export interface User {
 }
 
 interface AuthState {
+  token: string | null
   user: User | null
   isAuthenticated: boolean
   login: (token: string, user: User) => void
@@ -25,41 +27,46 @@ interface AuthState {
   canCreateScans: () => boolean
 }
 
-export const useAuthStore = create<AuthState>()((set, get) => ({
-  user: null,
-  isAuthenticated: false,
-  login: (_token, user) => {
-    // Token is now stored in HttpOnly cookie, not in localStorage
-    // We accept the token param for API compatibility but don't store it client-side
-    set({ user, isAuthenticated: true })
-  },
-  logout: () => {
-    // Clear user state - cookies are cleared by backend
-    set({ user: null, isAuthenticated: false })
-  },
-  updateUser: (updates) => {
-    const currentUser = get().user
-    if (currentUser) {
-      const updatedUser = { ...currentUser, ...updates }
-      set({ user: updatedUser })
-    }
-  },
-  isAdmin: () => {
-    return get().user?.role === 'admin'
-  },
-  isAnalyst: () => {
-    const role = get().user?.role
-    return role === 'admin' || role === 'analyst'
-  },
-  canEdit: () => {
-    const role = get().user?.role
-    return role === 'admin' || role === 'analyst'
-  },
-  canCreateScans: () => {
-    const role = get().user?.role
-    return role === 'admin' || role === 'analyst'
-  },
-}))
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      token: null,
+      user: null,
+      isAuthenticated: false,
+      login: (token, user) => {
+        localStorage.setItem('netra_token', token)
+        set({ token, user, isAuthenticated: true })
+      },
+      logout: () => {
+        localStorage.removeItem('netra_token')
+        set({ token: null, user: null, isAuthenticated: false })
+      },
+      updateUser: (updates) => {
+        const currentUser = get().user
+        if (currentUser) {
+          const updatedUser = { ...currentUser, ...updates }
+          set({ user: updatedUser })
+        }
+      },
+      isAdmin: () => {
+        return get().user?.role === 'admin'
+      },
+      isAnalyst: () => {
+        const role = get().user?.role
+        return role === 'admin' || role === 'analyst'
+      },
+      canEdit: () => {
+        const role = get().user?.role
+        return role === 'admin' || role === 'analyst'
+      },
+      canCreateScans: () => {
+        const role = get().user?.role
+        return role === 'admin' || role === 'analyst'
+      },
+    }),
+    { name: 'netra-auth' }
+  )
+)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>

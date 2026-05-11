@@ -1,0 +1,42 @@
+{
+  "tech_priors": {
+    "next.js": [
+      {
+        "vuln_class": "ssrf",
+        "suggested_tool": "nuclei",
+        "rationale": "Webhook and image optimization surfaces are common places to start."
+      },
+      {
+        "vuln_class": "idor",
+        "suggested_tool": "httpx",
+        "rationale": "API-heavy apps often expose object references under predictable paths."
+      }
+    ],
+    "stripe": [
+      {
+        "vuln_class": "ssrf",
+        "suggested_tool": "nuclei",
+        "rationale": "Webhook endpoints and callback validation are worth checking first."
+      },
+      {
+        "vuln_class": "business_logic",
+        "suggested_tool": "httpx",
+        "rationale": "Payment and order lifecycles tend to carry high-impact state flows."
+      }
+    ],
+    "react": [
+      {
+        "vuln_class": "xss",
+        "suggested_tool": "httpx",
+        "rationale": "Client-side reflection and API error rendering are useful first checks."
+      }
+    ],
+    "wordpress": [
+      {
+        "vuln_class": "exposure",
+        "suggested_tool": "nuclei",
+        "rationale": "Known template coverage is strong and low-risk."
+      }
+    ]
+  }
+}

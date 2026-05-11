@@ -1,0 +1,6 @@
+flowchart TD
+    Code["NETRA source"] --> G["Graphify local output"]
+    Recon["Recon output"] --> G
+    Submissions["Submission history"] --> G
+    G --> Triage["graph-aware triage"]
+    G --> Dedup["similarity dedupe hints"]

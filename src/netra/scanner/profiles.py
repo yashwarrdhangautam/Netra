@@ -130,6 +130,42 @@ PROFILES: dict[str, dict[str, Any]] = {
         "run_checkov": True,
         "run_trivy_config": True,
     },
+
+    # ── Phase 5 Profiles (NETRA-BB) ──
+    "bugbounty_passive": {
+        "description": "Bug bounty passive recon — no probes ever leave the agent",
+        "severity_filter": "critical,high,medium,low,info",
+        "max_targets": 500,
+        "rate_limit": 10,        # rps cap on outbound passive sources
+        "scope_required": True,  # the orchestrator MUST attach a ScopeValidator
+        "active_phases": False,  # no active probing in this profile
+        "use_amass": True,
+        "amass_passive": True,
+        "use_subfinder_passive": True,
+        "use_crtsh": True,
+        "use_github_dorks": True,
+        "timeout_minutes": 60,
+        "threads": 5,
+    },
+    "bugbounty_active": {
+        "description": "Bug bounty active recon — scope-gated, opt-in, low-noise",
+        "severity_filter": "critical,high,medium",
+        "max_targets": 200,
+        "rate_limit": 10,        # rps cap, per-host 2 rps
+        "per_host_rate_limit": 2,
+        "scope_required": True,
+        "active_phases": True,
+        # Active phases each require explicit operator approval at CLI invocation time.
+        "use_httpx": True,
+        "httpx_head_only": True,
+        "use_ffuf": False,       # opt in via --enable-ffuf
+        "use_nuclei_safe": False,  # opt in via --enable-nuclei
+        "nuclei_template_tags": ["cve", "exposure", "misconfig"],
+        "nuclei_severity_cap": "medium",
+        "honour_robots_txt": True,
+        "timeout_minutes": 120,
+        "threads": 5,
+    },
 }
 
 
@@ -143,6 +179,21 @@ def get_profile_config(profile_name: str) -> dict[str, Any]:
         Profile configuration dictionary
     """
     return PROFILES.get(profile_name, PROFILES["standard"])
+
+
+_REQUIRED_DEFAULTS: dict[str, Any] = {
+    "severity_filter": "critical,high,medium",
+    "max_targets": 50,
+    "rate_limit": 100,
+    "port_range": "top-1000",
+    "test_sqli": False,
+    "test_xss": False,
+    "test_dirs": False,
+}
+
+for _profile in PROFILES.values():
+    for _key, _value in _REQUIRED_DEFAULTS.items():
+        _profile.setdefault(_key, _value)
 
 
 def get_available_profiles() -> list[str]:

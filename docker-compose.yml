@@ -13,7 +13,7 @@ services:
       - NETRA_ENVIRONMENT=development
       - NETRA_DEBUG=true
       # Auth
-      - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:?Set NETRA_JWT_SECRET_KEY in .env}
+      - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:-change-me-in-production}
       - NETRA_JWT_EXPIRE_MINUTES=60
       # Notifications
       - NETRA_SLACK_WEBHOOK_URL=${NETRA_SLACK_WEBHOOK_URL:-}
@@ -22,8 +22,13 @@ services:
       - NETRA_SMTP_USER=${NETRA_SMTP_USER:-}
       - NETRA_SMTP_PASSWORD=${NETRA_SMTP_PASSWORD:-}
       - NETRA_NOTIFICATION_EMAIL_FROM=${NETRA_NOTIFICATION_EMAIL_FROM:-}
-      - NETRA_NOTIFICATION_EMAIL_TO=${NETRA_NOTIFICATION_EMAIL_TO:-}
+      - NETRA_NOTIFICATION_EMAIL_TO=${NETRA_NOTIFICATION_EMAIL_TO:-[]}
       # Integrations
+      - H1_API_USERNAME=${H1_API_USERNAME:-}
+      - H1_API_TOKEN=${H1_API_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - BUGCROWD_TOKEN=${BUGCROWD_TOKEN:-}
+      - INTIGRITI_TOKEN=${INTIGRITI_TOKEN:-}
       - NETRA_DEFECTDOJO_URL=${NETRA_DEFECTDOJO_URL:-}
       - NETRA_DEFECTDOJO_API_KEY=${NETRA_DEFECTDOJO_API_KEY:-}
       - NETRA_JIRA_URL=${NETRA_JIRA_URL:-}
@@ -31,12 +36,15 @@ services:
       - NETRA_JIRA_API_TOKEN=${NETRA_JIRA_API_TOKEN:-}
       - NETRA_JIRA_PROJECT_KEY=SEC
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     volumes:
       - netra-data:/home/netra/.netra
+      - evidence-data:/data/evidence
+      - graphify-data:/data/graphify
+      - netra-output:/home/netra/netra_output
     networks:
       - netra-net
     healthcheck:
@@ -56,7 +64,7 @@ services:
       - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
       - NETRA_CELERY_WORKER_CONCURRENCY=4
       # Auth
-      - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:?Set NETRA_JWT_SECRET_KEY in .env}
+      - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:-change-me-in-production}
       # Notifications
       - NETRA_SLACK_WEBHOOK_URL=${NETRA_SLACK_WEBHOOK_URL:-}
       - NETRA_SMTP_HOST=${NETRA_SMTP_HOST:-}
@@ -64,18 +72,65 @@ services:
       - NETRA_SMTP_USER=${NETRA_SMTP_USER:-}
       - NETRA_SMTP_PASSWORD=${NETRA_SMTP_PASSWORD:-}
       # Integrations
+      - H1_API_USERNAME=${H1_API_USERNAME:-}
+      - H1_API_TOKEN=${H1_API_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - BUGCROWD_TOKEN=${BUGCROWD_TOKEN:-}
+      - INTIGRITI_TOKEN=${INTIGRITI_TOKEN:-}
       - NETRA_DEFECTDOJO_URL=${NETRA_DEFECTDOJO_URL:-}
       - NETRA_DEFECTDOJO_API_KEY=${NETRA_DEFECTDOJO_API_KEY:-}
       - NETRA_JIRA_URL=${NETRA_JIRA_URL:-}
       - NETRA_JIRA_EMAIL=${NETRA_JIRA_EMAIL:-}
       - NETRA_JIRA_API_TOKEN=${NETRA_JIRA_API_TOKEN:-}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     volumes:
       - netra-data:/home/netra/.netra
+      - evidence-data:/data/evidence
+      - graphify-data:/data/graphify
+      - netra-output:/home/netra/netra_output
+    networks:
+      - netra-net
+
+  beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    command: celery -A netra.worker.celery_app beat --loglevel=info
+    environment:
+      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+      - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
+      - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:-change-me-in-production}
+      - H1_API_USERNAME=${H1_API_USERNAME:-}
+      - H1_API_TOKEN=${H1_API_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - BUGCROWD_TOKEN=${BUGCROWD_TOKEN:-}
+      - INTIGRITI_TOKEN=${INTIGRITI_TOKEN:-}
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - netra-data:/home/netra/.netra
+      - graphify-data:/data/graphify
+    networks:
+      - netra-net
+
+  migrations:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: alembic upgrade head
+    environment:
+      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - netra-net
 
@@ -100,7 +155,7 @@ services:
 
   # ── PostgreSQL Database ────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       - POSTGRES_USER=netra
       - POSTGRES_PASSWORD=netra
@@ -129,8 +184,21 @@ services:
       retries: 5
     networks:
       - netra-net
+    volumes:
+      - redis-data:/data
 
-  # ── React Frontend (built with Vite, served by Nginx) ──────────────────────
+  bugbounty-mcp:
+    image: ghcr.io/gokulapap/gokulapap-mcp:latest
+    profiles:
+      - bb
+    networks:
+      - netra-net
+    expose:
+      - "3000"
+    environment:
+      - MCP_TRANSPORT=stdio
+
+  # ── Nginx Frontend ─────────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -163,7 +231,11 @@ services:
 
 volumes:
   pg-data:
+  redis-data:
   netra-data:
+  evidence-data:
+  graphify-data:
+  netra-output:
   ollama-data:
 
 networks:

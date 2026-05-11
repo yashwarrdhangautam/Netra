@@ -1,17 +1,22 @@
 """Alembic environment configuration for async SQLAlchemy."""
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool, engine_from_config
+from sqlalchemy import pool
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from netra.db.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+database_url = os.getenv("NETRA_DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -64,13 +69,9 @@ async def run_async_migrations() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
-    sync_engine = engine_from_config(
+    connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-    connectable = create_async_engine(
-        sync_engine.url.render_as_string(hide_password=False),
         poolclass=pool.NullPool,
     )
 

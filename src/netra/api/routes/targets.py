@@ -3,16 +3,18 @@ import uuid
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.api.deps import get_current_active_user
-from netra.core.rate_limiter import RateLimitProfiles, rate_limit
-from netra.core.ssrf_protection import SSRFProtectionError, validate_scan_target
-from netra.db.models.target import Target
-from netra.db.models.user import User
 from netra.db.session import get_db
+from netra.api.deps import get_db_session
+from netra.api.routes.auth import get_current_active_user
+from netra.db.models.user import User
+from netra.db.models.target import Target, TargetType
+from netra.core.ssrf_protection import validate_scan_target, SSRFProtectionError
+from netra.core.rate_limiter import rate_limit, RateLimitProfiles
+from netra.schemas.common import PaginatedResponse
 
 logger = structlog.get_logger()
 
@@ -20,6 +22,8 @@ router = APIRouter(prefix="/targets", tags=["Targets"])
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
+
+from pydantic import BaseModel, Field
 
 
 class TargetCreate(BaseModel):
@@ -81,6 +85,58 @@ class TargetValidationResponse(BaseModel):
 
 
 # ── Target Routes ────────────────────────────────────────────────────────────
+
+
+@router.get("/", response_model=PaginatedResponse[TargetListResponse])
+async def list_targets(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db_session),
+) -> PaginatedResponse[TargetListResponse]:
+    """List scan targets."""
+    query = select(Target).order_by(Target.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
+    result = await db.execute(query)
+    targets = list(result.scalars().all())
+
+    total_result = await db.execute(select(Target))
+    total = len(list(total_result.scalars().all()))
+
+    return PaginatedResponse(
+        items=[
+            TargetListResponse(
+                id=str(target.id),
+                name=target.name,
+                target_type=str(target.target_type),
+                value=target.value,
+                created_at=target.created_at.isoformat(),
+            )
+            for target in targets
+        ],
+        total=total,
+        page=page,
+        per_page=per_page,
+    )
+
+
+@router.get("/{target_id}", response_model=TargetResponse)
+async def get_target(
+    target_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> TargetResponse:
+    """Get a target by ID."""
+    target = await db.get(Target, target_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target not found")
+    return TargetResponse(
+        id=str(target.id),
+        name=target.name,
+        target_type=str(target.target_type),
+        value=target.value,
+        scope_includes=target.scope_includes,
+        scope_excludes=target.scope_excludes,
+        metadata=target.metadata_,
+        created_at=target.created_at.isoformat(),
+    )
 
 
 @router.post("/", response_model=TargetResponse, status_code=status.HTTP_201_CREATED)
@@ -147,10 +203,10 @@ async def create_target(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Target validation failed: {str(e)}",
-        ) from e
+        )
     except Exception as e:
         logger.error("target_creation_error", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create target",
-        ) from e
+        )

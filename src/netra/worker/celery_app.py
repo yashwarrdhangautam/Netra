@@ -3,6 +3,7 @@ from celery import Celery
 from celery.schedules import crontab
 
 from netra.core.config import settings
+from netra.worker.beat_schedule import BB_BEAT_SCHEDULE
 
 celery_app = Celery(
     "netra",
@@ -37,3 +38,4 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(day_of_week=0, hour=2, minute=0),  # Weekly Sunday 2am
     },
 }
+celery_app.conf.beat_schedule.update(BB_BEAT_SCHEDULE)

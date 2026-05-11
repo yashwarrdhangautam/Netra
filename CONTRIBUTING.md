@@ -1,142 +1,118 @@
 # Contributing to NETRA
 
-Thank you for your interest in contributing to NETRA! This document provides guidelines and instructions for contributing.
+Thanks for helping improve NETRA.
 
-## Code of Conduct
+This project mixes backend orchestration, frontend operator workflows, and security-focused product design, so good contributions tend to be small, explicit, and test-backed.
 
-By participating in this project, you agree to abide by our Code of Conduct:
-- Be respectful and inclusive
-- Focus on constructive feedback
-- Welcome newcomers and help them learn
+## Before you start
 
-## Getting Started
+- Read the current [README.md](README.md)
+- Check the relevant docs in [docs/](docs/)
+- Prefer opening an issue or a focused draft PR before large changes
+
+## Development setup
 
 ### Prerequisites
 - Python 3.12+
-- Poetry for dependency management
-- Docker and Docker Compose (for containerized development)
-- Git
+- Poetry
+- Node.js 22+
+- Docker and Docker Compose
 
-### Setting Up Development Environment
+### Install
 
-1. **Fork and clone the repository:**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/netra.git
-   cd netra
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   poetry install
-   ```
-
-3. **Set up pre-commit hooks:**
-   ```bash
-   make pre-commit-install
-   ```
-
-4. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings
-   ```
-
-## Development Workflow
-
-### Making Changes
-
-1. **Create a branch:**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Make your changes** following the coding standards below.
-
-3. **Run tests:**
-   ```bash
-   make test
-   ```
-
-4. **Run linting and type checking:**
-   ```bash
-   make lint
-   make typecheck
-   ```
-
-5. **Commit your changes:**
-   ```bash
-   git commit -m "feat: add your feature description"
-   ```
-
-### Coding Standards
-
-- **Type hints:** All functions must have type hints for parameters and return values
-- **Documentation:** Add docstrings to public functions and classes
-- **Testing:** Write tests for new functionality
-- **Formatting:** Code is automatically formatted with ruff
-- **Security:** Follow OWASP Top 10 secure coding practices
-
-### Commit Message Convention
-
-We use conventional commits:
-- `feat:` New feature
-- `fix:` Bug fix
-- `docs:` Documentation changes
-- `style:` Code style changes (formatting, etc.)
-- `refactor:` Code refactoring
-- `test:` Test additions or modifications
-- `chore:` Maintenance tasks
-
-Example:
-```
-feat: add SQL injection testing with sqlmap
-
-- Implement sqlmap tool wrapper
-- Add configuration for risk levels
-- Include safe mode for detection-only scans
-```
-
-## Submitting Changes
-
-1. **Push to your fork:**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-2. **Open a Pull Request** on GitHub with:
-   - Clear title following conventional commits
-   - Description of changes
-   - Reference to any related issues
-   - Screenshots if UI changes
-
-3. **Address review feedback** promptly
-
-## Testing
-
-### Running Tests
 ```bash
-# Run all tests
-make test
-
-# Run with coverage
-make test-cov
-
-# Run specific test file
-pytest tests/test_api/test_scans.py
+git clone https://github.com/yashwarrdhangautam/Netra.git
+cd Netra
+poetry install
+cd frontend && npm install
 ```
 
-### Writing Tests
-- Place tests in the `tests/` directory
-- Mirror the source structure
-- Use fixtures from `conftest.py`
-- Mark async tests with `@pytest.mark.asyncio`
+### Environment
 
-## Questions?
+```bash
+cp .env.example .env
+```
 
-- Check existing issues and discussions
-- Read the documentation in `docs/`
-- Ask in GitHub Discussions
+Set local values for the services you want to use. For bug bounty work, Ollama and platform credentials are the main ones.
 
-## License
+## Local checks
 
-By contributing, you agree that your contributions will be licensed under the AGPL-3.0 License.
+### Backend
+
+```bash
+$env:PYTHONPATH="src"
+pytest
+alembic upgrade head
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm.cmd run build
+```
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+## Contribution rules
+
+### Code
+- Add type hints
+- Follow the existing local patterns before introducing new abstractions
+- Keep edits scoped to the feature or bug being addressed
+- Do not silently weaken scope or safety checks
+
+### Tests
+- Add or update tests for behavior changes
+- Prefer focused regression tests when fixing bugs
+- For bug bounty features, include safety-path assertions where relevant
+
+### Security and safety
+- Scope enforcement must remain server-side
+- Verifier behavior must stay allowlist-driven
+- Public prior art may inform reasoning, but should not be copied into operator-facing outputs without explicit safeguards
+
+## Commit style
+
+Use conventional-style commit messages where practical:
+
+- `feat:`
+- `fix:`
+- `docs:`
+- `test:`
+- `refactor:`
+- `chore:`
+
+Examples:
+
+```text
+feat: add corpus source rate limiting
+fix: block verbatim overlap in submission drafts
+docs: refresh README for v1.0.0 release
+```
+
+## Pull requests
+
+Please include:
+- a clear summary
+- what changed
+- how it was tested
+- screenshots for GUI changes when useful
+
+If a change touches bug bounty safety controls, call that out explicitly in the PR description.
+
+## Release hygiene
+
+For release-facing changes, update the relevant docs:
+- [README.md](README.md)
+- [CHANGELOG.md](CHANGELOG.md)
+- [docs/bugbounty.md](docs/bugbounty.md)
+- any API or configuration docs affected by the change
+
+## Questions
+
+If something is ambiguous, open the smallest question that unblocks the work. Small, explicit communication beats a broad guess here.

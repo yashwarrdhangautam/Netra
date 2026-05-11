@@ -1,10 +1,8 @@
 """Application configuration via Pydantic Settings."""
-import secrets
-import warnings
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +18,7 @@ class Settings(BaseSettings):
 
     # ── App ──
     app_name: str = "NETRA"
-    app_version: str = "1.0.0"
+    app_version: str = "0.1.0"
     environment: Literal["development", "staging", "production"] = "development"
     debug: bool = False
     log_level: str = "INFO"
@@ -39,42 +37,9 @@ class Settings(BaseSettings):
     api_rate_limit: str = "100/minute"
 
     # ── Auth ──
-    jwt_secret_key: str = ""
+    jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
-    csrf_secret_key: str = ""
-    cookie_secure: bool = False  # Set to True in production with HTTPS
-    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
-
-    @model_validator(mode="after")
-    def validate_jwt_secret(self) -> "Settings":
-        """Ensure JWT secret is set properly.
-
-        In production, require an explicit secret key.
-        In development, generate a random one if not provided.
-        """
-        insecure_defaults = {"", "CHANGE-ME-IN-PRODUCTION", "change-me-in-production", "secret"}
-        if self.jwt_secret_key in insecure_defaults:
-            if self.environment == "production":
-                raise ValueError(
-                    "NETRA_JWT_SECRET_KEY must be set to a strong secret in "
-                    "production. Generate one with: "
-                    "python -c \"import secrets; print(secrets.token_urlsafe(64))\""
-                )
-            # Auto-generate for development only
-            self.jwt_secret_key = secrets.token_urlsafe(64)
-            warnings.warn(
-                "JWT secret not set — auto-generated for development. "
-                "Set NETRA_JWT_SECRET_KEY for persistent sessions.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        # Auto-generate CSRF secret if not provided
-        if not self.csrf_secret_key:
-            self.csrf_secret_key = secrets.token_urlsafe(64)
-
-        return self
 
     # ── AI ──
     anthropic_api_key: str = ""
@@ -82,6 +47,11 @@ class Settings(BaseSettings):
     anthropic_skeptic_model: str = "claude-haiku-4-5-20251001"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
+    agentic_orchestrator_model: str = ""
+    agentic_service_analyst_model: str = ""
+    agentic_security_expert_model: str = ""
+    agentic_attack_path_model: str = ""
+    agentic_report_synth_model: str = ""
     ai_token_budget_per_scan: int = 50000
     ai_provider: Literal["anthropic", "ollama", "none"] = "none"
 
@@ -109,6 +79,11 @@ class Settings(BaseSettings):
     # ── Reports ──
     reports_dir: Path = Path.home() / ".netra" / "reports"
     evidence_dir: Path = Path.home() / ".netra" / "evidence"
+    corpus_source_hackerone: bool = True
+    corpus_source_advisories: bool = True
+    corpus_source_writeups: bool = True
+    corpus_obey_robots: bool = True
+    corpus_default_rps: float = 1.0
 
 
 settings = Settings()

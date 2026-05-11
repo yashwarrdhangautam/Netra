@@ -470,8 +470,6 @@ function getMockFindings(): Finding[] {
         attacker: {
           attack_chains: [
             {
-              name: 'SQL Injection Chain',
-              description: 'Exploit SQL injection to escalate access via weak passwords and debug log exposure',
               steps: ['finding-001', 'finding-002', 'finding-004'],
             },
           ],
@@ -495,8 +493,6 @@ function getMockFindings(): Finding[] {
         attacker: {
           attack_chains: [
             {
-              name: 'Credential Exploit Chain',
-              description: 'Leverage weak passwords to hijack active sessions',
               steps: ['finding-002', 'finding-003'],
             },
           ],
@@ -537,8 +533,6 @@ function getMockFindings(): Finding[] {
         attacker: {
           attack_chains: [
             {
-              name: 'Data Leakage Chain',
-              description: 'Exploit debug log exposure to access unprotected endpoints',
               steps: ['finding-004', 'finding-005'],
             },
           ],

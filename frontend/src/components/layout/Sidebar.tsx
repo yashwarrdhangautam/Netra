@@ -9,7 +9,14 @@ import {
   Settings,
   Bug,
   LogOut,
-  Users
+  Users,
+  ShieldAlert,
+  Activity,
+  FileSearch,
+  ClipboardList,
+  Stethoscope,
+  AlertCircle,
+  GitBranch,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/formatters'
@@ -24,6 +31,15 @@ const navigation = [
   { name: 'Attack Graph', href: '/attack-graph', icon: Network },
   { name: 'Users', href: '/users', icon: Users, adminOnly: true },
   { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'BB Console', href: '/bb', icon: ShieldCheck },
+  { name: 'BB Programs', href: '/bb/programs', icon: ClipboardList },
+  { name: 'BB Scope', href: '/bb/scope', icon: ShieldAlert },
+  { name: 'BB Hunts', href: '/bb/hunts', icon: Activity },
+  { name: 'BB Triage', href: '/bb/triage', icon: FileSearch },
+  { name: 'BB Submissions', href: '/bb/submissions', icon: FileText },
+  { name: 'BB Graph', href: '/bb/graph', icon: GitBranch },
+  { name: 'BB Audit', href: '/bb/audit', icon: AlertCircle },
+  { name: 'BB Doctor', href: '/bb/doctor', icon: Stethoscope },
 ]
 
 export function Sidebar() {

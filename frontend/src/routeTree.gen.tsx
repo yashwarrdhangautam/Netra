@@ -13,6 +13,17 @@ import { Settings } from '@/pages/Settings'
 import { Login } from '@/pages/Login'
 import { Users } from '@/pages/Users'
 import { ScanCompare } from '@/pages/ScanCompare'
+import { BBConsole } from '@/pages/bb/BBConsole'
+import { BBPrograms } from '@/pages/bb/BBPrograms'
+import { BBScope } from '@/pages/bb/BBScope'
+import { BBHunts } from '@/pages/bb/BBHunts'
+import { BBTriage } from '@/pages/bb/BBTriage'
+import { BBSubmissions } from '@/pages/bb/BBSubmissions'
+import { BBAudit } from '@/pages/bb/BBAudit'
+import { BBDoctor } from '@/pages/bb/BBDoctor'
+import { BBFindingLab } from '@/pages/bb/BBFindingLab'
+import { BBGraph } from '@/pages/bb/BBGraph'
+import { BBSubmissionDetail } from '@/pages/bb/BBSubmissionDetail'
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -100,6 +111,72 @@ const loginRoute = createRoute({
   component: Login,
 })
 
+const bbRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb',
+  component: BBConsole,
+})
+
+const bbProgramsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/programs',
+  component: BBPrograms,
+})
+
+const bbScopeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/scope',
+  component: BBScope,
+})
+
+const bbHuntsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/hunts',
+  component: BBHunts,
+})
+
+const bbTriageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/triage',
+  component: BBTriage,
+})
+
+const bbSubmissionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/submissions',
+  component: BBSubmissions,
+})
+
+const bbSubmissionDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/submissions/$submissionId',
+  component: BBSubmissionDetail,
+})
+
+const bbAuditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/audit',
+  component: BBAudit,
+})
+
+const bbDoctorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/doctor',
+  component: BBDoctor,
+})
+
+const bbFindingLabRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/findings/$findingId',
+  component: BBFindingLab,
+})
+
+const bbGraphRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/graph',
+  component: BBGraph,
+})
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   scansRoute,
@@ -114,4 +191,15 @@ export const routeTree = rootRoute.addChildren([
   settingsRoute,
   usersRoute,
   loginRoute,
+  bbRoute,
+  bbProgramsRoute,
+  bbScopeRoute,
+  bbHuntsRoute,
+  bbTriageRoute,
+  bbSubmissionsRoute,
+  bbSubmissionDetailRoute,
+  bbAuditRoute,
+  bbDoctorRoute,
+  bbFindingLabRoute,
+  bbGraphRoute,
 ])

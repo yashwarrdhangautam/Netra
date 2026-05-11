@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { CheckCircle, AlertCircle, Clock } from 'lucide-react'
@@ -31,37 +30,26 @@ export function Dashboard() {
     queryFn: () => findingsApi.list({ page: 1, per_page: 100 }),
   })
 
-  // Calculate stats with useMemo to prevent recalculation on every render
-  const severityCounts = useMemo(() => {
-    const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
-    findings?.data.forEach((f) => {
-      counts[f.severity as keyof typeof counts]++
-    })
-    return counts
-  }, [findings?.data])
+  // Calculate stats
+  const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
+  findings?.data.forEach((f) => {
+    severityCounts[f.severity as keyof typeof severityCounts]++
+  })
 
   const totalFindings = findings?.total || 0
-  
-  const riskScore = useMemo(() => {
-    return Math.min(
-      100,
-      severityCounts.critical * 25 +
-      severityCounts.high * 15 +
-      severityCounts.medium * 5 +
-      severityCounts.low * 1
-    )
-  }, [severityCounts])
-  
-  const riskGrade = useMemo(() => {
-    return riskScore >= 80 ? 'F' : riskScore >= 60 ? 'D' : riskScore >= 40 ? 'C' : riskScore >= 20 ? 'B' : 'A'
-  }, [riskScore])
+  const riskScore = Math.min(
+    100,
+    severityCounts.critical * 25 +
+    severityCounts.high * 15 +
+    severityCounts.medium * 5 +
+    severityCounts.low * 1
+  )
+  const riskGrade = riskScore >= 80 ? 'F' : riskScore >= 60 ? 'D' : riskScore >= 40 ? 'C' : riskScore >= 20 ? 'B' : 'A'
 
-  const severityData = useMemo(() => {
-    return Object.entries(severityCounts).map(([name, value]) => ({
-      name: name.charAt(0).toUpperCase() + name.slice(1),
-      value,
-    }))
-  }, [severityCounts])
+  const severityData = Object.entries(severityCounts).map(([name, value]) => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    value,
+  }))
 
   return (
     <div className="space-y-6">
