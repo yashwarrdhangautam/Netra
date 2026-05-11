@@ -1,8 +1,9 @@
 """Autonomous pentest agent API endpoints."""
-import structlog
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = structlog.get_logger()
+from netra.api.deps import get_db_session
 
 router = APIRouter(prefix="/api/v1/agent", tags=["Agent"])
 
@@ -14,23 +15,27 @@ async def start_agent(
 ) -> dict:
     """Start a new autonomous pentest agent session."""
     from netra.ai.agent import create_agent_session
+    import structlog
+
+    logger = structlog.get_logger()
 
     try:
         agent = create_agent_session()
         result = await agent.start(target, profile)
         return result
-    except Exception:
-        # Log sanitized error internally — never expose exception details
-        # to prevent information leakage (CWE-209, CodeQL py/stack-trace-exposure)
-        logger.exception(
+    except Exception as e:
+        # Log full error internally but return sanitized message to user
+        # Never expose exception details to prevent information leakage
+        logger.error(
             "agent_session_creation_failed",
             target=target,
             profile=profile,
+            error_type=type(e).__name__,
         )
         raise HTTPException(
             status_code=500,
             detail="Failed to create agent session. Please check server logs.",
-        ) from None
+        )
 
 
 @router.get("/{session_id}/status")

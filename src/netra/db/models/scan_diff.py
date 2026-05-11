@@ -2,7 +2,7 @@
 import uuid
 
 from sqlalchemy import ForeignKey, Integer
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON as JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from netra.db.models.base import Base

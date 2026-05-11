@@ -24,12 +24,14 @@ export function CopyCurlButton({
     setError(null)
 
     try {
-      // Fetch cURL command from API (cookies are sent automatically with credentials)
-      const baseUrl = import.meta.env.VITE_API_URL || '/api'
+      // Fetch cURL command from API
+      const token = localStorage.getItem('netra_token')
       const response = await fetch(
-        `${baseUrl}/v1/findings/${findingId}/curl`,
+        `http://localhost:8000/api/v1/findings/${findingId}/curl`,
         {
-          credentials: 'include', // Include cookies for authentication
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
         }
       )
 
@@ -65,7 +67,6 @@ export function CopyCurlButton({
         onClick={handleCopy}
         disabled={loading}
         title="Copy as cURL command"
-        aria-label="Copy as cURL command"
       >
         {loading ? (
           <span className="animate-spin">⏳</span>

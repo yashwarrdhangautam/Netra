@@ -23,4 +23,17 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          tanstack: ['@tanstack/react-query', '@tanstack/react-router', '@tanstack/react-table'],
+          recharts: ['recharts'],
+          forcegraph: ['react-force-graph-2d'],
+          ui: ['lucide-react'],
+        },
+      },
+    },
+  },
 })

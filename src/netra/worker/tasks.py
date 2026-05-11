@@ -1,24 +1,39 @@
 """Celery tasks for distributed scan execution."""
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import structlog
-from celery import chain
+from celery import chain, group
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from netra.worker.celery_app import celery_app
 from netra.db.models.scan import Scan, ScanStatus
 from netra.db.models.scan_phase import PhaseStatus, PhaseType, ScanPhase
+from netra.scanner.tools.process_control import (
+    clear_task_registry,
+    kill_registered_processes,
+    reset_current_task_id,
+    set_current_task_id,
+)
+from netra.scanner.tools.subfinder import SubfinderTool
 from netra.scanner.tools.amass import AmassTool
+from netra.scanner.tools.httpx import HttpxTool
+from netra.scanner.tools.nmap import NmapTool
+from netra.scanner.tools.nuclei import NucleiTool
+from netra.scanner.tools.nikto import NiktoTool
+from netra.scanner.tools.sqlmap import SqlmapTool
 from netra.scanner.tools.dalfox import DalfoxTool
 from netra.scanner.tools.ffuf import FfufTool
-from netra.scanner.tools.httpx import HttpxTool
-from netra.scanner.tools.nikto import NiktoTool
-from netra.scanner.tools.nuclei import NucleiTool
-from netra.scanner.tools.sqlmap import SqlmapTool
-from netra.scanner.tools.subfinder import SubfinderTool
-from netra.worker.celery_app import celery_app
+from netra.scanner.tools.semgrep import SemgrepTool
+from netra.scanner.tools.gitleaks import GitleaksTool
+from netra.scanner.tools.dependency_scan import PipAuditTool
+from netra.scanner.tools.prowler import ProwlerTool
+from netra.scanner.tools.trivy import TrivyTool
+from netra.scanner.tools.checkov import CheckovTool
+from netra.scanner.tools.llm_security import LLMSecurityTool
 
 logger = structlog.get_logger()
 
@@ -35,6 +50,13 @@ def _phase_dir(scan_id: uuid.UUID, phase_type: str) -> Path:
     d = Path.home() / ".netra" / "scans" / str(scan_id)[:8] / phase_type
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _task_request_id(task: Any) -> str | None:
+    """Best-effort Celery task id lookup that is easy to override in tests."""
+    request = getattr(task, "request", None)
+    task_id = getattr(request, "id", None)
+    return str(task_id) if task_id else None
 
 
 @celery_app.task(bind=True, name="netra.scope_resolution", acks_late=True)
@@ -68,6 +90,7 @@ def scope_resolution(self, scan_id: str) -> dict:
 
 async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dict:
     """Execute scope resolution phase."""
+    from netra.db.models.target import Target
 
     result = await db.execute(select(Scan).where(Scan.id == scan_id))
     scan = result.scalar_one_or_none()
@@ -323,8 +346,8 @@ async def _execute_active_test(db: AsyncSession, scan_id: uuid.UUID, previous_re
     total_findings = 0
 
     try:
-        from netra.db.models.finding import Finding
         from netra.services.finding_service import FindingService
+        from netra.db.models.finding import Finding
         service = FindingService(db)
 
         # Get parameterized URLs
@@ -548,14 +571,14 @@ async def _update_phase_status(
             scan_id=scan_id,
             phase_type=phase_type,
             status=PhaseStatus.COMPLETED if result.get("status") == "completed" else PhaseStatus.FAILED,
-            started_at=datetime.now(UTC),
-            completed_at=datetime.now(UTC),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
             findings_count=result.get("findings_count", result.get("count", 0)),
         )
         db.add(phase)
     else:
         phase.status = PhaseStatus.COMPLETED if result.get("status") == "completed" else PhaseStatus.FAILED
-        phase.completed_at = datetime.now(UTC)
+        phase.completed_at = datetime.now(timezone.utc)
         phase.findings_count = result.get("findings_count", result.get("count", 0))
         if result.get("status") == "failed":
             phase.error_message = result.get("error", "Unknown error")
@@ -597,6 +620,8 @@ def run_scan(self, scan_id: str) -> dict:
     """
     scan_uuid = uuid.UUID(scan_id)
     db = _get_db_session()
+    task_id = _task_request_id(self)
+    task_token = set_current_task_id(task_id)
 
     try:
         import asyncio
@@ -607,7 +632,7 @@ def run_scan(self, scan_id: str) -> dict:
             scan = result.scalar_one_or_none()
             if scan:
                 scan.status = ScanStatus.RUNNING
-                scan.started_at = datetime.now(UTC)
+                scan.started_at = datetime.now(timezone.utc)
                 await db.commit()
 
         asyncio.run(update_status())
@@ -622,7 +647,7 @@ def run_scan(self, scan_id: str) -> dict:
             scan = result.scalar_one_or_none()
             if scan:
                 scan.status = ScanStatus.COMPLETED
-                scan.completed_at = datetime.now(UTC)
+                scan.completed_at = datetime.now(timezone.utc)
                 await db.commit()
 
         asyncio.run(complete_scan())
@@ -636,17 +661,225 @@ def run_scan(self, scan_id: str) -> dict:
     except Exception as e:
         logger.error("scan_failed", scan_id=scan_id, error=str(e))
 
-        async def fail_scan(error_msg: str):
+        async def fail_scan():
             result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
             scan = result.scalar_one_or_none()
             if scan:
                 scan.status = ScanStatus.FAILED
-                scan.error_message = error_msg
-                scan.completed_at = datetime.now(UTC)
+                scan.error_message = str(e)
+                scan.completed_at = datetime.now(timezone.utc)
                 await db.commit()
 
-        asyncio.run(fail_scan(str(e)))
+        asyncio.run(fail_scan())
 
         return {"scan_id": scan_id, "status": "failed", "error": str(e)}
+    finally:
+        asyncio.run(db.close())
+        if task_id:
+            clear_task_registry(task_id)
+        reset_current_task_id(task_token)
+
+
+@celery_app.task(bind=True, name="netra.run_bugbounty_scan", acks_late=True)
+def run_bugbounty_scan(self, scan_id: str) -> dict:
+    """Run a NETRA-BB scan through the orchestrator."""
+    scan_uuid = uuid.UUID(scan_id)
+    db = _get_db_session()
+    task_id = _task_request_id(self)
+    task_token = set_current_task_id(task_id)
+
+    try:
+        import asyncio
+
+        async def execute():
+            from netra.scanner.orchestrator import ScanOrchestrator
+            from netra.db.models.finding import Finding
+
+            result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
+            scan = result.scalar_one_or_none()
+            if scan:
+                scan.status = ScanStatus.RUNNING
+                scan.started_at = datetime.now(timezone.utc)
+                scan.config = {
+                    **(scan.config or {}),
+                    "celery_task_id": task_id,
+                }
+                await db.commit()
+
+            orchestrator = ScanOrchestrator(db, scan_uuid)
+            await orchestrator.execute()
+
+            result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
+            scan = result.scalar_one_or_none()
+            if not scan:
+                return {"scan_id": scan_id, "status": "failed", "error": "Scan not found"}
+
+            findings_result = await db.execute(select(Finding).where(Finding.scan_id == scan_uuid))
+            findings = list(findings_result.scalars().all())
+            scan.checkpoint_data = {
+                **(scan.checkpoint_data or {}),
+                "findings_summary": {
+                    "total": len(findings),
+                    "by_severity": {
+                        sev: sum(1 for f in findings if str(f.severity) == sev)
+                        for sev in ["critical", "high", "medium", "low", "info"]
+                    },
+                },
+            }
+            scan.config = {
+                **(scan.config or {}),
+                "celery_task_id": task_id,
+            }
+            await db.commit()
+            return {"scan_id": scan_id, "status": str(scan.status), "findings": len(findings)}
+
+        return asyncio.run(execute())
+    except Exception as e:
+        logger.error("bb_scan_failed", scan_id=scan_id, error=str(e))
+        if task_id:
+            kill_registered_processes(task_id)
+
+        async def fail_scan():
+            result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
+            scan = result.scalar_one_or_none()
+            if scan:
+                scan.status = ScanStatus.FAILED
+                scan.error_message = str(e)
+                scan.completed_at = datetime.now(timezone.utc)
+                await db.commit()
+
+        asyncio.run(fail_scan())
+        return {"scan_id": scan_id, "status": "failed", "error": str(e)}
+    finally:
+        asyncio.run(db.close())
+        if task_id:
+            clear_task_registry(task_id)
+        reset_current_task_id(task_token)
+
+
+@celery_app.task(bind=True, name="netra.export_bugbounty_submissions")
+def export_bugbounty_submissions(self) -> dict:
+    """Export submissions to Graphify JSON."""
+    db = _get_db_session()
+    try:
+        import asyncio
+
+        async def run():
+            from netra.bugbounty.graph_indexer import export_submissions_json
+            from netra.db.models.bb_submission import BBSubmission
+            result = await db.execute(select(BBSubmission))
+            rows = result.scalars().all()
+            records = [
+                {
+                    "id": s.id,
+                    "title": s.title,
+                    "severity": s.severity,
+                    "status": s.status,
+                    "program_id": s.program_id,
+                    "finding_id": s.finding_id,
+                    "vuln_class": (s.metadata_ or {}).get("vuln_class"),
+                    "asset_path": (s.metadata_ or {}).get("asset_path"),
+                }
+                for s in rows
+            ]
+            path = export_submissions_json(records, Path("data/graphify/submissions.json"))
+            return {"status": "completed", "count": len(records), "path": str(path)}
+
+        return asyncio.run(run())
+    finally:
+        asyncio.run(db.close())
+
+
+@celery_app.task(bind=True, name="netra.ingest_hacktivity_daily", max_retries=3)
+def ingest_hacktivity_daily(self) -> dict:
+    """Ingest newly disclosed HackerOne hacktivity into the local corpus."""
+    db = _get_db_session()
+    try:
+        import asyncio
+
+        async def run():
+            from netra.bugbounty.learning.sources.hackerone import ingest_hacktivity
+
+            return await ingest_hacktivity(db, since_days=1)
+
+        result = asyncio.run(run())
+        return {"status": "completed", **result}
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+    finally:
+        asyncio.run(db.close())
+
+
+@celery_app.task(bind=True, name="netra.ingest_advisories_daily", max_retries=3)
+def ingest_advisories_daily(self) -> dict:
+    """Ingest GHSA and NVD advisories into the local corpus."""
+    db = _get_db_session()
+    try:
+        import asyncio
+
+        async def run():
+            from netra.bugbounty.learning.sources.advisories import ingest_advisories
+
+            return await ingest_advisories(db)
+
+        result = asyncio.run(run())
+        return {"status": "completed", **result}
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+    finally:
+        asyncio.run(db.close())
+
+
+@celery_app.task(bind=True, name="netra.ingest_public_writeups", max_retries=3)
+def ingest_public_writeups(self) -> dict:
+    """Ingest public RSS writeups into the local corpus."""
+    db = _get_db_session()
+    try:
+        import asyncio
+
+        async def run():
+            from netra.bugbounty.learning.sources.rss import ingest_public_writeups
+
+            return await ingest_public_writeups(db)
+
+        result = asyncio.run(run())
+        return {"status": "completed", **result}
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+    finally:
+        asyncio.run(db.close())
+
+
+@celery_app.task(bind=True, name="netra.resync_all_active_programs", max_retries=3)
+def resync_all_active_programs(self) -> dict:
+    """Nightly scope resync for active H1 programs."""
+    db = _get_db_session()
+    try:
+        import asyncio
+
+        async def run():
+            from netra.bugbounty.programs import replace_scope_rules
+            from netra.db.models.bb_program import BBPlatform, BBProgram
+            from netra.integrations.hackerone import HackerOneClient
+            from netra.notifications.bugbounty import notify_scope_diff
+
+            result = await db.execute(select(BBProgram).where(BBProgram.active.is_(True)))
+            programs = list(result.scalars().all())
+            changed = 0
+            async with HackerOneClient() as h1:
+                for program in programs:
+                    if program.platform != BBPlatform.HACKERONE or not h1.is_configured():
+                        continue
+                    rules = await h1.get_structured_scopes(program.handle)
+                    diff = await replace_scope_rules(db, program, rules)
+                    if diff.has_changes:
+                        changed += 1
+                        await notify_scope_diff(program, diff)
+            await db.commit()
+            return {"status": "completed", "programs": len(programs), "changed": changed}
+
+        return asyncio.run(run())
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
     finally:
         asyncio.run(db.close())

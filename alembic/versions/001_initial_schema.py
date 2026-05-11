@@ -5,7 +5,7 @@ Revises:
 Create Date: 2026-03-28
 
 """
-from typing import Sequence, Union
+from typing import Any, Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
@@ -16,6 +16,16 @@ revision: str = '001'
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+
+def _is_postgres() -> bool:
+    return op.get_bind().dialect.name == "postgresql"
+
+
+def _json_type() -> sa.types.TypeEngine[Any]:
+    if _is_postgres():
+        return postgresql.JSONB(astext_type=sa.Text())
+    return sa.JSON()
 
 
 def upgrade() -> None:
@@ -93,9 +103,9 @@ def upgrade() -> None:
         sa.Column('name', sa.String(length=255), nullable=False),
         sa.Column('target_type', sa.String(length=20), nullable=False),
         sa.Column('value', sa.Text(), nullable=False),
-        sa.Column('scope_includes', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('scope_excludes', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('metadata_', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('scope_includes', _json_type(), nullable=True),
+        sa.Column('scope_excludes', _json_type(), nullable=True),
+        sa.Column('metadata_', _json_type(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id')
@@ -125,9 +135,9 @@ def upgrade() -> None:
         sa.Column('target_id', sa.Uuid(), nullable=False),
         sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('config', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('config', _json_type(), nullable=True),
         sa.Column('error_message', sa.Text(), nullable=True),
-        sa.Column('checkpoint_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('checkpoint_data', _json_type(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['target_id'], ['targets.id'], ),
@@ -159,9 +169,9 @@ def upgrade() -> None:
         sa.Column('username', sa.String(length=255), nullable=True),
         sa.Column('password_encrypted', sa.Text(), nullable=True),
         sa.Column('token', sa.Text(), nullable=True),
-        sa.Column('headers', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('cookies', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('auth_flow', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('headers', _json_type(), nullable=True),
+        sa.Column('cookies', _json_type(), nullable=True),
+        sa.Column('auth_flow', _json_type(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['scan_id'], ['scans.id'], ),
@@ -179,15 +189,15 @@ def upgrade() -> None:
         sa.Column('cvss_score', sa.Float(), nullable=True),
         sa.Column('cvss_vector', sa.String(length=100), nullable=True),
         sa.Column('cwe_id', sa.String(length=20), nullable=True),
-        sa.Column('cve_ids', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('cve_ids', _json_type(), nullable=True),
         sa.Column('url', sa.Text(), nullable=True),
         sa.Column('parameter', sa.String(length=255), nullable=True),
-        sa.Column('evidence', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('evidence', _json_type(), nullable=True),
         sa.Column('tool_source', sa.String(length=50), nullable=False),
         sa.Column('confidence', sa.Integer(), nullable=True),
         sa.Column('remediation', sa.Text(), nullable=True),
-        sa.Column('ai_analysis', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('tags', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('ai_analysis', _json_type(), nullable=True),
+        sa.Column('tags', _json_type(), nullable=True),
         sa.Column('assignee', sa.String(length=255), nullable=True),
         sa.Column('notes', sa.Text(), nullable=True),
         sa.Column('dedup_hash', sa.String(length=64), nullable=True),
@@ -206,7 +216,7 @@ def upgrade() -> None:
         sa.Column('status', sa.String(length=20), nullable=False),
         sa.Column('file_path', sa.Text(), nullable=True),
         sa.Column('file_size', sa.Integer(), nullable=True),
-        sa.Column('config', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('config', _json_type(), nullable=True),
         sa.Column('error_message', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -223,7 +233,7 @@ def upgrade() -> None:
         sa.Column('resolved_findings', sa.Integer(), nullable=True),
         sa.Column('changed_findings', sa.Integer(), nullable=True),
         sa.Column('unchanged_findings', sa.Integer(), nullable=True),
-        sa.Column('diff_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('diff_data', _json_type(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['scan_a_id'], ['scans.id'], ),
@@ -241,7 +251,7 @@ def upgrade() -> None:
         sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('progress', sa.Float(), nullable=True),
         sa.Column('findings_count', sa.Integer(), nullable=True),
-        sa.Column('tool_outputs', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('tool_outputs', _json_type(), nullable=True),
         sa.Column('error_message', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),

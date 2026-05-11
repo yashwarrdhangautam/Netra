@@ -1,0 +1,7 @@
+flowchart LR
+    Client["AI client"] --> Netra["NETRA MCP server"]
+    Netra --> Gate["ScopeValidator.require(target)"]
+    Gate -->|allow| Downstream["gokulapap-mcp"]
+    Gate -->|deny| Error["structured scope_violation"]
+    Netra --> Audit["scan_phase audit row"]
+

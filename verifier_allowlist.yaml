@@ -1,0 +1,83 @@
+{
+  "verifiers": [
+    {
+      "id": "xss_reflected_passive",
+      "vuln_class": "xss",
+      "description": "Re-fetch the captured URL with the captured payload and compare for reflected payload markers.",
+      "methods": ["GET", "HEAD"],
+      "will_do": [
+        "GET or HEAD request to the original in-scope URL",
+        "Compare response status, headers, and body length"
+      ],
+      "will_not_do": [
+        "Modify request body",
+        "Send mutating methods",
+        "Follow redirects out of scope"
+      ],
+      "requires": ["scope_check", "operator_typed_confirm"]
+    },
+    {
+      "id": "ssrf_head_probe",
+      "vuln_class": "ssrf",
+      "description": "Replay a captured SSRF probe with a read-only GET or HEAD request to the original in-scope URL and compare metadata only.",
+      "methods": ["GET", "HEAD"],
+      "will_do": [
+        "GET or HEAD request to the original in-scope URL",
+        "Compare status, latency, and header changes only"
+      ],
+      "will_not_do": [
+        "Send a request to a new host",
+        "Modify request body or authentication material",
+        "Follow redirects out of scope"
+      ],
+      "requires": ["scope_check", "operator_typed_confirm"]
+    },
+    {
+      "id": "idor_read_only",
+      "vuln_class": "idor",
+      "description": "Replay a captured read-only object access request to confirm whether the same resource remains exposed.",
+      "methods": ["GET", "HEAD"],
+      "will_do": [
+        "GET or HEAD request to the original in-scope object URL",
+        "Return response metadata and diff against the captured request"
+      ],
+      "will_not_do": [
+        "Modify object identifiers beyond what was captured",
+        "Send mutating methods",
+        "Write to any resource"
+      ],
+      "requires": ["scope_check", "operator_typed_confirm"]
+    },
+    {
+      "id": "sqli_time_read_only",
+      "vuln_class": "sqli",
+      "description": "Replay a captured read-only SQLi probe request and compare timing and status deltas only.",
+      "methods": ["GET", "HEAD"],
+      "will_do": [
+        "GET or HEAD request to the captured in-scope URL",
+        "Compare status and latency against the captured baseline"
+      ],
+      "will_not_do": [
+        "Attempt UNION-based extraction",
+        "Dump data",
+        "Use mutating methods or write queries"
+      ],
+      "requires": ["scope_check", "operator_typed_confirm"]
+    },
+    {
+      "id": "generic_read_only_replay",
+      "vuln_class": "*",
+      "description": "Replay a captured read-only request exactly as stored after redaction.",
+      "methods": ["GET", "HEAD"],
+      "will_do": [
+        "GET or HEAD request to the captured URL",
+        "Return status, latency, and response metadata"
+      ],
+      "will_not_do": [
+        "POST, PUT, PATCH, or DELETE",
+        "Send a request outside the active program scope"
+      ],
+      "requires": ["scope_check", "operator_typed_confirm"]
+    }
+  ]
+}

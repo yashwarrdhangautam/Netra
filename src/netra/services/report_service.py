@@ -1,13 +1,22 @@
 """Report generation service for NETRA."""
-from datetime import UTC, datetime
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import structlog
 
 from netra.core.config import settings
+from netra.db.models.finding import Severity
 
 logger = structlog.get_logger()
+
+
+def generate_word_h1(finding: Any, submission: Any, output_path: Path) -> Path:
+    """Generate a HackerOne-style Word submission packet."""
+    from netra.services.templates.h1_submission import build_h1_docx
+
+    return build_h1_docx(finding, submission, output_path)
 
 
 async def generate_executive_report(
@@ -35,19 +44,19 @@ async def generate_executive_report(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            Paragraph,
             SimpleDocTemplate,
+            Paragraph,
             Spacer,
             Table,
             TableStyle,
         )
-    except ImportError as e:
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    except ImportError:
         raise ImportError(
             "ReportLab not installed. Install with: pip install reportlab"
-        ) from e
+        )
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -186,11 +195,12 @@ async def generate_technical_report(
     """
     try:
         from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
-    except ImportError as e:
+    except ImportError:
         raise ImportError(
             "python-docx not installed. Install with: pip install python-docx"
-        ) from e
+        )
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -335,21 +345,21 @@ async def generate_pentest_report(
     """
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.pagesizes import letter, A4
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            PageBreak,
-            Paragraph,
             SimpleDocTemplate,
+            Paragraph,
             Spacer,
             Table,
             TableStyle,
+            PageBreak,
         )
-    except ImportError as e:
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    except ImportError:
         raise ImportError(
             "ReportLab not installed. Install with: pip install reportlab"
-        ) from e
+        )
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -382,7 +392,7 @@ async def generate_pentest_report(
     )
     elements.append(
         Paragraph(
-            f"<b>Report Generated:</b> {datetime.now(UTC).isoformat()}",
+            f"<b>Report Generated:</b> {datetime.now(timezone.utc).isoformat()}",
             styles["Normal"],
         )
     )
@@ -777,7 +787,7 @@ async def generate_html_report(
 <body>
     <div class="container">
         <h1>🛡️ NETRA Security Report</h1>
-
+        
         <div class="header-grid">
             <div class="stat-card">
                 <div class="stat-value">{scan_data.get('name', 'Unknown')}</div>
@@ -857,7 +867,7 @@ async def generate_html_report(
             const severityFilter = document.getElementById('severityFilter').value;
             const searchInput = document.getElementById('searchInput').value.toLowerCase();
             const rows = document.querySelectorAll('.finding-row');
-
+            
             rows.forEach(row => {{
                 const severity = row.dataset.severity;
                 const text = row.textContent.toLowerCase();
@@ -871,13 +881,13 @@ async def generate_html_report(
             const table = document.getElementById('findingsTable');
             const rows = Array.from(table.querySelectorAll('tbody tr'));
             const isAscending = table.dataset.sortOrder === 'asc';
-
+            
             rows.sort((a, b) => {{
                 const aText = a.cells[columnIndex].textContent;
                 const bText = b.cells[columnIndex].textContent;
                 return isAscending ? aText.localeCompare(bText) : bText.localeCompare(aText);
             }});
-
+            
             rows.forEach(row => table.querySelector('tbody').appendChild(row));
             table.dataset.sortOrder = isAscending ? 'desc' : 'asc';
         }}
@@ -918,9 +928,9 @@ async def generate_excel_report(
     """
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    except ImportError as e:
-        raise ImportError("openpyxl not installed. Install with: pip install openpyxl") from e
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except ImportError:
+        raise ImportError("openpyxl not installed. Install with: pip install openpyxl")
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -933,13 +943,20 @@ async def generate_excel_report(
     # Define styles
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1a1a2e", end_color="1a1a2e", fill_type="solid")
-    Border(
+    thin_border = Border(
         left=Side(style="thin"),
         right=Side(style="thin"),
         top=Side(style="thin"),
         bottom=Side(style="thin"),
     )
 
+    severity_colors = {
+        "critical": "FF0000",
+        "high": "FFA500",
+        "medium": "FFFF00",
+        "low": "00FF00",
+        "info": "808080",
+    }
 
     # Sheet 1: Summary
     ws_summary = wb.create_sheet("Summary")
@@ -949,7 +966,7 @@ async def generate_excel_report(
     ws_summary.append(["Date", scan_data.get("created_at", "N/A")])
     ws_summary.append(["Profile", scan_data.get("profile", "standard")])
     ws_summary.append([])
-
+    
     severity_counts = _count_severities(findings)
     risk_score = _calculate_risk_score(severity_counts)
     ws_summary.append(["Risk Score", f"{risk_score}/100"])
@@ -1068,15 +1085,15 @@ async def generate_evidence_zip(
     import tempfile
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-
+        
         # Create findings.json
         findings_file = temp_path / "findings.json"
         findings_file.write_text(json.dumps(findings, indent=2))
-
+        
         # Create scan_config.json
         config_file = temp_path / "scan_config.json"
         config_file.write_text(json.dumps(scan_data, indent=2))
-
+        
         # Create chain_of_custody.txt
         custody_file = temp_path / "chain_of_custody.txt"
         custody_content = f"""CHAIN OF CUSTODY
@@ -1085,7 +1102,7 @@ async def generate_evidence_zip(
 Scan ID: {scan_data.get('id', 'N/A')}
 Scan Name: {scan_data.get('name', 'Unknown')}
 Target: {scan_data.get('target', 'N/A')}
-Generated: {datetime.now(UTC).isoformat()}
+Generated: {datetime.now(timezone.utc).isoformat()}
 
 EVIDENCE LOG
 ------------
@@ -1099,26 +1116,26 @@ INTEGRITY
 All files are hashed with SHA256. See manifest.json for hashes.
 """
         custody_file.write_text(custody_content)
-
+        
         # Create manifest.json with SHA256 hashes
-        manifest = {"generated_at": datetime.now(UTC).isoformat(), "files": {}}
+        manifest = {"generated_at": datetime.now(timezone.utc).isoformat(), "files": {}}
         for file in [findings_file, config_file, custody_file]:
             with open(file, "rb") as f:
                 file_hash = hashlib.sha256(f.read()).hexdigest()
                 manifest["files"][file.name] = file_hash
-
+        
         manifest_file = temp_path / "manifest.json"
         manifest_file.write_text(json.dumps(manifest, indent=2))
-
+        
         # Create ZIP
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             for file in temp_path.glob("*"):
                 zipf.write(file, file.name)
-
+        
         # Add hash of ZIP itself to manifest (for external verification)
         with open(output_path, "rb") as f:
             zip_hash = hashlib.sha256(f.read()).hexdigest()
-
+        
         # Append ZIP hash to a separate verification file
         verification_path = output_path.with_suffix(".sha256")
         verification_path.write_text(f"{zip_hash}  {output_path.name}\n")
@@ -1156,17 +1173,17 @@ async def generate_delta_report(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            Paragraph,
             SimpleDocTemplate,
+            Paragraph,
             Spacer,
             Table,
             TableStyle,
         )
-    except ImportError as e:
-        raise ImportError("ReportLab not installed. Install with: pip install reportlab") from e
+        from reportlab.lib.styles import getSampleStyleSheet
+    except ImportError:
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
 
     if output_path is None:
         scan_id = scan_b_data.get("id", "unknown")
@@ -1176,11 +1193,11 @@ async def generate_delta_report(
     # Calculate deltas
     a_hashes = {f.get("dedup_hash", f.get("title", "")) for f in findings_a}
     b_hashes = {f.get("dedup_hash", f.get("title", "")) for f in findings_b}
-
+    
     new_hashes = b_hashes - a_hashes
     resolved_hashes = a_hashes - b_hashes
     common_hashes = a_hashes & b_hashes
-
+    
     new_findings = [f for f in findings_b if f.get("dedup_hash", f.get("title", "")) in new_hashes]
     resolved_findings = [f for f in findings_a if f.get("dedup_hash", f.get("title", "")) in resolved_hashes]
 
@@ -1191,7 +1208,7 @@ async def generate_delta_report(
     # Title
     elements.append(Paragraph("Scan Delta Report", styles["Title"]))
     elements.append(Spacer(1, 0.2 * inch))
-
+    
     elements.append(Paragraph(f"Comparing: {scan_a_data.get('name', 'A')} → {scan_b_data.get('name', 'B')}", styles["Normal"]))
     elements.append(Spacer(1, 0.3 * inch))
 
@@ -1251,7 +1268,7 @@ async def generate_api_report(
         if any(tag in str(f.get("tags", [])).lower() for tag in ["api", "rest", "graphql", "owasp-api"])
         or any(cwe in (f.get("cwe_id", "") or "") for cwe in ["CWE-89", "CWE-284", "CWE-287", "CWE-306"])
     ]
-
+    
     # Generate as PDF similar to pentest report but API-focused
     return await generate_pentest_report(scan_data, api_findings or findings, output_path)
 
@@ -1268,7 +1285,7 @@ async def generate_cloud_report(
         if any(tag in str(f.get("tags", [])).lower() for tag in ["aws", "azure", "gcp", "cloud", "cspm"])
         or f.get("tool_source", "") in ["prowler", "trivy", "checkov"]
     ]
-
+    
     return await generate_pentest_report(scan_data, cloud_findings or findings, output_path)
 
 
@@ -1283,17 +1300,18 @@ async def generate_compliance_report(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            Paragraph,
             SimpleDocTemplate,
+            Paragraph,
             Spacer,
             Table,
             TableStyle,
+            PageBreak,
         )
-    except ImportError as e:
-        raise ImportError("ReportLab not installed. Install with: pip install reportlab") from e
+        from reportlab.lib.styles import getSampleStyleSheet
+    except ImportError:
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -1319,7 +1337,7 @@ async def generate_compliance_report(
     # Controls table
     elements.append(Paragraph("Control Assessment", styles["Heading2"]))
     controls_data = [["Control ID", "Control Name", "Status", "Related Finding"]]
-
+    
     gaps = compliance_data.get("gaps", [])
     for gap in gaps[:50]:
         controls_data.append([
@@ -1353,18 +1371,18 @@ async def generate_full_report(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            PageBreak,
-            Paragraph,
             SimpleDocTemplate,
+            Paragraph,
             Spacer,
             Table,
             TableStyle,
+            PageBreak,
         )
-    except ImportError as e:
-        raise ImportError("ReportLab not installed. Install with: pip install reportlab") from e
+        from reportlab.lib.styles import getSampleStyleSheet
+    except ImportError:
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -1385,11 +1403,11 @@ async def generate_full_report(
     risk_grade = _score_to_grade(risk_score)
 
     elements.append(Paragraph(f"Risk Grade: {risk_grade} ({risk_score}/100)", styles["Heading2"]))
-
+    
     severity_data = [["Severity", "Count"]]
     for sev, count in severity_counts.items():
         severity_data.append([sev.upper(), str(count)])
-
+    
     t = Table(severity_data, colWidths=[3 * inch, 2 * inch])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),

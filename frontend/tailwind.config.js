@@ -9,13 +9,16 @@ export default {
     extend: {
       colors: {
         background: "#09090b",
+        foreground: "#f8fafc",
         surface: "#0c0c0f",
         "surface-2": "#131316",
         "surface-3": "#1a1a1f",
         border: "#1c1c22",
         "border-2": "#27272e",
-        accent: "#6366f1",
-        "accent-2": "#818cf8",
+        muted: "#131316",
+        "muted-foreground": "#8b8b95",
+        accent: "#4f46e5",
+        "accent-2": "#4338ca",
         severity: {
           critical: "#ef4444",
           high: "#f97316",

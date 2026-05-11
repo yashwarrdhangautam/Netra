@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant Operator
+    participant CLI as netra-bb
+    participant H1 as HackerOne API
+    participant Scope as ScopeValidator
+    participant Recon
+    participant Graphify
+    participant Brain as AIBrain/BountyHunter
+    Operator->>CLI: add-program shopify
+    CLI->>H1: fetch program + structured scopes
+    CLI->>Scope: persist active rules
+    Operator->>CLI: hunt --profile passive
+    CLI->>Recon: passive sources
+    Recon->>Scope: check every asset
+    Recon->>Graphify: index in-scope recon
+    Operator->>CLI: triage
+    CLI->>Brain: rank findings
+

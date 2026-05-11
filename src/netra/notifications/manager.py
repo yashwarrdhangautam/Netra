@@ -1,16 +1,16 @@
 """Notification manager for coordinating Slack and Email alerts."""
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.core.config import settings
+from netra.notifications.slack import SlackNotifier
+from netra.notifications.email import EmailNotifier
 from netra.db.models.finding import Finding
 from netra.db.models.scan import Scan
-from netra.notifications.email import EmailNotifier
-from netra.notifications.slack import SlackNotifier
+from netra.core.config import settings
 
 logger = structlog.get_logger()
 
@@ -136,14 +136,14 @@ class NotificationManager:
             "low": 2160,  # 90 days
         }
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         breaches_notified = 0
 
         # Get all confirmed/unresolved findings
         result = await self.db.execute(
             select(Finding)
             .where(Finding.status.in_(["confirmed", "new"]))
-            .where(Finding.first_seen is not None)
+            .where(Finding.first_seen != None)
         )
         findings = result.scalars().all()
 
@@ -161,7 +161,7 @@ class NotificationManager:
                 scan_result = await self.db.execute(
                     select(Scan).where(Scan.id == finding.scan_id)
                 )
-                scan_result.scalar_one_or_none()
+                scan = scan_result.scalar_one_or_none()
 
                 finding_data = {
                     "title": finding.title,

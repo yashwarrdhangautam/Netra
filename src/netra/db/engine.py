@@ -1,5 +1,6 @@
 """Database engine factory for dual-mode SQLite/PostgreSQL support."""
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from netra.core.config import settings
 
@@ -30,7 +31,10 @@ def get_engine() -> AsyncEngine:
             echo=settings.db_echo,
             pool_size=settings.db_pool_size,
             max_overflow=settings.db_max_overflow,
-            pool_recycle=3600,  # Recycle connections after 1 hour
-            pool_pre_ping=True,  # Verify connection before each use
         )
     return engine
+
+
+def get_session():
+    """Return an async session context manager for CLI commands."""
+    return async_sessionmaker(get_engine(), expire_on_commit=False)()
