@@ -1,4 +1,5 @@
 """LLM-assisted next-tool routing."""
+
 from __future__ import annotations
 
 import json
@@ -57,7 +58,9 @@ class ToolRouter:
             if fallback_tool not in {"subfinder", "httpx", "nuclei", "ffuf"}:
                 fallback_tool = "nuclei"
             fallback_target = str(step.get("target") or "")
-            safe = validate({"tool": fallback_tool, "target": fallback_target, "flags": {}}, validator)
+            safe = validate(
+                {"tool": fallback_tool, "target": fallback_target, "flags": {}}, validator
+            )
             return ToolChoice(
                 tool=safe["tool"],
                 target=safe["target"],

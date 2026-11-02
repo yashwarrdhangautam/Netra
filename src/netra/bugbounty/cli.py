@@ -1,4 +1,5 @@
 """NETRA-BB CLI commands."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +7,7 @@ import os
 import shutil
 import socket
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -30,7 +31,9 @@ def _doctor_checks(include_local_tools: bool = True) -> list[tuple[str, bool, st
         if found:
             return found
         if include_local_tools:
-            candidate = local_tools_dir / (f"{binary}.exe" if not binary.endswith(".exe") else binary)
+            candidate = local_tools_dir / (
+                f"{binary}.exe" if not binary.endswith(".exe") else binary
+            )
             if candidate.exists():
                 return str(candidate)
         return None
@@ -51,27 +54,43 @@ def _doctor_checks(include_local_tools: bool = True) -> list[tuple[str, bool, st
     }.get(graphify_backend)
     if graphify_key_env:
         key_ok = bool(os.getenv(graphify_key_env))
-        checks.append((
-            f"graphify:{graphify_backend}",
-            key_ok,
-            "configured" if key_ok else f"set {graphify_key_env} or choose another GRAPHIFY_BACKEND",
-        ))
+        checks.append(
+            (
+                f"graphify:{graphify_backend}",
+                key_ok,
+                "configured"
+                if key_ok
+                else f"set {graphify_key_env} or choose another GRAPHIFY_BACKEND",
+            )
+        )
 
-    checks.append((
-        "hackerone:credentials",
-        bool(os.getenv("H1_API_USERNAME") and os.getenv("H1_API_TOKEN")),
-        "configured" if os.getenv("H1_API_USERNAME") and os.getenv("H1_API_TOKEN") else "set H1_API_USERNAME and H1_API_TOKEN",
-    ))
-    checks.append((
-        "github:token",
-        bool(os.getenv("GITHUB_TOKEN")),
-        "configured" if os.getenv("GITHUB_TOKEN") else "optional: set GITHUB_TOKEN for GitHub dorks",
-    ))
-    checks.append((
-        "mcp:federation",
-        bool(os.getenv("NETRA_BB_MCP_COMMAND")),
-        "configured" if os.getenv("NETRA_BB_MCP_COMMAND") else "optional: set NETRA_BB_MCP_COMMAND",
-    ))
+    checks.append(
+        (
+            "hackerone:credentials",
+            bool(os.getenv("H1_API_USERNAME") and os.getenv("H1_API_TOKEN")),
+            "configured"
+            if os.getenv("H1_API_USERNAME") and os.getenv("H1_API_TOKEN")
+            else "set H1_API_USERNAME and H1_API_TOKEN",
+        )
+    )
+    checks.append(
+        (
+            "github:token",
+            bool(os.getenv("GITHUB_TOKEN")),
+            "configured"
+            if os.getenv("GITHUB_TOKEN")
+            else "optional: set GITHUB_TOKEN for GitHub dorks",
+        )
+    )
+    checks.append(
+        (
+            "mcp:federation",
+            bool(os.getenv("NETRA_BB_MCP_COMMAND")),
+            "configured"
+            if os.getenv("NETRA_BB_MCP_COMMAND")
+            else "optional: set NETRA_BB_MCP_COMMAND",
+        )
+    )
     broker_url = (
         os.getenv("CELERY_BROKER_URL")
         or os.getenv("NETRA_CELERY_BROKER_URL")
@@ -80,17 +99,21 @@ def _doctor_checks(include_local_tools: bool = True) -> list[tuple[str, bool, st
     )
     broker_ok, broker_detail = _check_broker(broker_url)
     checks.append(("celery:broker", broker_ok, broker_detail))
-    checks.append((
-        "agentic:ollama_model_size_ok",
-        _ollama_model_size_ok(),
-        os.getenv("NETRA_OLLAMA_MODEL", os.getenv("OLLAMA_MODEL", "llama3.1:8b")),
-    ))
+    checks.append(
+        (
+            "agentic:ollama_model_size_ok",
+            _ollama_model_size_ok(),
+            os.getenv("NETRA_OLLAMA_MODEL", os.getenv("OLLAMA_MODEL", "llama3.1:8b")),
+        )
+    )
     priors_path = Path(__file__).resolve().parents[3] / "data" / "vuln_class_priors.yaml"
-    checks.append((
-        "agentic:vuln_class_priors_loaded",
-        priors_path.exists(),
-        str(priors_path) if priors_path.exists() else "missing data/vuln_class_priors.yaml",
-    ))
+    checks.append(
+        (
+            "agentic:vuln_class_priors_loaded",
+            priors_path.exists(),
+            str(priors_path) if priors_path.exists() else "missing data/vuln_class_priors.yaml",
+        )
+    )
     budget_ok, budget_detail = _check_agentic_budget_table()
     checks.append(("agentic:budget_table_present", budget_ok, budget_detail))
     for source_name, enabled, max_age_hours in [
@@ -160,8 +183,10 @@ def _check_corpus_freshness(source_name: str, *, max_age_hours: int) -> tuple[bo
                 row = result.scalar_one_or_none()
             if row is None or row.completed_at is None:
                 return False, "never ingested"
-            age = datetime.now(timezone.utc) - row.completed_at
-            return age <= timedelta(hours=max_age_hours), f"last ingest {row.completed_at.isoformat()}"
+            age = datetime.now(UTC) - row.completed_at
+            return age <= timedelta(
+                hours=max_age_hours
+            ), f"last ingest {row.completed_at.isoformat()}"
 
         return asyncio.run(run())
     except Exception as exc:
@@ -185,7 +210,9 @@ def bb() -> None:
 
 
 @bb.command("doctor", help="Check live NETRA-BB readiness without probing targets.")
-@click.option("--strict", is_flag=True, help="Exit non-zero if live-hunt prerequisites are missing.")
+@click.option(
+    "--strict", is_flag=True, help="Exit non-zero if live-hunt prerequisites are missing."
+)
 def doctor_cmd(strict: bool) -> None:
     checks = _doctor_checks()
 
@@ -197,7 +224,11 @@ def doctor_cmd(strict: bool) -> None:
         table.add_row(name, "[green]ok[/green]" if ok else "[yellow]missing[/yellow]", detail)
     console.print(table)
 
-    required = [name for name, ok, _ in checks if not ok and name.startswith(("tool:", "hackerone:", "celery:"))]
+    required = [
+        name
+        for name, ok, _ in checks
+        if not ok and name.startswith(("tool:", "hackerone:", "celery:"))
+    ]
     if strict and required:
         console.print(f"[red]missing live prerequisites:[/red] {', '.join(required)}")
         sys.exit(1)
@@ -223,7 +254,12 @@ async def add_program_cmd(
     payout_min: int | None,
     payout_max: int | None,
 ) -> None:
-    from netra.bugbounty.programs import ProgramInput, create_program, get_program, replace_scope_rules
+    from netra.bugbounty.programs import (
+        ProgramInput,
+        create_program,
+        get_program,
+        replace_scope_rules,
+    )
     from netra.db.engine import get_session
     from netra.db.models.bb_program import BBPlatform
 
@@ -231,7 +267,9 @@ async def add_program_cmd(
     async with get_session() as session:
         existing = await get_program(session, plat, handle)
         if existing:
-            console.print(f"[yellow]Program already registered:[/yellow] {plat.value}/{handle} (id={existing.id})")
+            console.print(
+                f"[yellow]Program already registered:[/yellow] {plat.value}/{handle} (id={existing.id})"
+            )
             return
 
         scope_rules = []
@@ -248,7 +286,9 @@ async def add_program_cmd(
                     payout_min = payout_min if payout_min is not None else fetched.payout_min
                     payout_max = payout_max if payout_max is not None else fetched.payout_max
                 else:
-                    console.print("[yellow]H1 credentials not configured; registering program without live scope.[/yellow]")
+                    console.print(
+                        "[yellow]H1 credentials not configured; registering program without live scope.[/yellow]"
+                    )
 
         program = await create_program(
             session,
@@ -271,7 +311,9 @@ async def add_program_cmd(
             except Exception as exc:
                 console.print(f"[yellow]hacktivity bootstrap skipped:[/yellow] {exc}")
         await session.commit()
-    console.print(f"[green]added program[/green] {plat.value}/{handle} (id={program.id}, scope_rules={len(scope_rules)})")
+    console.print(
+        f"[green]added program[/green] {plat.value}/{handle} (id={program.id}, scope_rules={len(scope_rules)})"
+    )
 
 
 @bb.command("list-programs", help="List active bug bounty programs.")
@@ -329,7 +371,9 @@ async def corpus_forget_cmd(author: str | None, source_url: str | None, confirm:
     console.print(f"[yellow]forgot[/yellow] {deleted}")
 
 
-@corpus_group.command("reembed", help="Refresh stored corpus embeddings after an embed-model change.")
+@corpus_group.command(
+    "reembed", help="Refresh stored corpus embeddings after an embed-model change."
+)
 @click.option("--confirm", required=True, help="Type REEMBED to proceed.")
 @_async
 async def corpus_reembed_cmd(confirm: str) -> None:
@@ -353,7 +397,6 @@ async def corpus_reembed_cmd(confirm: str) -> None:
     console.print(f"[cyan]re-embedded[/cyan] {refreshed}")
 
 
-
 async def _sync_program_scope(platform_enum, handle: str):
     """Pull fresh scope rules from the platform and apply the diff. Returns ScopeDiff or None on failure."""
     from netra.bugbounty.programs import get_program, replace_scope_rules
@@ -365,11 +408,15 @@ async def _sync_program_scope(platform_enum, handle: str):
 
         async with HackerOneClient() as client:
             if not client.is_configured():
-                console.print("[red]H1 credentials not configured (set H1_API_USERNAME and H1_API_TOKEN).[/red]")
+                console.print(
+                    "[red]H1 credentials not configured (set H1_API_USERNAME and H1_API_TOKEN).[/red]"
+                )
                 return None
             fresh_rules = await client.get_structured_scopes(handle)
     else:
-        console.print(f"[yellow]scope --sync not implemented for {platform_enum.value} yet.[/yellow]")
+        console.print(
+            f"[yellow]scope --sync not implemented for {platform_enum.value} yet.[/yellow]"
+        )
         return None
 
     async with get_session() as session:
@@ -462,7 +509,9 @@ async def scope_cmd(
         table.add_column("cap")
         for r in rules:
             colour = "green" if r.rule_type == "in" else "red"
-            table.add_row(f"[{colour}]{r.rule_type}[/{colour}]", r.asset_type, r.pattern, r.severity_cap or "")
+            table.add_row(
+                f"[{colour}]{r.rule_type}[/{colour}]", r.asset_type, r.pattern, r.severity_cap or ""
+            )
         console.print(table)
         return
 
@@ -487,7 +536,9 @@ async def scope_cmd(
 @click.option("--enable-nuclei", is_flag=True, help="Active only: enable safe nuclei templates.")
 @click.option("--enable-ffuf", is_flag=True, help="Active only: enable ffuf content discovery.")
 @click.option("--agentic", is_flag=True, help="Use the agentic planner/router execution path.")
-@click.option("--dry-run", is_flag=True, help="Agentic only: persist plan/telemetry without running tools.")
+@click.option(
+    "--dry-run", is_flag=True, help="Agentic only: persist plan/telemetry without running tools."
+)
 @click.option("--plan-only", is_flag=True, help="Generate and print an agentic plan, then exit.")
 @_async
 async def hunt_cmd(
@@ -507,12 +558,13 @@ async def hunt_cmd(
         console.print("[red]--dry-run and --plan-only require --agentic[/red]")
         sys.exit(2)
 
+    import json
+
+    from netra.bugbounty.agentic.planner import Planner
     from netra.bugbounty.programs import get_program
     from netra.db.engine import get_session
     from netra.db.models.bb_program import BBPlatform
     from netra.services.scan_service import ScanService
-    from netra.bugbounty.agentic.planner import Planner
-    import json
 
     async with get_session() as session:
         prog = await get_program(session, BBPlatform(platform), program)
@@ -559,7 +611,9 @@ async def hunt_cmd(
 @click.option("--show-vetoed", is_flag=True, help="Include Skeptic-vetoed findings.")
 @click.option("--graph-aware", is_flag=True, help="Show Graphify similarity mode in dedup column.")
 @_async
-async def triage_cmd(program: str, platform: str, limit: int, show_vetoed: bool, graph_aware: bool) -> None:
+async def triage_cmd(
+    program: str, platform: str, limit: int, show_vetoed: bool, graph_aware: bool
+) -> None:
     from urllib.parse import urlparse
 
     from sqlalchemy import select
@@ -597,7 +651,9 @@ async def triage_cmd(program: str, platform: str, limit: int, show_vetoed: bool,
             dup = await is_duplicate(session, prog.id, fp)
             if dup:
                 dedup_status = f"dup of {str(dup.finding_id)[:8]}"
-            elif graph_aware and find_graph_similar(prog.id, urlparse(asset).path or asset, vuln_class):
+            elif graph_aware and find_graph_similar(
+                prog.id, urlparse(asset).path or asset, vuln_class
+            ):
                 dedup_status = "similar"
             else:
                 dedup_status = "new"
@@ -753,8 +809,8 @@ async def hunt_explain_cmd(scan_id: str) -> None:
     from sqlalchemy import select
 
     from netra.db.engine import get_session
-    from netra.db.models.scan import Scan
     from netra.db.models.bb_agentic_step import BBAgenticStep
+    from netra.db.models.scan import Scan
 
     async with get_session() as session:
         scan = await session.get(Scan, scan_id)
@@ -765,7 +821,9 @@ async def hunt_explain_cmd(scan_id: str) -> None:
         )
         rows = list(result.scalars().all())
 
-    coordination = ((scan.checkpoint_data or {}).get("agentic_coordination") if scan else None) or {}
+    coordination = (
+        (scan.checkpoint_data or {}).get("agentic_coordination") if scan else None
+    ) or {}
     if coordination:
         console.print(f"[bold]Coordination[/bold] {coordination.get('summary', '')}")
         focus = ", ".join(coordination.get("focus_areas", [])[:6])
@@ -870,12 +928,16 @@ async def program_approve_cmd(program: str, platform: str, vuln_classes: str) ->
             "active_approval_updated_at": datetime.utcnow().isoformat() + "Z",
         }
         await session.commit()
-    console.print(f"[green]approved[/green] active classes for {platform}/{program}: {', '.join(approved)}")
+    console.print(
+        f"[green]approved[/green] active classes for {platform}/{program}: {', '.join(approved)}"
+    )
 
 
 @bb.command("verify", help="Generate a PoC preview and run the allowlisted replay verifier.")
 @click.option("--finding-id", required=True, help="Finding UUID.")
-@click.option("--evidence-id", help="Optional evidence UUID. Defaults to latest evidence for the finding.")
+@click.option(
+    "--evidence-id", help="Optional evidence UUID. Defaults to latest evidence for the finding."
+)
 @click.option("--verifier-id", help="Optional verifier id. Defaults by vuln class.")
 @click.option("--typed-confirm", help="Program handle confirmation for replay.")
 @_async
@@ -922,7 +984,9 @@ async def verify_cmd(
             console.print("[red]program not found for this evidence[/red]")
             sys.exit(1)
 
-        vuln_class = str((finding.tags or [finding.cwe_id or finding.title or "finding"])[0]).lower()
+        vuln_class = str(
+            (finding.tags or [finding.cwe_id or finding.title or "finding"])[0]
+        ).lower()
         chosen_verifier = verifier_id or (
             "xss_reflected_passive" if vuln_class == "xss" else "generic_read_only_replay"
         )
@@ -974,7 +1038,13 @@ async def verify_cmd(
 @bb.command("draft", help="Generate an H1-style submission draft for a finding.")
 @click.option("--finding-id", required=True, help="Finding UUID.")
 @click.option("--output", default="~/reports", type=click.Path(), help="Output directory.")
-@click.option("--format", "formats", multiple=True, default=("md", "docx"), type=click.Choice(["md", "docx", "pdf"]))
+@click.option(
+    "--format",
+    "formats",
+    multiple=True,
+    default=("md", "docx"),
+    type=click.Choice(["md", "docx", "pdf"]),
+)
 @click.option("--force", is_flag=True, help="Draft even if dedupe marks the finding as duplicate.")
 @click.option("--include-poc", is_flag=True, help="Generate and include a read-only PoC section.")
 @_async
@@ -1034,7 +1104,13 @@ async def submission_list_cmd(status: str | None) -> None:
     table.add_column("Title")
     table.add_column("Expected")
     for row in rows:
-        table.add_row(str(row.id), str(row.status), row.severity, row.title[:80], str(row.payout_expected or ""))
+        table.add_row(
+            str(row.id),
+            str(row.status),
+            row.severity,
+            row.title[:80],
+            str(row.payout_expected or ""),
+        )
     console.print(table)
 
 
@@ -1069,7 +1145,9 @@ async def submission_status_cmd(submission_id: str, new_status: str, notes: str 
 @click.option("--payout-actual", type=int)
 @click.option("--notes", default="")
 @_async
-async def submission_verdict_cmd(submission_id: str, verdict: str, payout_actual: int | None, notes: str) -> None:
+async def submission_verdict_cmd(
+    submission_id: str, verdict: str, payout_actual: int | None, notes: str
+) -> None:
     from netra.bugbounty.graph_indexer import export_submissions_json
     from netra.bugbounty.submission.tracker import transition
     from netra.db.engine import get_session
@@ -1089,17 +1167,20 @@ async def submission_verdict_cmd(submission_id: str, verdict: str, payout_actual
         submission.payout_actual = payout_actual
         await transition(session, submission, status_map[verdict], notes=notes)
         await session.commit()
-        export_submissions_json([
-            {
-                "id": submission.id,
-                "title": submission.title,
-                "severity": submission.severity,
-                "status": submission.status,
-                "program_id": submission.program_id,
-                "finding_id": submission.finding_id,
-                "vuln_class": (submission.metadata_ or {}).get("vuln_class"),
-            }
-        ], Path("data/graphify/submissions.json"))
+        export_submissions_json(
+            [
+                {
+                    "id": submission.id,
+                    "title": submission.title,
+                    "severity": submission.severity,
+                    "status": submission.status,
+                    "program_id": submission.program_id,
+                    "finding_id": submission.finding_id,
+                    "vuln_class": (submission.metadata_ or {}).get("vuln_class"),
+                }
+            ],
+            Path("data/graphify/submissions.json"),
+        )
 
     console.print(f"[green]recorded[/green] verdict={verdict} for {submission_id}")
 

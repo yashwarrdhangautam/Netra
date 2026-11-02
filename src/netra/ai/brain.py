@@ -1,4 +1,5 @@
 """AI Brain orchestrator for NETRA."""
+
 import json
 from typing import Any
 
@@ -66,12 +67,8 @@ class AIBrain:
         results["defender"] = await self._query_persona(
             "defender", DEFENDER_PROMPT, finding_context
         )
-        results["analyst"] = await self._query_persona(
-            "analyst", ANALYST_PROMPT, finding_context
-        )
-        results["skeptic"] = await self._query_persona(
-            "skeptic", SKEPTIC_PROMPT, finding_context
-        )
+        results["analyst"] = await self._query_persona("analyst", ANALYST_PROMPT, finding_context)
+        results["skeptic"] = await self._query_persona("skeptic", SKEPTIC_PROMPT, finding_context)
 
         # Consensus voting
         results["consensus"] = self._compute_consensus(results)
@@ -81,15 +78,15 @@ class AIBrain:
             bounty_raw = await self._query_persona(
                 "bounty_hunter",
                 BOUNTY_HUNTER_PROMPT,
-                self._format_bounty_context(finding_context, program, similar_reports=similar_reports),
+                self._format_bounty_context(
+                    finding_context, program, similar_reports=similar_reports
+                ),
             )
             results["bounty_hunter"] = self._normalise_bounty_score(bounty_raw)
 
         return results
 
-    async def discover_attack_chains(
-        self, findings: list[Finding]
-    ) -> list[dict[str, Any]]:
+    async def discover_attack_chains(self, findings: list[Finding]) -> list[dict[str, Any]]:
         """Use Attacker persona to discover multi-finding attack chains.
 
         Args:
@@ -103,7 +100,9 @@ class AIBrain:
 
         context = "Analyze these findings for attack chains:\n\n"
         for i, f in enumerate(findings[:50]):  # Limit to 50 findings for token budget
-            context += f"{i+1}. [{f.severity}] {f.title} at {f.url or 'N/A'} (CWE: {f.cwe_id or 'N/A'})\n"
+            context += (
+                f"{i+1}. [{f.severity}] {f.title} at {f.url or 'N/A'} (CWE: {f.cwe_id or 'N/A'})\n"
+            )
 
         chain_prompt = """Identify attack chains — sequences of findings that together create a more severe attack than any individual finding.
 
@@ -307,7 +306,7 @@ Output JSON array of chains."""
         confidences = []
         for persona in ["attacker", "defender", "analyst", "skeptic"]:
             conf = results.get(persona, {}).get("confidence", 50)
-            if isinstance(conf, (int, float)):
+            if isinstance(conf, int | float):
                 confidences.append(conf)
 
         avg_confidence = sum(confidences) / len(confidences) if confidences else 50
@@ -356,7 +355,9 @@ Output JSON array of chains."""
     ) -> str:
         """Format BountyHunter's two prompt placeholders into one user context."""
         program_context = self._program_to_context(program)
-        comparable_reports = "\n".join(f"- {item}" for item in (similar_reports or [])[:5]) or "None"
+        comparable_reports = (
+            "\n".join(f"- {item}" for item in (similar_reports or [])[:5]) or "None"
+        )
         return BOUNTY_HUNTER_PROMPT.format(
             finding_context=finding_context,
             program_context=program_context,

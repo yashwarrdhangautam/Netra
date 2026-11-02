@@ -1,16 +1,17 @@
 """Notification manager for coordinating Slack and Email alerts."""
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.notifications.slack import SlackNotifier
-from netra.notifications.email import EmailNotifier
+from netra.core.config import settings
 from netra.db.models.finding import Finding
 from netra.db.models.scan import Scan
-from netra.core.config import settings
+from netra.notifications.email import EmailNotifier
+from netra.notifications.slack import SlackNotifier
 
 logger = structlog.get_logger()
 
@@ -136,14 +137,14 @@ class NotificationManager:
             "low": 2160,  # 90 days
         }
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         breaches_notified = 0
 
         # Get all confirmed/unresolved findings
         result = await self.db.execute(
             select(Finding)
             .where(Finding.status.in_(["confirmed", "new"]))
-            .where(Finding.first_seen != None)
+            .where(Finding.first_seen is not None)
         )
         findings = result.scalars().all()
 
@@ -158,10 +159,8 @@ class NotificationManager:
                 overdue_hours = int((now - breach_time).total_seconds() / 3600)
 
                 # Get scan for target info
-                scan_result = await self.db.execute(
-                    select(Scan).where(Scan.id == finding.scan_id)
-                )
-                scan = scan_result.scalar_one_or_none()
+                scan_result = await self.db.execute(select(Scan).where(Scan.id == finding.scan_id))
+                scan_result.scalar_one_or_none()
 
                 finding_data = {
                     "title": finding.title,
@@ -292,17 +291,13 @@ async def send_finding_notification(db: AsyncSession, finding_id: Any) -> None:
         db: Database session
         finding_id: Finding UUID
     """
-    result = await db.execute(
-        select(Finding).where(Finding.id == finding_id)
-    )
+    result = await db.execute(select(Finding).where(Finding.id == finding_id))
     finding = result.scalar_one_or_none()
 
     if not finding:
         return
 
-    scan_result = await db.execute(
-        select(Scan).where(Scan.id == finding.scan_id)
-    )
+    scan_result = await db.execute(select(Scan).where(Scan.id == finding.scan_id))
     scan = scan_result.scalar_one_or_none()
 
     if not scan:
@@ -326,9 +321,7 @@ async def send_scan_complete_notification(
         findings_summary: Dict of severity -> count
         duration_minutes: Scan duration
     """
-    result = await db.execute(
-        select(Scan).where(Scan.id == scan_id)
-    )
+    result = await db.execute(select(Scan).where(Scan.id == scan_id))
     scan = result.scalar_one_or_none()
 
     if not scan:

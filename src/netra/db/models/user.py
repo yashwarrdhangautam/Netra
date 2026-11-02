@@ -1,9 +1,11 @@
 """User model for authentication and authorization with MFA support."""
-from enum import StrEnum
-from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, text
+from datetime import UTC
+from enum import StrEnum
+from typing import TYPE_CHECKING
+
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import Boolean, DateTime, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
@@ -38,7 +40,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Profile
-    full_name: Mapped[Optional[str]] = mapped_column(String(255))
+    full_name: Mapped[str | None] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(
         String(20), default=UserRole.VIEWER, nullable=False, index=True
     )
@@ -46,20 +48,20 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # API Access
-    api_key_hash: Mapped[Optional[str]] = mapped_column(String(255))
+    api_key_hash: Mapped[str | None] = mapped_column(String(255))
 
     # Client-specific (for CLIENT role)
-    organization: Mapped[Optional[str]] = mapped_column(String(255))
+    organization: Mapped[str | None] = mapped_column(String(255))
 
     # Security
-    last_login_at: Mapped[Optional[DateTime]] = mapped_column(DateTime)
+    last_login_at: Mapped[DateTime | None] = mapped_column(DateTime)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
-    locked_until: Mapped[Optional[DateTime]] = mapped_column(DateTime)
+    locked_until: Mapped[DateTime | None] = mapped_column(DateTime)
 
     # MFA / 2FA
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    mfa_secret: Mapped[Optional[str]] = mapped_column(String(255))  # Encrypted at rest
-    backup_codes_hash: Mapped[Optional[list[str]]] = mapped_column(
+    mfa_secret: Mapped[str | None] = mapped_column(String(255))  # Encrypted at rest
+    backup_codes_hash: Mapped[list[str] | None] = mapped_column(
         JSONB, default=list, server_default=text("'[]'")
     )  # List of hashed backup codes
 
@@ -86,5 +88,6 @@ class User(Base):
         """Check if account is currently locked."""
         if not self.locked_until:
             return False
-        from datetime import datetime, timezone
-        return self.locked_until > datetime.now(timezone.utc)
+        from datetime import datetime
+
+        return self.locked_until > datetime.now(UTC)

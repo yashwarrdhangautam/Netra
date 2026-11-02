@@ -1,4 +1,5 @@
 """Celery beat schedule additions for NETRA-BB."""
+
 from celery.schedules import crontab
 
 BB_BEAT_SCHEDULE = {

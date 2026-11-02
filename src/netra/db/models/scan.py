@@ -1,10 +1,11 @@
 """Scan model for storing security scan information."""
+
 import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
@@ -50,9 +51,7 @@ class Scan(Base):
         String(20), default=ScanProfile.STANDARD, nullable=False
     )
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
-    target_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("targets.id"), nullable=False
-    )
+    target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("targets.id"), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     config: Mapped[dict | None] = mapped_column(JSONB, default=dict)

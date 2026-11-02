@@ -12,4 +12,3 @@ def test_bounty_hunter_prompt_contract() -> None:
     assert "payout" in prompt
     assert BOUNTY_HUNTER_PROMPT.strip().endswith("Respond with JSON only.")
     assert get_system_prompt("bounty_hunter") == BOUNTY_HUNTER_PROMPT
-

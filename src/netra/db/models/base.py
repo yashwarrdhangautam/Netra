@@ -1,4 +1,5 @@
 """Base model with common columns."""
+
 import uuid
 from datetime import datetime
 

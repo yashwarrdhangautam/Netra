@@ -1,4 +1,5 @@
 """Optional pgvector acceleration for the learning corpus."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -24,7 +25,8 @@ async def sync_embedding_vector(
     if bind is None or bind.dialect.name != "postgresql":
         return
     await session.execute(
-        text(f"UPDATE {table_name} SET embedding_vector = CAST(:embedding AS vector) WHERE id = :row_id"),
+        text(
+            f"UPDATE {table_name} SET embedding_vector = CAST(:embedding AS vector) WHERE id = :row_id"
+        ),
         {"embedding": pgvector_literal(embedding), "row_id": row_id},
     )
-

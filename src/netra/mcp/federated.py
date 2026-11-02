@@ -1,4 +1,5 @@
 """Federated MCP client for proxying downstream stdio MCP servers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +33,7 @@ class FederatedMcpClient:
         self._proc: asyncio.subprocess.Process | None = None
         self._next_id = 1
 
-    async def __aenter__(self) -> "FederatedMcpClient":
+    async def __aenter__(self) -> FederatedMcpClient:
         creation_kwargs: dict[str, Any] = {}
         if os.name == "nt":
             creation_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -46,7 +47,14 @@ class FederatedMcpClient:
             **creation_kwargs,
         )
         register_process(self._proc.pid)
-        await self._request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "netra", "version": "1.0.0"}})
+        await self._request(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "netra", "version": "1.0.0"},
+            },
+        )
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:

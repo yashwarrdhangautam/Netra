@@ -3,12 +3,14 @@
 Run with: python -m netra.mcp.server
 Or configure in Claude Desktop / Claude Code config.
 """
-from typing import Any
+
 import os
+from typing import Any
 
 try:
     from mcp.server.fastmcp import FastMCP
 except Exception:
+
     class FastMCP:
         """Fallback FastMCP stub for incompatible local MCP/Pydantic installs."""
 
@@ -18,43 +20,47 @@ except Exception:
         def tool(self, *args, **kwargs):
             def decorator(fn):
                 return fn
+
             return decorator
 
         def resource(self, *args, **kwargs):
             def decorator(fn):
                 return fn
+
             return decorator
 
         def prompt(self, *args, **kwargs):
             def decorator(fn):
                 return fn
+
             return decorator
 
         def run(self) -> None:
             return None
 
+
 # Phase 1 tools
-from netra.scanner.tools.nuclei import NucleiTool
-from netra.scanner.tools.nmap import NmapTool
-from netra.scanner.tools.subfinder import SubfinderTool
-from netra.scanner.tools.httpx import HttpxTool
-from netra.scanner.tools.ffuf import FfufTool
-from netra.scanner.tools.dalfox import DalfoxTool
-from netra.scanner.tools.nikto import NiktoTool
-from netra.scanner.tools.sqlmap import SqlmapTool
+from netra.bugbounty.scope import AssetType, RuleType, ScopeRule, ScopeValidator, ScopeViolation
+from netra.mcp.federated import FederatedMcpClient
 from netra.scanner.tools.amass import AmassTool
-from netra.scanner.tools.shodan import ShodanTool
+from netra.scanner.tools.checkov import CheckovTool
+from netra.scanner.tools.dalfox import DalfoxTool
+from netra.scanner.tools.dependency_scan import PipAuditTool
+from netra.scanner.tools.ffuf import FfufTool
+from netra.scanner.tools.gitleaks import GitleaksTool
+from netra.scanner.tools.httpx import HttpxTool
+from netra.scanner.tools.llm_security import LLMSecurityTool
+from netra.scanner.tools.nikto import NiktoTool
+from netra.scanner.tools.nmap import NmapTool
+from netra.scanner.tools.nuclei import NucleiTool
+from netra.scanner.tools.prowler import ProwlerTool
 
 # Phase 2 tools
 from netra.scanner.tools.semgrep import SemgrepTool
-from netra.scanner.tools.gitleaks import GitleaksTool
-from netra.scanner.tools.dependency_scan import PipAuditTool
-from netra.scanner.tools.prowler import ProwlerTool
+from netra.scanner.tools.shodan import ShodanTool
+from netra.scanner.tools.sqlmap import SqlmapTool
+from netra.scanner.tools.subfinder import SubfinderTool
 from netra.scanner.tools.trivy import TrivyTool
-from netra.scanner.tools.checkov import CheckovTool
-from netra.scanner.tools.llm_security import LLMSecurityTool
-from netra.bugbounty.scope import AssetType, RuleType, ScopeRule, ScopeValidator, ScopeViolation
-from netra.mcp.federated import FederatedMcpClient
 
 mcp = FastMCP("netra")
 
@@ -74,7 +80,9 @@ def _bb_validator(scope_rules: list[dict[str, str]]) -> ScopeValidator:
     )
 
 
-async def _call_federated_bb(tool_name: str, target: str, scope_rules: list[dict[str, str]], arguments: dict[str, Any]) -> dict[str, Any]:
+async def _call_federated_bb(
+    tool_name: str, target: str, scope_rules: list[dict[str, str]], arguments: dict[str, Any]
+) -> dict[str, Any]:
     try:
         _bb_validator(scope_rules).require(target)
     except ScopeViolation as exc:
@@ -96,6 +104,7 @@ async def _call_federated_bb(tool_name: str, target: str, scope_rules: list[dict
 # ══════════════════════════════════════════════════════════
 # TOOLS (10 security tool wrappers + 4 stubs)
 # ══════════════════════════════════════════════════════════
+
 
 @mcp.tool()
 async def nuclei_scan(
@@ -123,9 +132,7 @@ async def nuclei_scan(
             "error": "Nuclei not installed",
             "install": tool.install_instructions,
         }
-    result = await tool.run(
-        target, templates=templates, severity=severity, rate_limit=rate_limit
-    )
+    result = await tool.run(target, templates=templates, severity=severity, rate_limit=rate_limit)
     return {
         "status": "mock",
         "tool": "nuclei",
@@ -270,9 +277,7 @@ async def httpx_probe(
             "install": tool.install_instructions,
         }
     target_str = ",".join(targets)
-    result = await tool.run(
-        target_str, follow_redirects=follow_redirects, tech_detect=tech_detect
-    )
+    result = await tool.run(target_str, follow_redirects=follow_redirects, tech_detect=tech_detect)
     return {
         "success": result.success,
         "live_hosts": len(result.findings),
@@ -465,6 +470,7 @@ async def bb_subdomain_enum(domain: str, scope_rules: list[dict[str, str]]) -> d
 # ══════════════════════════════════════════════════════════
 # PHASE 2 TOOLS (White-box, Cloud, AI/LLM)
 # ══════════════════════════════════════════════════════════
+
 
 @mcp.tool()
 async def semgrep_scan(
@@ -701,6 +707,7 @@ async def wpscan_check(
 # RESOURCES (4 data endpoints)
 # ══════════════════════════════════════════════════════════
 
+
 @mcp.resource("netra://scan/status")
 async def scan_status() -> str:
     """Current scan status and progress."""
@@ -728,6 +735,7 @@ async def compliance_status() -> str:
 # ══════════════════════════════════════════════════════════
 # PROMPTS (6 templates)
 # ══════════════════════════════════════════════════════════
+
 
 @mcp.prompt()
 def quick_scan(target: str) -> str:

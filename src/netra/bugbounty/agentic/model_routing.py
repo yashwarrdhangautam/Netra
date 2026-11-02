@@ -1,4 +1,5 @@
 """Role-aware model routing for the agentic hunt stack."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,7 +40,9 @@ class AgentModelRouter:
 
     def _anthropic_route(self, role: AgentRole) -> ModelRoute:
         if role == AgentRole.REPORT_SYNTH:
-            return ModelRoute(role, "anthropic", settings.anthropic_skeptic_model, "cheaper summarisation route")
+            return ModelRoute(
+                role, "anthropic", settings.anthropic_skeptic_model, "cheaper summarisation route"
+            )
         return ModelRoute(role, "anthropic", settings.anthropic_model, "default anthropic route")
 
     def _ollama_route(self, role: AgentRole) -> ModelRoute:

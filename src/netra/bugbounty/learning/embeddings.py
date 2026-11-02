@@ -1,4 +1,5 @@
 """Embedding helpers for local-first corpus retrieval."""
+
 from __future__ import annotations
 
 import hashlib

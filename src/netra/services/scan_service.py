@@ -1,5 +1,4 @@
 """Scan service for business logic."""
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,7 +42,9 @@ class ScanService:
 
         scan = Scan(
             name=f"Bug bounty {profile} hunt: {program.handle}",
-            profile=ScanProfile.BUGBOUNTY_ACTIVE if profile == "active" else ScanProfile.BUGBOUNTY_PASSIVE,
+            profile=ScanProfile.BUGBOUNTY_ACTIVE
+            if profile == "active"
+            else ScanProfile.BUGBOUNTY_PASSIVE,
             target_id=target.id,
             config={
                 "program_id": str(program.id),

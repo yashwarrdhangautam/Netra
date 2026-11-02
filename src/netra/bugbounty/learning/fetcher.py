@@ -1,4 +1,5 @@
 """Shared fetch guardrails for NETRA-BB learning sources."""
+
 from __future__ import annotations
 
 import asyncio
@@ -97,7 +98,9 @@ class LearningFetcher:
         if host in self._robots_cache:
             return self._robots_cache[host]
         robots_url = f"{parsed.scheme or 'https'}://{host}/robots.txt"
-        client = self.client or httpx.AsyncClient(timeout=20, headers={"User-Agent": self.user_agent})
+        client = self.client or httpx.AsyncClient(
+            timeout=20, headers={"User-Agent": self.user_agent}
+        )
         created_client = self.client is None
         try:
             response = await client.get(robots_url)

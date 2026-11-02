@@ -1,10 +1,9 @@
 """Bug bounty submission business logic."""
+
 from __future__ import annotations
 
-import json
 import uuid
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -69,7 +68,9 @@ class BBSubmissionService:
         fp = fingerprint(vuln_class, urlparse(asset).path or asset, finding.parameter or "")
         dup = await is_duplicate(self.db, program.id, fp)
         if dup and not force:
-            raise DuplicateFindingError(f"Duplicate of finding {dup.finding_id}; pass --force to draft anyway")
+            raise DuplicateFindingError(
+                f"Duplicate of finding {dup.finding_id}; pass --force to draft anyway"
+            )
 
         title = self._title(finding, vuln_class, asset)
         poc = None
@@ -103,7 +104,9 @@ class BBSubmissionService:
         # path covers raw uploaded bytes; this covers strings that flowed through the
         # finding model into AI summaries or reproduction steps.
         markdown, redaction_hits = self._redact_draft(rendered)
-        payout = estimate_payout(str(finding.severity), program.payout_min, program.payout_max, program.currency)
+        payout = estimate_payout(
+            str(finding.severity), program.payout_min, program.payout_max, program.currency
+        )
 
         submission = BBSubmission(
             finding_id=finding.id,
@@ -176,7 +179,9 @@ class BBSubmissionService:
             title=title,
             summary=finding.description or title,
             steps_to_reproduce=[str(s) for s in steps],
-            impact=bounty.get("rationale") or attacker.get("business_impact") or "Impact requires operator validation.",
+            impact=bounty.get("rationale")
+            or attacker.get("business_impact")
+            or "Impact requires operator validation.",
             suggested_fix=defender.get("immediate_fix") or finding.remediation,
             references=[str(r) for r in refs],
             proof_of_concept=proof_of_concept,

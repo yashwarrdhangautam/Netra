@@ -1,4 +1,5 @@
 """Tests for targets API endpoints."""
+
 import pytest
 from httpx import AsyncClient
 

@@ -3,11 +3,12 @@
 This is the only place outside services/ that should write to bb_programs and
 bb_scope_rules. The CLI and integrations call these helpers; nothing else.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Iterable
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
@@ -63,9 +64,7 @@ class ScopeDiff:
 
 
 # ── CRUD helpers ────────────────────────────────────────────────────────────────
-async def get_program(
-    session: AsyncSession, platform: BBPlatform, handle: str
-) -> BBProgram | None:
+async def get_program(session: AsyncSession, platform: BBPlatform, handle: str) -> BBProgram | None:
     """Fetch a program by (platform, handle), or None if absent."""
     stmt = select(BBProgram).where(
         BBProgram.platform == platform,
@@ -109,9 +108,7 @@ async def list_active_programs(session: AsyncSession) -> list[BBProgram]:
     return list(result.scalars().all())
 
 
-async def get_active_scope_rules(
-    session: AsyncSession, program_id
-) -> list[BBScopeRule]:
+async def get_active_scope_rules(session: AsyncSession, program_id) -> list[BBScopeRule]:
     """Return the active scope rules for a program."""
     stmt = (
         select(BBScopeRule)
@@ -131,9 +128,7 @@ def _rule_signature(rule_type: str, asset_type: str, pattern: str) -> tuple[str,
     return (rule_type, asset_type, pattern.strip().lower())
 
 
-def diff_scope(
-    existing: Iterable[BBScopeRule], fresh: Iterable[ScopeRuleInput]
-) -> ScopeDiff:
+def diff_scope(existing: Iterable[BBScopeRule], fresh: Iterable[ScopeRuleInput]) -> ScopeDiff:
     """Compute the diff between existing DB rules and a fresh platform pull.
 
     Pure function — no DB writes. Caller decides whether to apply the diff.
@@ -145,8 +140,7 @@ def diff_scope(
         _rule_signature(r.rule_type, r.asset_type, r.pattern): r for r in existing_list
     }
     fresh_sigs = {
-        _rule_signature(r.rule_type.value, r.asset_type.value, r.pattern): r
-        for r in fresh_list
+        _rule_signature(r.rule_type.value, r.asset_type.value, r.pattern): r for r in fresh_list
     }
 
     added = [fresh_sigs[s] for s in fresh_sigs.keys() - existing_sigs.keys()]
@@ -156,15 +150,13 @@ def diff_scope(
     return ScopeDiff(added=added, removed=removed, unchanged_count=unchanged)
 
 
-async def apply_scope_diff(
-    session: AsyncSession, program: BBProgram, diff: ScopeDiff
-) -> None:
+async def apply_scope_diff(session: AsyncSession, program: BBProgram, diff: ScopeDiff) -> None:
     """Apply a scope diff: deactivate removed rules, insert added ones.
 
     Removed rules are soft-deactivated (active=False) rather than physically removed.
     This preserves audit history — operators can see when a rule disappeared.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for stale in diff.removed:
         stale.active = False
@@ -211,6 +203,6 @@ async def replace_scope_rules(
     if diff.has_changes:
         await apply_scope_diff(session, program, diff)
     else:
-        program.scope_synced_at = datetime.now(timezone.utc)
+        program.scope_synced_at = datetime.now(UTC)
         await session.flush()
     return diff

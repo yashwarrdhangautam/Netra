@@ -1,10 +1,11 @@
 """Knowledge retrieval abstractions for agentic planning."""
+
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -100,7 +101,9 @@ class GraphifyKnowledgeRetriever(KnowledgeRetriever):
             local_edges = adjacency.get(node_id, [])[:4]
             snippets: list[str] = []
             for edge in local_edges:
-                other_id = str(edge.get("target") if str(edge.get("source")) == node_id else edge.get("source"))
+                other_id = str(
+                    edge.get("target") if str(edge.get("source")) == node_id else edge.get("source")
+                )
                 other = node_by_id.get(other_id, {})
                 other_label = str(other.get("label", other_id))
                 relation = str(edge.get("label", "related_to"))
@@ -118,7 +121,9 @@ class GraphifyKnowledgeRetriever(KnowledgeRetriever):
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[:limit]
 
-    async def retrieve_attack_paths(self, query: str, *, limit: int = 5) -> list[dict[str, str | float]]:
+    async def retrieve_attack_paths(
+        self, query: str, *, limit: int = 5
+    ) -> list[dict[str, str | float]]:
         graph = self._load_graph()
         if graph is None:
             return []
@@ -148,8 +153,13 @@ class GraphifyKnowledgeRetriever(KnowledgeRetriever):
         for hyperedge in hyperedges:
             label = str(hyperedge.get("label", ""))
             nodes_in_hyperedge = [str(item) for item in hyperedge.get("nodes", [])]
-            if matched_ids.intersection(nodes_in_hyperedge) or any(term in label.lower() for term in terms):
-                named_members = [str(node_by_id.get(node_id, {}).get("label", node_id)) for node_id in nodes_in_hyperedge[:5]]
+            if matched_ids.intersection(nodes_in_hyperedge) or any(
+                term in label.lower() for term in terms
+            ):
+                named_members = [
+                    str(node_by_id.get(node_id, {}).get("label", node_id))
+                    for node_id in nodes_in_hyperedge[:5]
+                ]
                 paths.append(
                     {
                         "name": label or "graphify_hyperedge",
@@ -172,7 +182,7 @@ class GraphifyKnowledgeRetriever(KnowledgeRetriever):
                     "name": f"{source_label} to {target_label}",
                     "steps": f"{source_label} -> {target_label}",
                     "narrative": relation,
-                    "score": float(0.4),
+                    "score": 0.4,
                 }
             )
 

@@ -3,6 +3,7 @@
 The file is named YAML for operator readability. To avoid adding a runtime dependency,
 we accept JSON-compatible YAML in v1 and fail closed on parse errors.
 """
+
 from __future__ import annotations
 
 import json
@@ -92,4 +93,3 @@ def reload_verifiers() -> list[dict[str, Any]]:
     """Clear cache and reload."""
     load_verifiers.cache_clear()
     return verifiers_as_dicts()
-

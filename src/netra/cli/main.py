@@ -1,4 +1,5 @@
 """NETRA CLI — Interactive menu and command-line interface."""
+
 import argparse
 import sys
 
@@ -42,9 +43,7 @@ def show_menu() -> None:
     table.add_row("[9]", "Settings")
     table.add_row("[0]", "Exit")
 
-    console.print(
-        Panel(table, title="[bold]NETRA Menu[/bold]", border_style="blue")
-    )
+    console.print(Panel(table, title="[bold]NETRA Menu[/bold]", border_style="blue"))
 
     choice = Prompt.ask(
         "[bold]Select option[/bold]",
@@ -216,9 +215,7 @@ def main() -> None:
                 console.print("\n[dim]Goodbye.[/dim]")
                 break
     elif args.command == "scan":
-        console.print(
-            f"[bold]Scanning:[/bold] {args.target} with profile {args.profile}"
-        )
+        console.print(f"[bold]Scanning:[/bold] {args.target} with profile {args.profile}")
         if args.dry_run:
             console.print("[green]Dry run — config valid, no scan started.[/green]")
         else:
@@ -226,9 +223,7 @@ def main() -> None:
                 console.print("[cyan]Starting scan...[/cyan]")
                 # TODO: Replace with real scan orchestration in Phase 1
                 findings: list[dict[str, str]] = []  # placeholder until wired
-                console.print(
-                    f"[green]Scan complete — {len(findings)} findings.[/green]"
-                )
+                console.print(f"[green]Scan complete — {len(findings)} findings.[/green]")
 
                 # --output-sarif: Write SARIF output
                 if getattr(args, "output_sarif", None):
@@ -252,10 +247,7 @@ def main() -> None:
                     violating = [
                         f
                         for f in findings
-                        if severity_order.get(
-                            f.get("severity", "info").lower(), 4
-                        )
-                        <= threshold
+                        if severity_order.get(f.get("severity", "info").lower(), 4) <= threshold
                     ]
                     if violating:
                         console.print(
@@ -274,6 +266,7 @@ def main() -> None:
                 sys.exit(2)
     elif args.command == "server":
         import uvicorn
+
         from netra.api.app import create_app
 
         app = create_app()

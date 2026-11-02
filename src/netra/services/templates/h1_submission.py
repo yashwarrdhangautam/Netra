@@ -1,4 +1,5 @@
 """HackerOne-style Word submission packet template."""
+
 from __future__ import annotations
 
 import json
@@ -44,12 +45,18 @@ def build_h1_docx(finding: Any, submission: Any, output_path: Path) -> Path:
 
     doc.add_heading("Impact", level=1)
     bounty = (finding.ai_analysis or {}).get("bounty_hunter", {})
-    impact = bounty.get("rationale") or (finding.ai_analysis or {}).get("attacker", {}).get("business_impact")
+    impact = bounty.get("rationale") or (finding.ai_analysis or {}).get("attacker", {}).get(
+        "business_impact"
+    )
     doc.add_paragraph(impact or "Impact requires operator confirmation before submission.")
 
     doc.add_heading("Suggested Fix", level=1)
     defender = (finding.ai_analysis or {}).get("defender", {})
-    doc.add_paragraph(defender.get("immediate_fix") or finding.remediation or "Apply the vendor-recommended remediation and verify with a regression test.")
+    doc.add_paragraph(
+        defender.get("immediate_fix")
+        or finding.remediation
+        or "Apply the vendor-recommended remediation and verify with a regression test."
+    )
 
     doc.add_heading("References", level=1)
     refs = evidence.get("references", []) if isinstance(evidence, dict) else []
@@ -69,4 +76,3 @@ def build_h1_docx(finding: Any, submission: Any, output_path: Path) -> Path:
 
     doc.save(str(output_path))
     return output_path
-

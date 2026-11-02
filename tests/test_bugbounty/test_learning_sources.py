@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -34,7 +34,7 @@ class FakeHacktivityClient:
                 program_handle="shopify",
                 author_handle="alice",
                 weakness="Cross-Site Scripting (XSS)",
-                disclosed_at=datetime.now(timezone.utc),
+                disclosed_at=datetime.now(UTC),
                 raw={},
             )
         ]
@@ -42,8 +42,8 @@ class FakeHacktivityClient:
 
 @pytest.mark.asyncio
 async def test_hacktivity_ingest_redacts_and_upserts(db_session) -> None:
-    from netra.bugbounty.learning.sources.hackerone import ingest_hacktivity
     from netra.bugbounty.learning.sources import hackerone as h1_source
+    from netra.bugbounty.learning.sources.hackerone import ingest_hacktivity
 
     original = h1_source.settings.corpus_obey_robots
     h1_source.settings.corpus_obey_robots = False
@@ -64,8 +64,8 @@ async def test_hacktivity_ingest_redacts_and_upserts(db_session) -> None:
 
 @pytest.mark.asyncio
 async def test_advisory_ingest_stores_ghsa_and_nvd(db_session) -> None:
-    from netra.bugbounty.learning.sources.advisories import ingest_advisories
     from netra.bugbounty.learning.sources import advisories as advisories_source
+    from netra.bugbounty.learning.sources.advisories import ingest_advisories
 
     def handler(request: httpx.Request) -> httpx.Response:
         if "api.github.com/advisories" in str(request.url):
@@ -91,9 +91,26 @@ async def test_advisory_ingest_stores_ghsa_and_nvd(db_session) -> None:
                         "cve": {
                             "id": "CVE-2026-1111",
                             "descriptions": [{"lang": "en", "value": "Webhook SSRF issue"}],
-                            "metrics": {"cvssMetricV31": [{"cvssData": {"baseSeverity": "HIGH", "vectorString": "CVSS:3.1/..."}}]},
-                            "references": [{"url": "https://nvd.nist.gov/vuln/detail/CVE-2026-1111"}],
-                            "configurations": [{"nodes": [{"cpeMatch": [{"criteria": "cpe:2.3:a:vercel:next.js"}]}]}],
+                            "metrics": {
+                                "cvssMetricV31": [
+                                    {
+                                        "cvssData": {
+                                            "baseSeverity": "HIGH",
+                                            "vectorString": "CVSS:3.1/...",
+                                        }
+                                    }
+                                ]
+                            },
+                            "references": [
+                                {"url": "https://nvd.nist.gov/vuln/detail/CVE-2026-1111"}
+                            ],
+                            "configurations": [
+                                {
+                                    "nodes": [
+                                        {"cpeMatch": [{"criteria": "cpe:2.3:a:vercel:next.js"}]}
+                                    ]
+                                }
+                            ],
                         }
                     }
                 ]
@@ -116,8 +133,8 @@ async def test_advisory_ingest_stores_ghsa_and_nvd(db_session) -> None:
 
 @pytest.mark.asyncio
 async def test_rss_ingest_stores_writeups(db_session) -> None:
-    from netra.bugbounty.learning.sources.rss import ingest_public_writeups
     from netra.bugbounty.learning.sources import rss as rss_source
+    from netra.bugbounty.learning.sources.rss import ingest_public_writeups
 
     xml = """
     <rss><channel>
@@ -131,11 +148,15 @@ async def test_rss_ingest_stores_writeups(db_session) -> None:
     </channel></rss>
     """
 
-    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=xml)))
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text=xml))
+    )
     original = rss_source.settings.corpus_obey_robots
     rss_source.settings.corpus_obey_robots = False
     try:
-        result = await ingest_public_writeups(db_session, feeds=["https://example.com/feed"], client=client)
+        result = await ingest_public_writeups(
+            db_session, feeds=["https://example.com/feed"], client=client
+        )
     finally:
         rss_source.settings.corpus_obey_robots = original
         await client.aclose()
@@ -164,7 +185,7 @@ async def test_forget_corpus_entries_deletes_matching_author(db_session) -> None
             metadata_={},
             redaction_count=0,
             embedding=[1.0, 0.0, 0.0],
-            ingested_at=datetime.now(timezone.utc),
+            ingested_at=datetime.now(UTC),
         )
     )
     await db_session.commit()

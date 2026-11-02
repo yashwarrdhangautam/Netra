@@ -1,7 +1,8 @@
 """Shared test fixtures."""
-from collections.abc import AsyncGenerator
+
 import asyncio
 import sys
+from collections.abc import AsyncGenerator
 
 import pytest
 from httpx import ASGITransport, AsyncClient

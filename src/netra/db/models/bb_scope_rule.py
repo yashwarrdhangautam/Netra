@@ -1,4 +1,5 @@
 """Bug bounty scope rule model."""
+
 import uuid
 from enum import StrEnum
 
@@ -46,9 +47,7 @@ class BBScopeRule(Base):
     severity_cap: Mapped[str | None] = mapped_column(String(20))
     notes: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    synced_from_platform: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True
-    )
+    synced_from_platform: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # Relationships
     program: Mapped["BBProgram"] = relationship(back_populates="scope_rules")

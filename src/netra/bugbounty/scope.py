@@ -19,13 +19,14 @@ Design rules:
 If you find a behaviour that surprises you, add a test for it in
 tests/test_bugbounty/test_scope.py BEFORE changing this file.
 """
+
 from __future__ import annotations
 
 import ipaddress
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Iterable
 from urllib.parse import unquote, urlparse
 
 
@@ -161,7 +162,7 @@ def parse_target(target: str) -> ParsedTarget:
     if "://" in decoded:
         try:
             u = urlparse(decoded)
-            scheme = (u.scheme or None)
+            scheme = u.scheme or None
             host = u.hostname
             port = u.port
             path = u.path or "/"
@@ -271,9 +272,13 @@ def _match_cidr(rule_pattern: str, parsed: ParsedTarget) -> bool:
         net = ipaddress.ip_network(rule_pattern.strip(), strict=False)
     except (ValueError, TypeError):
         return False
-    if isinstance(parsed.ip_obj, ipaddress.IPv4Address) and not isinstance(net, ipaddress.IPv4Network):
+    if isinstance(parsed.ip_obj, ipaddress.IPv4Address) and not isinstance(
+        net, ipaddress.IPv4Network
+    ):
         return False
-    if isinstance(parsed.ip_obj, ipaddress.IPv6Address) and not isinstance(net, ipaddress.IPv6Network):
+    if isinstance(parsed.ip_obj, ipaddress.IPv6Address) and not isinstance(
+        net, ipaddress.IPv6Network
+    ):
         return False
     return parsed.ip_obj in net
 
@@ -403,7 +408,7 @@ class ScopeValidator:
         return decision
 
     @classmethod
-    def from_db_rules(cls, db_rules: Iterable) -> "ScopeValidator":
+    def from_db_rules(cls, db_rules: Iterable) -> ScopeValidator:
         """Build a validator from BBScopeRule ORM rows.
 
         Avoids importing the ORM at module load time so this file stays usable in

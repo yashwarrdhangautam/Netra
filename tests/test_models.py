@@ -1,5 +1,4 @@
 """Tests for database models."""
-import uuid
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession

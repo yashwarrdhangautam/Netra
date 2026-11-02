@@ -10,10 +10,10 @@ BountyHunter scores findings on three dimensions specific to bug bounty work:
 The score is impact * 0.5 + novelty * 0.3 + payout * 0.2. Skeptic veto still applies
 at the consensus layer — BountyHunter cannot override Skeptic.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 
 BOUNTY_HUNTER_PROMPT = """You are BountyHunter, a senior bug bounty researcher reviewing
 a finding for submission to a public bug bounty program.

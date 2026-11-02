@@ -1,4 +1,5 @@
 """Celery worker configuration with Beat scheduler."""
+
 from celery import Celery
 from celery.schedules import crontab
 

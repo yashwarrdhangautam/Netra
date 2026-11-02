@@ -1,8 +1,9 @@
 """Pydantic schemas for report operations."""
+
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from netra.db.models.report import ReportStatus, ReportType
 

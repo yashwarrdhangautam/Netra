@@ -1,4 +1,5 @@
 """Generate conservative PoC text for high-value findings."""
+
 from __future__ import annotations
 
 from netra.ai.brain import AIBrain

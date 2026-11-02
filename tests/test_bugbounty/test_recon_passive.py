@@ -12,9 +12,7 @@ async def test_passive_recon_dedupes_and_scope_filters(monkeypatch) -> None:
         return ["api.example.com", "API.example.com", "evil.com"]
 
     monkeypatch.setitem(passive.SOURCES, "unit", source)
-    validator = ScopeValidator(
-        [ScopeRule(RuleType.IN, AssetType.WILDCARD, "*.example.com")]
-    )
+    validator = ScopeValidator([ScopeRule(RuleType.IN, AssetType.WILDCARD, "*.example.com")])
 
     result = await passive.run_passive_recon(
         ["example.com"], validator, "example", sources=["unit"]
@@ -23,4 +21,3 @@ async def test_passive_recon_dedupes_and_scope_filters(monkeypatch) -> None:
     assert result.in_scope_hosts == ["api.example.com"]
     assert result.out_of_scope_hosts == ["evil.com"]
     assert result.sources["unit"] == 2
-

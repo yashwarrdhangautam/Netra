@@ -37,7 +37,9 @@ async def test_run_bugbounty_scan_sets_task_id_and_completes(monkeypatch, db_ses
     monkeypatch.setattr("netra.scanner.orchestrator.ScanOrchestrator.execute", fake_execute)
     monkeypatch.setattr(db_session, "close", _keep_session_open)
 
-    program = BBProgram(platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD")
+    program = BBProgram(
+        platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD"
+    )
     db_session.add(program)
     await db_session.flush()
     target = Target(name="bb:shopify", target_type=TargetType.DOMAIN, value="shopify")
@@ -76,11 +78,15 @@ async def test_run_bugbounty_scan_marks_failure_on_exception(monkeypatch, db_ses
 
     monkeypatch.setattr(tasks, "_get_db_session", lambda: db_session)
     monkeypatch.setattr(tasks, "_task_request_id", lambda _task: "celery-task-2")
-    monkeypatch.setattr(tasks, "kill_registered_processes", lambda task_id: killed.append(task_id) or [])
+    monkeypatch.setattr(
+        tasks, "kill_registered_processes", lambda task_id: killed.append(task_id) or []
+    )
     monkeypatch.setattr("netra.scanner.orchestrator.ScanOrchestrator.execute", fake_execute)
     monkeypatch.setattr(db_session, "close", _keep_session_open)
 
-    program = BBProgram(platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD")
+    program = BBProgram(
+        platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD"
+    )
     db_session.add(program)
     await db_session.flush()
     target = Target(name="bb:shopify", target_type=TargetType.DOMAIN, value="shopify")
@@ -123,9 +129,15 @@ async def test_learning_ingest_tasks_delegate_to_sources(monkeypatch, db_session
 
     monkeypatch.setattr(tasks, "_get_db_session", lambda: db_session)
     monkeypatch.setattr(db_session, "close", _keep_session_open)
-    monkeypatch.setattr("netra.bugbounty.learning.sources.hackerone.ingest_hacktivity", fake_hacktivity)
-    monkeypatch.setattr("netra.bugbounty.learning.sources.advisories.ingest_advisories", fake_advisories)
-    monkeypatch.setattr("netra.bugbounty.learning.sources.rss.ingest_public_writeups", fake_writeups)
+    monkeypatch.setattr(
+        "netra.bugbounty.learning.sources.hackerone.ingest_hacktivity", fake_hacktivity
+    )
+    monkeypatch.setattr(
+        "netra.bugbounty.learning.sources.advisories.ingest_advisories", fake_advisories
+    )
+    monkeypatch.setattr(
+        "netra.bugbounty.learning.sources.rss.ingest_public_writeups", fake_writeups
+    )
 
     hack = await asyncio.to_thread(tasks.ingest_hacktivity_daily.run)
     advisories = await asyncio.to_thread(tasks.ingest_advisories_daily.run)

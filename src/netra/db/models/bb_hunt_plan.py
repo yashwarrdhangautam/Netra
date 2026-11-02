@@ -1,9 +1,10 @@
 """Bug bounty hunt plan persistence."""
+
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base

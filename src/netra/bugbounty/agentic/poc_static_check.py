@@ -1,6 +1,6 @@
 """Static guardrail for generated PoCs."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 FORBIDDEN_KEYWORDS = ("DELETE ", "PATCH ", "PUT ", "\nDELETE ", "\nPATCH ", "\nPUT ")
 

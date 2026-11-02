@@ -1,9 +1,10 @@
 """Finding model for storing security vulnerability findings."""
+
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
@@ -36,9 +37,7 @@ class Finding(Base):
 
     __tablename__ = "findings"
 
-    scan_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("scans.id"), nullable=False
-    )
+    scan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scans.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[Severity] = mapped_column(String(20), nullable=False)
@@ -63,6 +62,4 @@ class Finding(Base):
 
     # Relationships
     scan: Mapped["Scan"] = relationship(back_populates="findings")
-    compliance_mappings: Mapped[list["ComplianceMapping"]] = relationship(
-        back_populates="finding"
-    )
+    compliance_mappings: Mapped[list["ComplianceMapping"]] = relationship(back_populates="finding")

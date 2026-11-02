@@ -1,6 +1,7 @@
 """DefectDojo integration for bidirectional vulnerability sync."""
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -8,9 +9,9 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from netra.core.config import settings
 from netra.db.models.finding import Finding
 from netra.db.models.scan import Scan
-from netra.core.config import settings
 
 logger = structlog.get_logger()
 
@@ -169,7 +170,7 @@ class DefectDojoClient:
             return result["results"][0]
 
         # Create new engagement
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         engagement_data = {
             "product": product_id,
             "name": name,
@@ -208,21 +209,11 @@ class DefectDojoClient:
         }
 
         # Map NETRA status to DefectDojo
-        status_map = {
-            "new": "Active",
-            "confirmed": "Active",
-            "resolved": "Mitigated",
-            "verified": "Verified",
-            "false_positive": "False Positive",
-            "wont_fix": "Risk Accepted",
-        }
 
         dojo_finding = {
             "title": finding.get("title", "Unknown Finding"),
             "description": finding.get("description", ""),
-            "severity": severity_map.get(
-                finding.get("severity", "medium"), "Medium"
-            ),
+            "severity": severity_map.get(finding.get("severity", "medium"), "Medium"),
             "mitigation": finding.get("remediation", ""),
             "impact": finding.get("impact", ""),
             "steps_to_reproduce": finding.get("proof_of_concept", ""),
@@ -233,9 +224,7 @@ class DefectDojoClient:
             "false_p": finding.get("status", "new") == "false_positive",
             "risk_accepted": finding.get("status", "new") == "wont_fix",
             "engagement": engagement_id,
-            "numerical_severity": self._get_numerical_severity(
-                finding.get("severity", "medium")
-            ),
+            "numerical_severity": self._get_numerical_severity(finding.get("severity", "medium")),
         }
 
         # Add CWE if available
@@ -276,9 +265,7 @@ class DefectDojoClient:
         Returns:
             Updated finding data
         """
-        updated = await self._request(
-            "PATCH", f"findings/{finding_id}/", data=updates
-        )
+        updated = await self._request("PATCH", f"findings/{finding_id}/", data=updates)
         logger.info("defectdojo_finding_updated", finding_id=finding_id)
         return updated or {}
 
@@ -320,9 +307,7 @@ class DefectDojoClient:
             return {"status": "error", "message": "Scan not found"}
 
         # Get findings
-        findings_result = await db.execute(
-            select(Finding).where(Finding.scan_id == scan_id)
-        )
+        findings_result = await db.execute(select(Finding).where(Finding.scan_id == scan_id))
         findings = list(findings_result.scalars().all())
 
         if not findings:
@@ -360,7 +345,9 @@ class DefectDojoClient:
 
         for finding in findings:
             # Check if finding already exists in DefectDojo
-            dojo_finding_id = finding.metadata.get("defectdojo_id") if hasattr(finding, "metadata") else None
+            dojo_finding_id = (
+                finding.metadata.get("defectdojo_id") if hasattr(finding, "metadata") else None
+            )
 
             if dojo_finding_id:
                 # Update existing finding

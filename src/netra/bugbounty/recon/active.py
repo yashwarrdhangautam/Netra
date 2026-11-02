@@ -1,8 +1,9 @@
 """Scope-gated active reconnaissance for NETRA-BB."""
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 import structlog
 
@@ -35,7 +36,9 @@ async def httpx_alive(host: str) -> bool:
     return any((f.get("status_code") or 0) in range(200, 400) for f in result.findings)
 
 
-async def ffuf_paths(host: str, wordlist: str = "common.txt", rate_limit: int | None = None) -> list[str]:
+async def ffuf_paths(
+    host: str, wordlist: str = "common.txt", rate_limit: int | None = None
+) -> list[str]:
     """Run ffuf content discovery and return normalized paths."""
     target = host.rstrip("/") + "/FUZZ"
     result = await FfufTool().run(target, wordlist=wordlist, rate_limit=rate_limit)

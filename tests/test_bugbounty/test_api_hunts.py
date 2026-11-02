@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from netra.worker.celery_app import celery_app
 from netra.db.models import Finding, Severity
 from netra.db.models.bb_agentic_step import BBAgenticStep
 from netra.db.models.bb_program import BBPlatform, BBProgram
 from netra.db.models.scan import Scan, ScanProfile, ScanStatus
 from netra.db.models.target import Target, TargetType
+from netra.worker.celery_app import celery_app
 
 
 @pytest.mark.asyncio
-async def test_cancel_hunt_revokes_task_and_kills_registered_processes(client, db_session, monkeypatch) -> None:
+async def test_cancel_hunt_revokes_task_and_kills_registered_processes(
+    client, db_session, monkeypatch
+) -> None:
     revoked: list[tuple[str, bool, str]] = []
     killed: list[str] = []
 
@@ -27,7 +29,9 @@ async def test_cancel_hunt_revokes_task_and_kills_registered_processes(client, d
         lambda task_id: killed.append(task_id) or [],
     )
 
-    program = BBProgram(platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD")
+    program = BBProgram(
+        platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD"
+    )
     db_session.add(program)
     await db_session.flush()
     target = Target(name="bb:shopify", target_type=TargetType.DOMAIN, value="shopify")
@@ -67,8 +71,16 @@ async def test_explain_hunt_returns_agentic_steps(client, db_session) -> None:
                 "summary": "Graph-backed planner context",
                 "focus_areas": ["idor", "ssrf"],
                 "recommended_tools": ["httpx", "nuclei"],
-                "retrieval_hits": [{"title": "Planner", "source": "graph.json", "snippet": "Planner -> Router"}],
-                "attack_paths": [{"name": "Planner to Scope", "steps": ["Planner", "ScopeValidator"], "narrative": "control path"}],
+                "retrieval_hits": [
+                    {"title": "Planner", "source": "graph.json", "snippet": "Planner -> Router"}
+                ],
+                "attack_paths": [
+                    {
+                        "name": "Planner to Scope",
+                        "steps": ["Planner", "ScopeValidator"],
+                        "narrative": "control path",
+                    }
+                ],
             }
         },
     )
@@ -100,7 +112,9 @@ async def test_explain_hunt_returns_agentic_steps(client, db_session) -> None:
 
 @pytest.mark.asyncio
 async def test_plan_preview_returns_coordination(client, db_session) -> None:
-    program = BBProgram(platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD")
+    program = BBProgram(
+        platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD"
+    )
     db_session.add(program)
     await db_session.commit()
 
@@ -119,9 +133,13 @@ async def test_finding_similar_reports_returns_corpus_hits(client, db_session, m
     async def fake_build_corpus_context(*args, **kwargs):  # noqa: ANN002, ANN003
         return ["[reports] Shopify IDOR :: similar report (https://example.com/report)"]
 
-    monkeypatch.setattr("netra.bugbounty.learning.search.build_corpus_context", fake_build_corpus_context)
+    monkeypatch.setattr(
+        "netra.bugbounty.learning.search.build_corpus_context", fake_build_corpus_context
+    )
 
-    program = BBProgram(platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD")
+    program = BBProgram(
+        platform=BBPlatform.HACKERONE, handle="shopify", name="Shopify", currency="USD"
+    )
     db_session.add(program)
     await db_session.flush()
     target = Target(name="bb:shopify", target_type=TargetType.DOMAIN, value="shopify")

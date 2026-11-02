@@ -19,6 +19,7 @@ Scope mapping (HackerOne 'structured_scopes' → NETRA-BB scope rules):
     eligible_for_submission=True  → ScopeRuleType.IN
     eligible_for_submission=False → ScopeRuleType.OUT
 """
+
 from __future__ import annotations
 
 import os
@@ -107,7 +108,7 @@ class HackerOneClient:
         """Return True if the client has credentials."""
         return bool(self.api_username and self.api_token)
 
-    async def __aenter__(self) -> "HackerOneClient":
+    async def __aenter__(self) -> HackerOneClient:
         self._client = httpx.AsyncClient(
             base_url=self.BASE_URL,
             auth=(self.api_username, self.api_token),
@@ -218,35 +219,39 @@ class HackerOneClient:
         return items
 
     @staticmethod
-    def _parse_hacktivity_page(data: list[dict[str, Any]], included: list[dict[str, Any]]) -> list[H1HacktivityItem]:
-        included_map = {
-            (item.get("type"), item.get("id")): item for item in included
-        }
+    def _parse_hacktivity_page(
+        data: list[dict[str, Any]], included: list[dict[str, Any]]
+    ) -> list[H1HacktivityItem]:
+        included_map = {(item.get("type"), item.get("id")): item for item in included}
         output: list[H1HacktivityItem] = []
         for item in data:
             attrs = item.get("attributes") or {}
             relationships = item.get("relationships") or {}
-            report_ref = ((relationships.get("report") or {}).get("data") or {})
+            report_ref = (relationships.get("report") or {}).get("data") or {}
             report = included_map.get((report_ref.get("type"), report_ref.get("id")), {})
             report_attrs = report.get("attributes") or {}
 
-            program_ref = ((relationships.get("program") or {}).get("data") or {})
+            program_ref = (relationships.get("program") or {}).get("data") or {}
             program = included_map.get((program_ref.get("type"), program_ref.get("id")), {})
             program_attrs = program.get("attributes") or {}
 
-            hacker_ref = ((relationships.get("hacker") or {}).get("data") or {})
+            hacker_ref = (relationships.get("hacker") or {}).get("data") or {}
             hacker = included_map.get((hacker_ref.get("type"), hacker_ref.get("id")), {})
             hacker_attrs = hacker.get("attributes") or {}
 
-            weakness_ref = ((relationships.get("weakness") or {}).get("data") or {})
+            weakness_ref = (relationships.get("weakness") or {}).get("data") or {}
             weakness = included_map.get((weakness_ref.get("type"), weakness_ref.get("id")), {})
             weakness_attrs = weakness.get("attributes") or {}
 
-            latest_activity = attrs.get("latest_disclosable_activity_at") or report_attrs.get("disclosed_at")
+            latest_activity = attrs.get("latest_disclosable_activity_at") or report_attrs.get(
+                "disclosed_at"
+            )
             disclosed_at = None
             if latest_activity:
                 try:
-                    disclosed_at = datetime.fromisoformat(str(latest_activity).replace("Z", "+00:00"))
+                    disclosed_at = datetime.fromisoformat(
+                        str(latest_activity).replace("Z", "+00:00")
+                    )
                 except ValueError:
                     disclosed_at = None
 
@@ -255,14 +260,25 @@ class HackerOneClient:
                     source_url=report_attrs.get("url")
                     or attrs.get("url")
                     or f"https://hackerone.com/reports/{report_ref.get('id')}",
-                    title=report_attrs.get("title") or attrs.get("title") or "HackerOne disclosed report",
-                    body=report_attrs.get("substate") or report_attrs.get("description") or attrs.get("message") or "",
+                    title=report_attrs.get("title")
+                    or attrs.get("title")
+                    or "HackerOne disclosed report",
+                    body=report_attrs.get("substate")
+                    or report_attrs.get("description")
+                    or attrs.get("message")
+                    or "",
                     severity=report_attrs.get("severity_rating") or attrs.get("severity_rating"),
                     program_handle=program_attrs.get("handle"),
                     author_handle=hacker_attrs.get("username") or hacker_attrs.get("name"),
                     weakness=weakness_attrs.get("name"),
                     disclosed_at=disclosed_at,
-                    raw={"event": item, "report": report, "program": program, "hacker": hacker, "weakness": weakness},
+                    raw={
+                        "event": item,
+                        "report": report,
+                        "program": program,
+                        "hacker": hacker,
+                        "weakness": weakness,
+                    },
                 )
             )
         return output

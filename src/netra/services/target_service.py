@@ -1,4 +1,5 @@
 """Target service for business logic."""
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 

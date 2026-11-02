@@ -1,4 +1,5 @@
 """Read-only verifier/replay runner."""
+
 from __future__ import annotations
 
 import json
@@ -64,11 +65,12 @@ async def run_replay(
         "latency_ms": latency_ms,
         "scope": decision.reason,
         "diff": {
-            "status_changed": bool(original_status and int(original_status) != response.status_code),
+            "status_changed": bool(
+                original_status and int(original_status) != response.status_code
+            ),
             "original_status": original_status,
             "current_status": response.status_code,
             "body_length_delta": len(body) - len(original_body),
             "headers": dict(response.headers),
         },
     }
-

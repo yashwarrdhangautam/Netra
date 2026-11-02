@@ -1,4 +1,5 @@
 """ComplianceMapping model for mapping findings to compliance frameworks."""
+
 import uuid
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
@@ -12,9 +13,7 @@ class ComplianceMapping(Base):
 
     __tablename__ = "compliance_mappings"
 
-    finding_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("findings.id"), nullable=True
-    )
+    finding_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("findings.id"), nullable=True)
     framework: Mapped[str] = mapped_column(String(50), nullable=False)
     control_id: Mapped[str] = mapped_column(String(50), nullable=False)
     control_name: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -23,6 +22,4 @@ class ComplianceMapping(Base):
     is_mapped: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
-    finding: Mapped["Finding | None"] = relationship(
-        back_populates="compliance_mappings"
-    )
+    finding: Mapped["Finding | None"] = relationship(back_populates="compliance_mappings")

@@ -1,8 +1,9 @@
 """Bug bounty deduplication signature model."""
+
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from netra.db.models.base import Base
@@ -17,9 +18,7 @@ class BBDedupSignature(Base):
     """
 
     __tablename__ = "bb_dedup_signatures"
-    __table_args__ = (
-        Index("ix_bb_dedup_signatures_program_hash", "program_id", "signature_hash"),
-    )
+    __table_args__ = (Index("ix_bb_dedup_signatures_program_hash", "program_id", "signature_hash"),)
 
     finding_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("findings.id", ondelete="CASCADE"), nullable=False

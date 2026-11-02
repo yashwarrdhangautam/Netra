@@ -1,7 +1,8 @@
 """GHSA and NVD advisory ingestion."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -27,7 +28,10 @@ def _extract_nvd_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 cvss_block = values[0]
                 break
         descriptions = cve.get("descriptions") or []
-        summary = next((entry.get("value") for entry in descriptions if entry.get("lang") == "en"), "") or ""
+        summary = (
+            next((entry.get("value") for entry in descriptions if entry.get("lang") == "en"), "")
+            or ""
+        )
         references = cve.get("references") or []
         items.append(
             {
@@ -78,7 +82,7 @@ async def ingest_advisories(
     *,
     client: httpx.AsyncClient | None = None,
 ) -> dict[str, int]:
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     added = 0
     updated = 0
     if not settings.corpus_source_advisories:
@@ -94,11 +98,15 @@ async def ingest_advisories(
         return {"added": 0, "updated": 0}
     close_client = False
     if client is None:
-        client = httpx.AsyncClient(timeout=60, headers={"Accept": "application/json", "User-Agent": "NETRA-BB/1.0"})
+        client = httpx.AsyncClient(
+            timeout=60, headers={"Accept": "application/json", "User-Agent": "NETRA-BB/1.0"}
+        )
         close_client = True
     fetcher = LearningFetcher(client=client)
     try:
-        items = _extract_ghsa_items(await fetcher.get_json(GHSA_URL)) + _extract_nvd_items(await fetcher.get_json(NVD_URL))
+        items = _extract_ghsa_items(await fetcher.get_json(GHSA_URL)) + _extract_nvd_items(
+            await fetcher.get_json(NVD_URL)
+        )
         for item in items:
             _row, created = await upsert_advisory(
                 session,

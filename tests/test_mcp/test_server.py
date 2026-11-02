@@ -1,4 +1,5 @@
 """Tests for MCP server."""
+
 import pytest
 
 from netra.mcp.server import mcp

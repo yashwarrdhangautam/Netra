@@ -15,11 +15,15 @@ from netra.services.bb_submission_service import BBSubmissionService, DraftLeakR
 
 class StubPocBuilder:
     async def build(self, finding, evidence, vuln_class):  # noqa: ANN001
-        return "```http\nGET /orders?token=AKIAIOSFODNN7EXAMPLE HTTP/1.1\nHost: api.shopify.com\n\n```"
+        return (
+            "```http\nGET /orders?token=AKIAIOSFODNN7EXAMPLE HTTP/1.1\nHost: api.shopify.com\n\n```"
+        )
 
 
 @pytest.mark.asyncio
-async def test_create_draft_includes_and_redacts_poc(monkeypatch, db_session, tmp_path: Path) -> None:
+async def test_create_draft_includes_and_redacts_poc(
+    monkeypatch, db_session, tmp_path: Path
+) -> None:
     async def fake_build_corpus_context(*args, **kwargs):  # noqa: ANN002, ANN003
         return [
             "[reports] Shopify reflected XSS :: Similar public report (https://example.com/report)"
@@ -51,7 +55,11 @@ async def test_create_draft_includes_and_redacts_poc(monkeypatch, db_session, tm
         name="Bug bounty passive hunt: shopify",
         profile=ScanProfile.BUGBOUNTY_PASSIVE,
         target_id=target.id,
-        config={"program_id": str(program.id), "program_handle": "shopify", "platform": "hackerone"},
+        config={
+            "program_id": str(program.id),
+            "program_handle": "shopify",
+            "platform": "hackerone",
+        },
     )
     db_session.add(scan)
     await db_session.flush()
@@ -87,7 +95,9 @@ async def test_create_draft_includes_and_redacts_poc(monkeypatch, db_session, tm
 
 
 @pytest.mark.asyncio
-async def test_create_draft_blocks_verbatim_public_prior_art(monkeypatch, db_session, tmp_path: Path) -> None:
+async def test_create_draft_blocks_verbatim_public_prior_art(
+    monkeypatch, db_session, tmp_path: Path
+) -> None:
     repeated = "The order endpoint reflects attacker supplied input without output encoding. " * 10
 
     async def fake_build_corpus_context(*args, **kwargs):  # noqa: ANN002, ANN003
@@ -115,7 +125,11 @@ async def test_create_draft_blocks_verbatim_public_prior_art(monkeypatch, db_ses
         name="Bug bounty passive hunt: shopify",
         profile=ScanProfile.BUGBOUNTY_PASSIVE,
         target_id=target.id,
-        config={"program_id": str(program.id), "program_handle": "shopify", "platform": "hackerone"},
+        config={
+            "program_id": str(program.id),
+            "program_handle": "shopify",
+            "platform": "hackerone",
+        },
     )
     db_session.add(scan)
     await db_session.flush()

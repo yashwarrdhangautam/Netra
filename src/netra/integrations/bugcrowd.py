@@ -1,4 +1,5 @@
 """Read-only Bugcrowd API/client mapping for NETRA-BB."""
+
 from __future__ import annotations
 
 import os
@@ -21,7 +22,7 @@ class BugcrowdClient:
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
 
-    async def __aenter__(self) -> "BugcrowdClient":
+    async def __aenter__(self) -> BugcrowdClient:
         self._client = httpx.AsyncClient(
             base_url=self.BASE_URL,
             timeout=self.timeout,
@@ -68,7 +69,9 @@ class BugcrowdClient:
                 rules.append(
                     ScopeRuleInput(
                         rule_type=ScopeRuleType.IN if in_scope else ScopeRuleType.OUT,
-                        asset_type=_asset_type(target.get("type") or target.get("category") or value),
+                        asset_type=_asset_type(
+                            target.get("type") or target.get("category") or value
+                        ),
                         pattern=str(value),
                         notes=target.get("description") or group.get("description"),
                     )
@@ -89,4 +92,3 @@ def _asset_type(value: str) -> ScopeAssetType:
     if "mobile" in v or "app" in v:
         return ScopeAssetType.MOBILE
     return ScopeAssetType.DOMAIN
-

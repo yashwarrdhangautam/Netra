@@ -1,4 +1,5 @@
 """Named-agent coordination layer for NETRA-BB."""
+
 from __future__ import annotations
 
 import json
@@ -201,7 +202,9 @@ class AttackPathAgent(BaseSpecialistAgent):
                 attack_paths.append(
                     {
                         "name": item.get("name"),
-                        "steps": str(item.get("steps", "")).split(" -> ") if item.get("steps") else [],
+                        "steps": str(item.get("steps", "")).split(" -> ")
+                        if item.get("steps")
+                        else [],
                         "narrative": item.get("narrative"),
                         "source": "graphify",
                         "score": item.get("score"),
@@ -291,9 +294,7 @@ class MultiAgentCoordinator:
             ]
         )
         recommended_tools = self._dedupe(
-            recommendation
-            for output in agent_outputs
-            for recommendation in output.recommendations
+            recommendation for output in agent_outputs for recommendation in output.recommendations
         )
         summary = " | ".join(output.summary for output in agent_outputs if output.summary)
 
@@ -326,7 +327,9 @@ class MultiAgentCoordinator:
         corpus_hits: list[str] | None = None,
     ) -> dict[str, Any]:
         """Produce orchestration context for the planner prompt."""
-        assessment = await self.assess(asset_facts=asset_facts, scope=scope, corpus_hits=corpus_hits)
+        assessment = await self.assess(
+            asset_facts=asset_facts, scope=scope, corpus_hits=corpus_hits
+        )
         route = self.model_router.route(AgentRole.ORCHESTRATOR)
         payload = assessment.to_dict()
         payload["orchestrator_model"] = route.model

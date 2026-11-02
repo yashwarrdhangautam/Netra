@@ -1,4 +1,5 @@
 """Pydantic schemas for NETRA-BB API routes."""
+
 from __future__ import annotations
 
 import uuid

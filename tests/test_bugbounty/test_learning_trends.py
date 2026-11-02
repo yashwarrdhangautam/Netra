@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -13,7 +13,7 @@ from netra.db.models import BBCorpusAdvisory, BBCorpusReport, BBCorpusWriteup
 async def test_summarize_trends_aggregates_corpus(db_session) -> None:
     from netra.bugbounty.learning.trends import summarize_trends
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     db_session.add(
         BBCorpusReport(
             source_platform="hackerone",
@@ -71,7 +71,7 @@ async def test_summarize_trends_aggregates_corpus(db_session) -> None:
 
 @pytest.mark.asyncio
 async def test_trends_api_returns_summary(client, db_session) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     db_session.add(
         BBCorpusReport(
             source_platform="hackerone",

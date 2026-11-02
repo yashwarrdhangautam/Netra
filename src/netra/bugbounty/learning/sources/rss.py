@@ -1,7 +1,8 @@
 """Public RSS writeup ingestion for the learning corpus."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -42,7 +43,11 @@ def _parse_feed(xml_text: str) -> list[dict[str, Any]]:
         title = (item.findtext("title") or "").strip()
         link = (item.findtext("link") or "").strip()
         description = (item.findtext("description") or "").strip()
-        author = (item.findtext("author") or item.findtext("{http://purl.org/dc/elements/1.1/}creator") or "").strip()
+        author = (
+            item.findtext("author")
+            or item.findtext("{http://purl.org/dc/elements/1.1/}creator")
+            or ""
+        ).strip()
         pub_date_raw = (item.findtext("pubDate") or "").strip()
         pub_date = None
         if pub_date_raw:
@@ -69,7 +74,7 @@ async def ingest_public_writeups(
     feeds: list[str] | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> dict[str, int]:
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     added = 0
     updated = 0
     if not settings.corpus_source_writeups:

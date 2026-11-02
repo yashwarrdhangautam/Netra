@@ -1,6 +1,7 @@
 """FastAPI middleware configuration."""
-from collections.abc import Callable
+
 import uuid
+from collections.abc import Callable
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -75,10 +76,11 @@ def add_bugbounty_audit_middleware(app: FastAPI) -> None:
                     content={"error": {"code": "auth.unauthorized", "message": "Login required"}},
                 )
             try:
+                from sqlalchemy import select
+
                 from netra.core.security import decode_access_token
                 from netra.db.models.user import User, UserRole
                 from netra.db.session import async_session_factory
-                from sqlalchemy import select
 
                 token = auth.split(None, 1)[1]
                 payload = decode_access_token(token)
@@ -86,14 +88,21 @@ def add_bugbounty_audit_middleware(app: FastAPI) -> None:
                     raise ValueError("invalid token")
                 async with async_session_factory() as session:
                     user = (
-                        await session.execute(select(User).where(User.id == uuid.UUID(payload["sub"])))
+                        await session.execute(
+                            select(User).where(User.id == uuid.UUID(payload["sub"]))
+                        )
                     ).scalar_one_or_none()
                     if not user or not user.is_active:
                         raise ValueError("inactive user")
                     if is_mutating and user.role not in {UserRole.ADMIN, UserRole.ANALYST}:
                         return JSONResponse(
                             status_code=status.HTTP_403_FORBIDDEN,
-                            content={"error": {"code": "auth.forbidden", "message": "Operator role required"}},
+                            content={
+                                "error": {
+                                    "code": "auth.forbidden",
+                                    "message": "Operator role required",
+                                }
+                            },
                         )
             except Exception:
                 return JSONResponse(

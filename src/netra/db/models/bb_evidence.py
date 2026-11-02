@@ -1,9 +1,10 @@
 """Bug bounty evidence and replay models."""
+
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
@@ -21,7 +22,9 @@ class BBEvidence(Base):
         ForeignKey("bb_programs.id", ondelete="CASCADE"), nullable=False
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    mime_type: Mapped[str] = mapped_column(String(120), nullable=False, default="application/octet-stream")
+    mime_type: Mapped[str] = mapped_column(
+        String(120), nullable=False, default="application/octet-stream"
+    )
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -70,4 +73,3 @@ class BBEvidenceReplay(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
 
     evidence: Mapped["BBEvidence"] = relationship(back_populates="replays")
-

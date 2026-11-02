@@ -1,9 +1,11 @@
 """Similarity search helpers for the local bug bounty learning corpus."""
+
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import Select, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -195,8 +197,16 @@ async def _pgvector_rows_for_kind(
     filters: dict[str, Any] | None,
 ) -> list[CorpusSearchHit]:
     if kind == "reports":
-        where = ["deleted_at IS NULL", "embedding_vector IS NOT NULL", "embedding_model_version = :query_version"]
-        params: dict[str, Any] = {"embedding": literal, "query_version": query_version, "limit": top_k}
+        where = [
+            "deleted_at IS NULL",
+            "embedding_vector IS NOT NULL",
+            "embedding_model_version = :query_version",
+        ]
+        params: dict[str, Any] = {
+            "embedding": literal,
+            "query_version": query_version,
+            "limit": top_k,
+        }
         if filters and filters.get("program_handle"):
             where.append("program_handle = :program_handle")
             params["program_handle"] = str(filters["program_handle"])
@@ -232,7 +242,11 @@ async def _pgvector_rows_for_kind(
             for row in result.mappings().all()
         ]
     if kind == "writeups":
-        where = ["deleted_at IS NULL", "embedding_vector IS NOT NULL", "embedding_model_version = :query_version"]
+        where = [
+            "deleted_at IS NULL",
+            "embedding_vector IS NOT NULL",
+            "embedding_model_version = :query_version",
+        ]
         params = {"embedding": literal, "query_version": query_version, "limit": top_k}
         if filters and filters.get("vuln_class"):
             where.append("vuln_class = :vuln_class")
@@ -262,7 +276,11 @@ async def _pgvector_rows_for_kind(
             for row in result.mappings().all()
         ]
     if kind == "advisories":
-        where = ["deleted_at IS NULL", "embedding_vector IS NOT NULL", "embedding_model_version = :query_version"]
+        where = [
+            "deleted_at IS NULL",
+            "embedding_vector IS NOT NULL",
+            "embedding_model_version = :query_version",
+        ]
         params = {"embedding": literal, "query_version": query_version, "limit": top_k}
         if filters and filters.get("vuln_class"):
             where.append("metadata_->>'vuln_class' = :vuln_class")

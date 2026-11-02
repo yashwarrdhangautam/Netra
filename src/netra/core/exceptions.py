@@ -1,4 +1,5 @@
 """Custom exception hierarchy for NETRA."""
+
 from typing import Any
 
 

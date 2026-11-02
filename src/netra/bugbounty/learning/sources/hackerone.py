@@ -1,7 +1,8 @@
 """HackerOne hacktivity ingestion for the local learning corpus."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +34,7 @@ async def ingest_hacktivity(
     since_days: int = 1,
     client_cls: type[HackerOneClient] = HackerOneClient,
 ) -> dict[str, int]:
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     added = 0
     updated = 0
     if not settings.corpus_source_hackerone:
@@ -49,7 +50,9 @@ async def ingest_hacktivity(
         return {"added": 0, "updated": 0}
     since = (started - timedelta(days=since_days)).isoformat()
     fetcher = LearningFetcher()
-    async with client_cls(before_request=fetcher.before_request, after_response=fetcher.after_response) as client:
+    async with client_cls(
+        before_request=fetcher.before_request, after_response=fetcher.after_response
+    ) as client:
         if not client.is_configured():
             await log_ingest(
                 session,
@@ -100,14 +103,16 @@ async def bootstrap_program(
     client_cls: type[HackerOneClient] = HackerOneClient,
 ) -> dict[str, int]:
     """Preload disclosed history for a single program when first registering it."""
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     added = 0
     updated = 0
     if not settings.corpus_source_hackerone:
         return {"added": 0, "updated": 0}
     since = (started - timedelta(days=since_days)).isoformat()
     fetcher = LearningFetcher()
-    async with client_cls(before_request=fetcher.before_request, after_response=fetcher.after_response) as client:
+    async with client_cls(
+        before_request=fetcher.before_request, after_response=fetcher.after_response
+    ) as client:
         if not client.is_configured():
             return {"added": 0, "updated": 0}
         items = await client.get_hacktivity(disclosed=True, since=since)

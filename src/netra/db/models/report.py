@@ -1,9 +1,10 @@
 """Report model for storing generated reports."""
+
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
@@ -39,9 +40,7 @@ class Report(Base):
 
     __tablename__ = "reports"
 
-    scan_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("scans.id"), nullable=False
-    )
+    scan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scans.id"), nullable=False)
     report_type: Mapped[ReportType] = mapped_column(String(20), nullable=False)
     status: Mapped[ReportStatus] = mapped_column(
         String(20), default=ReportStatus.PENDING, nullable=False

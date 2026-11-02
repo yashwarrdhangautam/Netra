@@ -1,6 +1,7 @@
 """Jira integration for creating tickets from security findings."""
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -8,9 +9,9 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from netra.core.config import settings
 from netra.db.models.finding import Finding
 from netra.db.models.scan import Scan
-from netra.core.config import settings
 
 logger = structlog.get_logger()
 
@@ -48,6 +49,7 @@ class JiraClient:
                 base_url = "https://" + base_url
             # Extract hostname for validation
             from urllib.parse import urlparse
+
             parsed = urlparse(base_url)
             if not parsed.hostname:
                 raise ValueError("Invalid Jira base URL")
@@ -55,10 +57,13 @@ class JiraClient:
             # accepted without DNS resolution so tests and offline setups stay stable.
             if not parsed.hostname.lower().endswith(".atlassian.net"):
                 from netra.core.ssrf_protection import SSRFProtection, SSRFProtectionError
+
                 try:
                     SSRFProtection.validate_url(base_url)
                 except SSRFProtectionError:
-                    raise ValueError(f"Jira base URL points to internal/private address: {base_url}")
+                    raise ValueError(
+                        f"Jira base URL points to internal/private address: {base_url}"
+                    )
             self.base_url = base_url
         else:
             self.base_url = ""
@@ -211,12 +216,13 @@ class JiraClient:
         fields: dict[str, Any] = {
             "project": {"key": self.project_key},
             "summary": summary,
-            "description": {"type": "doc", "version": 1, "content": [
-                {
-                    "type": "paragraph",
-                    "content": [{"type": "text", "text": description}]
-                }
-            ]},
+            "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": description}]}
+                ],
+            },
             "issuetype": {"name": issue_type},
             "priority": {"name": priority},
         }
@@ -234,7 +240,7 @@ class JiraClient:
             fields.update(custom_fields)
 
         created = await self._request("POST", "issue", data={"fields": fields})
-        
+
         if created:
             logger.info(
                 "jira_issue_created",
@@ -258,12 +264,7 @@ class JiraClient:
             "body": {
                 "type": "doc",
                 "version": 1,
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": comment}]
-                    }
-                ]
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": comment}]}],
             }
         }
 
@@ -403,57 +404,67 @@ class JiraClient:
             Formatted description
         """
         lines = [
-            f"h2. Finding Details",
+            "h2. Finding Details",
             "",
             f"*Title:* {finding.get('title', 'Unknown Finding')}",
             f"*Target:* {scan.get('target', 'Unknown')}",
             f"*Scan:* {scan.get('name', 'Unknown')}",
             f"*Tool:* {finding.get('tool_name', 'Unknown')}",
             "",
-            f"h3. Description",
+            "h3. Description",
             "",
             finding.get("description", "No description provided."),
             "",
         ]
 
         if cvss := finding.get("cvss_score"):
-            lines.extend([
-                f"h3. CVSS Score",
-                "",
-                f"{cvss}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "h3. CVSS Score",
+                    "",
+                    f"{cvss}",
+                    "",
+                ]
+            )
 
         if cwe := finding.get("cwe"):
-            lines.extend([
-                f"h3. CWE",
-                "",
-                f"CWE-{cwe}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "h3. CWE",
+                    "",
+                    f"CWE-{cwe}",
+                    "",
+                ]
+            )
 
         if remediation := finding.get("remediation"):
-            lines.extend([
-                f"h3. Remediation",
-                "",
-                remediation,
-                "",
-            ])
+            lines.extend(
+                [
+                    "h3. Remediation",
+                    "",
+                    remediation,
+                    "",
+                ]
+            )
 
         if references := finding.get("references"):
-            lines.extend([
-                f"h3. References",
-                "",
-            ])
+            lines.extend(
+                [
+                    "h3. References",
+                    "",
+                ]
+            )
             for ref in references:
                 lines.append(f"* {ref}")
             lines.append("")
 
-        lines.extend([
-            f"h3. Metadata",
-            "",
-            f"_Generated by NETRA Security Platform on {datetime.now(timezone.utc).isoformat()}_",
-        ])
+        lines.extend(
+            [
+                "h3. Metadata",
+                "",
+                f"_Generated by NETRA Security Platform on {datetime.now(UTC).isoformat()}_",
+            ]
+        )
 
         return "\n".join(lines)
 

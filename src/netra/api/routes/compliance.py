@@ -1,7 +1,8 @@
 """Compliance routes for compliance framework analysis."""
+
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.api.deps import get_db_session
@@ -38,9 +39,7 @@ async def map_findings_to_compliance(
     from netra.services.compliance_service import ComplianceService
 
     service = ComplianceService(db)
-    result = await service.map_findings_to_frameworks(
-        payload.scan_id, payload.frameworks
-    )
+    result = await service.map_findings_to_frameworks(payload.scan_id, payload.frameworks)
 
     return result
 
@@ -82,9 +81,7 @@ async def get_compliance_score(
     )
 
 
-@router.get(
-    "/{scan_id}/framework/{framework}", response_model=ComplianceFrameworkResponse
-)
+@router.get("/{scan_id}/framework/{framework}", response_model=ComplianceFrameworkResponse)
 async def get_framework_status(
     scan_id: uuid.UUID,
     framework: str,

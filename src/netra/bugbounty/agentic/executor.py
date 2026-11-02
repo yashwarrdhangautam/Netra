@@ -1,7 +1,8 @@
 """Execute a bounded agentic hunt plan."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +53,7 @@ class AgenticExecutor:
                 break
             if await self._is_cancelled(scan.id):
                 persisted_plan.status = "cancelled"
-                persisted_plan.completed_at = datetime.now(timezone.utc)
+                persisted_plan.completed_at = datetime.now(UTC)
                 await self.db.commit()
                 return {
                     "plan_id": str(persisted_plan.id),
@@ -114,16 +115,20 @@ class AgenticExecutor:
             await self.db.commit()
 
         persisted_plan.status = "completed" if not dry_run else "dry_run"
-        persisted_plan.completed_at = datetime.now(timezone.utc)
+        persisted_plan.completed_at = datetime.now(UTC)
         await self.db.commit()
-        return {"plan_id": str(persisted_plan.id), "observations": observations, "created_findings": created_findings}
+        return {
+            "plan_id": str(persisted_plan.id),
+            "observations": observations,
+            "created_findings": created_findings,
+        }
 
     async def _persist_plan(self, scan_id, plan: TestPlan, status: str) -> BBHuntPlan:
         row = BBHuntPlan(
             scan_id=scan_id,
             status=status,
             json_plan=plan.to_dict(),
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
         self.db.add(row)
         await self.db.flush()
@@ -150,10 +155,17 @@ class AgenticExecutor:
         if choice.tool == "httpx":
             return await HttpxTool().run(choice.target, head=True, tech_detect=True, **kwargs)
         if choice.tool == "nuclei":
-            return await NucleiTool().run(choice.target, tags="cve,exposure,misconfig", severity="critical,high,medium", **kwargs)
+            return await NucleiTool().run(
+                choice.target,
+                tags="cve,exposure,misconfig",
+                severity="critical,high,medium",
+                **kwargs,
+            )
         if choice.tool == "ffuf":
             return await FfufTool().run(choice.target, **kwargs)
-        raise ValueError(f"Unsupported tool choice for executor: {choice.tool} ({spec.name if spec else 'unknown'})")
+        raise ValueError(
+            f"Unsupported tool choice for executor: {choice.tool} ({spec.name if spec else 'unknown'})"
+        )
 
     def _program_allows_step(self, program: BBProgram, step: PlannedStep, tool_name: str) -> bool:
         spec = get_tool_spec(tool_name)

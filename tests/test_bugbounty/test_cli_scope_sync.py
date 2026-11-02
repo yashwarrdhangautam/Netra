@@ -4,6 +4,7 @@ The renderer is a pure function — we exercise it without a DB by constructing 
 ScopeDiff manually. The platform-fetch + DB-write path is exercised end-to-end in
 contract / integration tests; here we keep the unit tests fast and isolated.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -128,9 +129,9 @@ class TestSyncProgramScopeGuards:
     @pytest.mark.asyncio
     async def test_h1_without_credentials_returns_none(self, monkeypatch, capsys):
         # Stub HackerOneClient so we never touch httpx (sandbox proxy env breaks it).
+        import netra.integrations.hackerone as h1mod
         from netra.bugbounty import cli as bb_cli
         from netra.db.models.bb_program import BBPlatform
-        import netra.integrations.hackerone as h1mod
 
         class _UnconfiguredClient:
             async def __aenter__(self):

@@ -1,19 +1,20 @@
 """Target routes for managing scan targets with SSRF protection."""
+
 import uuid
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.db.session import get_db
 from netra.api.deps import get_db_session
 from netra.api.routes.auth import get_current_active_user
+from netra.core.rate_limiter import RateLimitProfiles, rate_limit
+from netra.core.ssrf_protection import SSRFProtectionError, validate_scan_target
+from netra.db.models.target import Target
 from netra.db.models.user import User
-from netra.db.models.target import Target, TargetType
-from netra.core.ssrf_protection import validate_scan_target, SSRFProtectionError
-from netra.core.rate_limiter import rate_limit, RateLimitProfiles
+from netra.db.session import get_db
 from netra.schemas.common import PaginatedResponse
 
 logger = structlog.get_logger()
@@ -94,7 +95,12 @@ async def list_targets(
     db: AsyncSession = Depends(get_db_session),
 ) -> PaginatedResponse[TargetListResponse]:
     """List scan targets."""
-    query = select(Target).order_by(Target.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
+    query = (
+        select(Target)
+        .order_by(Target.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    )
     result = await db.execute(query)
     targets = list(result.scalars().all())
 

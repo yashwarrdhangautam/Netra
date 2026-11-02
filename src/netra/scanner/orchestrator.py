@@ -1,6 +1,7 @@
 """Scan orchestrator for managing scan pipelines."""
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,25 +16,25 @@ from netra.db.models.finding import Finding
 from netra.db.models.scan import Scan, ScanStatus
 from netra.db.models.scan_phase import PhaseStatus, PhaseType, ScanPhase
 from netra.scanner.profiles import get_profile_config
-from netra.scanner.tools.base import ToolResult
-from netra.scanner.tools.nuclei import NucleiTool
-from netra.scanner.tools.nmap import NmapTool
-from netra.scanner.tools.subfinder import SubfinderTool
-from netra.scanner.tools.httpx import HttpxTool
-from netra.scanner.tools.ffuf import FfufTool
-from netra.scanner.tools.dalfox import DalfoxTool
-from netra.scanner.tools.nikto import NiktoTool
-from netra.scanner.tools.sqlmap import SqlmapTool
 from netra.scanner.tools.amass import AmassTool
+from netra.scanner.tools.base import ToolResult
+from netra.scanner.tools.checkov import CheckovTool
+from netra.scanner.tools.dalfox import DalfoxTool
+from netra.scanner.tools.dependency_scan import PipAuditTool
+from netra.scanner.tools.ffuf import FfufTool
+from netra.scanner.tools.gitleaks import GitleaksTool
+from netra.scanner.tools.httpx import HttpxTool
+from netra.scanner.tools.llm_security import LLMSecurityTool
+from netra.scanner.tools.nikto import NiktoTool
+from netra.scanner.tools.nmap import NmapTool
+from netra.scanner.tools.nuclei import NucleiTool
+from netra.scanner.tools.prowler import ProwlerTool
 
 # Phase 2 tools
 from netra.scanner.tools.semgrep import SemgrepTool
-from netra.scanner.tools.gitleaks import GitleaksTool
-from netra.scanner.tools.dependency_scan import PipAuditTool
-from netra.scanner.tools.prowler import ProwlerTool
+from netra.scanner.tools.sqlmap import SqlmapTool
+from netra.scanner.tools.subfinder import SubfinderTool
 from netra.scanner.tools.trivy import TrivyTool
-from netra.scanner.tools.checkov import CheckovTool
-from netra.scanner.tools.llm_security import LLMSecurityTool
 
 logger = structlog.get_logger()
 
@@ -60,7 +61,7 @@ class ScanOrchestrator:
 
         # Update scan status
         scan.status = ScanStatus.RUNNING
-        scan.started_at = datetime.now(timezone.utc)
+        scan.started_at = datetime.now(UTC)
         await self.db.commit()
 
         try:
@@ -122,7 +123,7 @@ class ScanOrchestrator:
 
             # Complete
             scan.status = ScanStatus.COMPLETED
-            scan.completed_at = datetime.now(timezone.utc)
+            scan.completed_at = datetime.now(UTC)
 
         except Exception as e:
             logger.error("scan_failed", scan_id=str(self.scan_id), error=str(e))
@@ -131,9 +132,7 @@ class ScanOrchestrator:
 
         await self.db.commit()
 
-    async def _run_subdomain_enum(
-        self, scan: Scan, profile: dict[str, Any]
-    ) -> list[str]:
+    async def _run_subdomain_enum(self, scan: Scan, profile: dict[str, Any]) -> list[str]:
         """Phase: Enumerate subdomains."""
         phase = await self._create_phase(scan, PhaseType.RECON_SUBDOMAINS)
 
@@ -190,7 +189,7 @@ class ScanOrchestrator:
 
             httpx_tool = HttpxTool(work_dir=self._phase_dir(phase))
             result = await httpx_tool.run(
-                target=",".join(subdomains[:profile.get("max_targets", 50)]),
+                target=",".join(subdomains[: profile.get("max_targets", 50)]),
                 follow_redirects=True,
                 tech_detect=True,
             )
@@ -217,16 +216,14 @@ class ScanOrchestrator:
 
         return live_hosts
 
-    async def _run_port_scan(
-        self, scan: Scan, targets: list[str], profile: dict[str, Any]
-    ) -> None:
+    async def _run_port_scan(self, scan: Scan, targets: list[str], profile: dict[str, Any]) -> None:
         """Phase: Port scanning with Nmap."""
         phase = await self._create_phase(scan, PhaseType.RECON_PORTS)
         total_findings = 0
 
         try:
             nmap = NmapTool(work_dir=self._phase_dir(phase))
-            for target in targets[:profile.get("max_targets", 50)]:
+            for target in targets[: profile.get("max_targets", 50)]:
                 result = await nmap.run(
                     target=target,
                     ports=profile.get("port_range", "top-1000"),
@@ -240,9 +237,7 @@ class ScanOrchestrator:
             logger.error("port_scan_failed", phase=phase.id, error=str(e))
             await self._fail_phase(phase, str(e))
 
-    async def _run_vuln_scan(
-        self, scan: Scan, targets: list[str], profile: dict[str, Any]
-    ) -> None:
+    async def _run_vuln_scan(self, scan: Scan, targets: list[str], profile: dict[str, Any]) -> None:
         """Phase: Vulnerability scanning with Nuclei + Nikto."""
         phase = await self._create_phase(scan, PhaseType.VULN_SCAN)
         total_findings = 0
@@ -250,7 +245,7 @@ class ScanOrchestrator:
         try:
             # Nuclei
             nuclei = NucleiTool(work_dir=self._phase_dir(phase))
-            for target in targets[:profile.get("max_targets", 50)]:
+            for target in targets[: profile.get("max_targets", 50)]:
                 result = await nuclei.run(
                     target=target,
                     severity=profile.get("severity_filter", "critical,high,medium"),
@@ -273,9 +268,7 @@ class ScanOrchestrator:
             logger.error("vuln_scan_failed", phase=phase.id, error=str(e))
             await self._fail_phase(phase, str(e))
 
-    async def _run_pentest(
-        self, scan: Scan, targets: list[str], profile: dict[str, Any]
-    ) -> None:
+    async def _run_pentest(self, scan: Scan, targets: list[str], profile: dict[str, Any]) -> None:
         """Phase: Active exploitation testing."""
         phase = await self._create_phase(scan, PhaseType.PENTEST)
         total_findings = 0
@@ -287,7 +280,7 @@ class ScanOrchestrator:
             # SQLi testing
             if profile.get("test_sqli", True):
                 sqlmap = SqlmapTool(work_dir=self._phase_dir(phase))
-                for url in injectable_urls[:profile.get("max_injection_tests", 20)]:
+                for url in injectable_urls[: profile.get("max_injection_tests", 20)]:
                     result = await sqlmap.run(
                         target=url,
                         safe_mode=True,
@@ -300,7 +293,7 @@ class ScanOrchestrator:
             # XSS testing
             if profile.get("test_xss", True):
                 dalfox = DalfoxTool(work_dir=self._phase_dir(phase))
-                for url in injectable_urls[:profile.get("max_injection_tests", 20)]:
+                for url in injectable_urls[: profile.get("max_injection_tests", 20)]:
                     result = await dalfox.run(target=url)
                     await self._save_findings(scan, result)
                     total_findings += len(result.findings)
@@ -560,12 +553,12 @@ class ScanOrchestrator:
         validator = ScopeValidator.from_db_rules(rules)
 
         if scan.status == ScanStatus.CANCELLED:
-            scan.completed_at = scan.completed_at or datetime.now(timezone.utc)
+            scan.completed_at = scan.completed_at or datetime.now(UTC)
             await self.db.commit()
             return
 
         scan.status = ScanStatus.RUNNING
-        scan.started_at = datetime.now(timezone.utc)
+        scan.started_at = datetime.now(UTC)
         await self.db.commit()
 
         try:
@@ -604,12 +597,12 @@ class ScanOrchestrator:
                 }
                 if result.get("cancelled"):
                     scan.status = ScanStatus.CANCELLED
-                    scan.completed_at = datetime.now(timezone.utc)
+                    scan.completed_at = datetime.now(UTC)
                     await self.db.commit()
                     return
                 await self._run_ai_analysis(scan)
                 scan.status = ScanStatus.COMPLETED
-                scan.completed_at = datetime.now(timezone.utc)
+                scan.completed_at = datetime.now(UTC)
                 await self.db.commit()
                 return
 
@@ -652,7 +645,9 @@ class ScanOrchestrator:
             try:
                 await index_recon_output(program.handle, Path("data/graphify/recon"))
             except Exception as exc:
-                logger.warning("bb.graphify.recon_index_failed", program=program.handle, error=str(exc))
+                logger.warning(
+                    "bb.graphify.recon_index_failed", program=program.handle, error=str(exc)
+                )
 
             scan.checkpoint_data = {
                 **(scan.checkpoint_data or {}),
@@ -661,7 +656,7 @@ class ScanOrchestrator:
                 "bb_out_of_scope_hosts": passive.out_of_scope_hosts,
             }
             scan.status = ScanStatus.COMPLETED
-            scan.completed_at = datetime.now(timezone.utc)
+            scan.completed_at = datetime.now(UTC)
         except Exception as exc:
             logger.error("bb.scan_failed", scan_id=str(scan.id), error=str(exc))
             scan.status = ScanStatus.FAILED
@@ -676,13 +671,13 @@ class ScanOrchestrator:
     ) -> dict[str, Any]:
         """Build a richer planner context from known assets and prior findings."""
         asset_rows = await self.db.execute(
-            select(BBAsset).where(BBAsset.program_id == program.id).order_by(BBAsset.last_seen.desc())
+            select(BBAsset)
+            .where(BBAsset.program_id == program.id)
+            .order_by(BBAsset.last_seen.desc())
         )
         assets = list(asset_rows.scalars().all())
 
-        finding_rows = await self.db.execute(
-            select(Finding).where(Finding.scan_id == scan.id)
-        )
+        finding_rows = await self.db.execute(select(Finding).where(Finding.scan_id == scan.id))
         findings = list(finding_rows.scalars().all())
 
         tech = sorted(
@@ -693,13 +688,7 @@ class ScanOrchestrator:
                 if str(item).strip()
             }
         )
-        known_hosts = sorted(
-            {
-                asset.host
-                for asset in assets
-                if asset.host
-            }
-        )
+        known_hosts = sorted({asset.host for asset in assets if asset.host})
         prior_vuln_classes = sorted(
             {
                 str(tag).strip()
@@ -788,7 +777,9 @@ class ScanOrchestrator:
         fallback = {"vuln_class": vuln_class}
         return await build_corpus_context(self.db, query, top_k=3, filters=fallback)
 
-    async def _upsert_bb_asset(self, program: BBProgram, host: str, metadata: dict[str, Any]) -> BBAsset:
+    async def _upsert_bb_asset(
+        self, program: BBProgram, host: str, metadata: dict[str, Any]
+    ) -> BBAsset:
         """Create or refresh a BB asset row."""
         result = await self.db.execute(
             select(BBAsset).where(BBAsset.program_id == program.id, BBAsset.host == host)
@@ -798,7 +789,7 @@ class ScanOrchestrator:
             asset = BBAsset(program_id=program.id, host=host, metadata_=metadata)
             self.db.add(asset)
         else:
-            asset.last_seen = datetime.now(timezone.utc)
+            asset.last_seen = datetime.now(UTC)
             asset.metadata_ = {**(asset.metadata_ or {}), **metadata}
         await self.db.flush()
         return asset
@@ -816,18 +807,16 @@ class ScanOrchestrator:
             scan_id=scan.id,
             phase_type=phase_type,
             status=PhaseStatus.RUNNING,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
         self.db.add(phase)
         await self.db.commit()
         return phase
 
-    async def _complete_phase(
-        self, phase: ScanPhase, findings_count: int = 0
-    ) -> None:
+    async def _complete_phase(self, phase: ScanPhase, findings_count: int = 0) -> None:
         """Mark a phase as completed."""
         phase.status = PhaseStatus.COMPLETED
-        phase.completed_at = datetime.now(timezone.utc)
+        phase.completed_at = datetime.now(UTC)
         phase.progress = 1.0
         phase.findings_count = findings_count
         await self.db.commit()
@@ -835,13 +824,11 @@ class ScanOrchestrator:
     async def _fail_phase(self, phase: ScanPhase, error: str) -> None:
         """Mark a phase as failed."""
         phase.status = PhaseStatus.FAILED
-        phase.completed_at = datetime.now(timezone.utc)
+        phase.completed_at = datetime.now(UTC)
         phase.error_message = error
         await self.db.commit()
 
-    def _should_run_phase(
-        self, scan: Scan, phase_type: PhaseType, profile: dict[str, Any]
-    ) -> bool:
+    def _should_run_phase(self, scan: Scan, phase_type: PhaseType, profile: dict[str, Any]) -> bool:
         """Check if phase should run (not already completed in checkpoint)."""
         checkpoint = scan.checkpoint_data or {}
         completed = checkpoint.get("completed_phases", [])
@@ -877,9 +864,7 @@ class ScanOrchestrator:
 
     async def _get_scan_findings(self, scan: Scan) -> list[Finding]:
         """Get all findings for a scan."""
-        result = await self.db.execute(
-            select(Finding).where(Finding.scan_id == scan.id)
-        )
+        result = await self.db.execute(select(Finding).where(Finding.scan_id == scan.id))
         return list(result.scalars().all())
 
     async def _get_cached_subdomains(self, scan: Scan) -> list[str]:

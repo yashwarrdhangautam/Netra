@@ -1,7 +1,7 @@
 """Tests for scan service."""
+
 import pytest
 
-from netra.db.models import Scan, ScanProfile, ScanStatus, Target, TargetType
 from netra.services.scan_service import ScanService
 
 

@@ -1,9 +1,10 @@
 """Bug bounty asset model."""
+
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
@@ -13,9 +14,7 @@ class BBAsset(Base):
     """A discovered asset belonging to a program."""
 
     __tablename__ = "bb_assets"
-    __table_args__ = (
-        UniqueConstraint("program_id", "host", name="uq_bb_assets_program_host"),
-    )
+    __table_args__ = (UniqueConstraint("program_id", "host", name="uq_bb_assets_program_host"),)
 
     program_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("bb_programs.id", ondelete="CASCADE"), nullable=False

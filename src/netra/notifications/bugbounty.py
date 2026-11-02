@@ -1,4 +1,5 @@
 """Bug bounty-specific notifications."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -16,7 +17,11 @@ async def notify_scope_diff(program: Any, diff: Any) -> bool:
             {
                 "color": "#ffcc00",
                 "fields": [
-                    {"title": "Program", "value": f"{program.platform}/{program.handle}", "short": True},
+                    {
+                        "title": "Program",
+                        "value": f"{program.platform}/{program.handle}",
+                        "short": True,
+                    },
                     {"title": "Added", "value": str(len(diff.added)), "short": True},
                     {"title": "Removed", "value": str(len(diff.removed)), "short": True},
                 ],
@@ -36,5 +41,6 @@ async def notify_critical_finding(finding: Any, program: Any) -> bool:
         "target": finding.url or program.handle,
         "cwe": finding.cwe_id or "N/A",
     }
-    return await SlackNotifier().send_finding_alert(payload, "critical", scan_name=f"BB {program.handle}")
-
+    return await SlackNotifier().send_finding_alert(
+        payload, "critical", scan_name=f"BB {program.handle}"
+    )

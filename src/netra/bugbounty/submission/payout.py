@@ -4,10 +4,10 @@ A simple linear interpolation between program min/max payouts, weighted by sever
 Conservative — there is no machine learning here. Operators see this as an estimate,
 not a promise.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 
 # Severity → fraction of (max - min) to add to min.
 SEVERITY_WEIGHTS = {

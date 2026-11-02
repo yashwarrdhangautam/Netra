@@ -1,6 +1,7 @@
 """Schedule management API routes."""
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 import structlog
@@ -8,10 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.db.session import get_db
 from netra.api.routes.auth import get_current_active_user
 from netra.db.models.user import User
-from netra.db.models.scan import Scan
+from netra.db.session import get_db
 from netra.worker.scheduler import (
     ScanSchedule,
     ScheduleManager,
@@ -35,15 +35,14 @@ class CronScheduleCreate(BaseModel):
     description: str | None = None
     target_id: uuid.UUID
     cron_expression: str = Field(
-        ...,
-        description="Cron expression: minute hour day month weekday (e.g., '0 2 * * *')"
+        ..., description="Cron expression: minute hour day month weekday (e.g., '0 2 * * *')"
     )
     profile: str = "standard"
     notify_on_complete: bool = True
     notify_emails: list[str] = Field(default_factory=list)
 
     @validator("cron_expression")
-    def validate_cron(cls, v):
+    def validate_cron(self, v):
         parts = v.split()
         if len(parts) != 5:
             raise ValueError("Cron expression must have 5 parts: minute hour day month weekday")
@@ -60,7 +59,7 @@ class IntervalScheduleCreate(BaseModel):
     profile: str = "standard"
 
     @validator("interval_seconds")
-    def validate_interval(cls, v):
+    def validate_interval(self, v):
         if v < 300:
             raise ValueError("Minimum interval is 300 seconds (5 minutes)")
         return v
@@ -76,8 +75,8 @@ class OneTimeScheduleCreate(BaseModel):
     profile: str = "standard"
 
     @validator("scheduled_at")
-    def validate_future(cls, v):
-        if v < datetime.now(timezone.utc):
+    def validate_future(self, v):
+        if v < datetime.now(UTC):
             raise ValueError("Scheduled time must be in the future")
         return v
 
@@ -269,9 +268,7 @@ async def get_schedule(
     Returns:
         Schedule details
     """
-    result = await db.execute(
-        select(ScanSchedule).where(ScanSchedule.id == schedule_id)
-    )
+    result = await db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_id))
     schedule = result.scalar_one_or_none()
 
     if not schedule:
@@ -303,9 +300,7 @@ async def delete_schedule(
         db: Database session
         current_user: Authenticated user
     """
-    result = await db.execute(
-        select(ScanSchedule).where(ScanSchedule.id == schedule_id)
-    )
+    result = await db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_id))
     schedule = result.scalar_one_or_none()
 
     if not schedule:
@@ -349,9 +344,7 @@ async def deactivate_schedule(
             detail="Schedule not found",
         )
 
-    result = await db.execute(
-        select(ScanSchedule).where(ScanSchedule.id == schedule_id)
-    )
+    result = await db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_id))
     schedule = result.scalar_one_or_none()
 
     return ScheduleResponse.model_validate(schedule)
@@ -381,9 +374,7 @@ async def activate_schedule(
             detail="Schedule not found",
         )
 
-    result = await db.execute(
-        select(ScanSchedule).where(ScanSchedule.id == schedule_id)
-    )
+    result = await db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_id))
     schedule = result.scalar_one_or_none()
 
     return ScheduleResponse.model_validate(schedule)
@@ -405,9 +396,7 @@ async def run_schedule_now(
     Returns:
         Task result
     """
-    result = await db.execute(
-        select(ScanSchedule).where(ScanSchedule.id == schedule_id)
-    )
+    result = await db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_id))
     schedule = result.scalar_one_or_none()
 
     if not schedule:

@@ -2,6 +2,7 @@
 
 Uses a custom httpx MockTransport so we don't need pytest-httpx as a dep.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,13 +14,12 @@ httpx = pytest.importorskip("httpx")
 from netra.bugbounty.programs import ScopeRuleInput
 from netra.db.models.bb_scope_rule import ScopeAssetType, ScopeRuleType
 from netra.integrations.hackerone import (
-    H1HacktivityItem,
     H1_ASSET_TYPE_MAP,
+    H1HacktivityItem,
     HackerOneClient,
     fetch_and_convert_program,
     to_program_input,
 )
-
 
 # ── Fixtures ────────────────────────────────────────────────────────────────────
 PROGRAM_RESP = {
@@ -175,7 +175,10 @@ def _build_mock_transport():
             return httpx.Response(200, json=PROGRAM_RESP)
         if "/structured_scopes" in url and "page%5Bnumber%5D=2" in url:
             return httpx.Response(200, json=SCOPES_PAGE_2)
-        if url.endswith("/hackers/programs/shopify/structured_scopes") or "structured_scopes?page%5Bsize%5D=100" in url:
+        if (
+            url.endswith("/hackers/programs/shopify/structured_scopes")
+            or "structured_scopes?page%5Bsize%5D=100" in url
+        ):
             return httpx.Response(200, json=SCOPES_PAGE_1)
         if "/hackers/hacktivity" in url:
             return httpx.Response(200, json=HACKTIVITY_PAGE)
@@ -232,74 +235,87 @@ class TestAssetTypeMap:
     def test_unknown_h1_type_returns_none_via_converter(self):
         # _scope_item_to_rule should drop unknown types rather than guess.
         from netra.integrations.hackerone import HackerOneClient
-        rule = HackerOneClient._scope_item_to_rule({
-            "attributes": {
-                "asset_type": "BIZARRE_NEW_TYPE",
-                "asset_identifier": "x",
-                "eligible_for_submission": True,
+
+        rule = HackerOneClient._scope_item_to_rule(
+            {
+                "attributes": {
+                    "asset_type": "BIZARRE_NEW_TYPE",
+                    "asset_identifier": "x",
+                    "eligible_for_submission": True,
+                }
             }
-        })
+        )
         assert rule is None
 
 
 # ── Scope item → rule conversion ────────────────────────────────────────────────
 class TestScopeItemToRule:
     def test_eligible_becomes_in(self):
-        rule = HackerOneClient._scope_item_to_rule({
-            "attributes": {
-                "asset_type": "DOMAIN",
-                "asset_identifier": "shopify.com",
-                "eligible_for_submission": True,
+        rule = HackerOneClient._scope_item_to_rule(
+            {
+                "attributes": {
+                    "asset_type": "DOMAIN",
+                    "asset_identifier": "shopify.com",
+                    "eligible_for_submission": True,
+                }
             }
-        })
+        )
         assert isinstance(rule, ScopeRuleInput)
         assert rule.rule_type == ScopeRuleType.IN
         assert rule.asset_type == ScopeAssetType.DOMAIN
         assert rule.pattern == "shopify.com"
 
     def test_ineligible_becomes_out(self):
-        rule = HackerOneClient._scope_item_to_rule({
-            "attributes": {
-                "asset_type": "DOMAIN",
-                "asset_identifier": "internal.shopify.com",
-                "eligible_for_submission": False,
+        rule = HackerOneClient._scope_item_to_rule(
+            {
+                "attributes": {
+                    "asset_type": "DOMAIN",
+                    "asset_identifier": "internal.shopify.com",
+                    "eligible_for_submission": False,
+                }
             }
-        })
+        )
         assert rule is not None
         assert rule.rule_type == ScopeRuleType.OUT
 
     def test_severity_cap_propagates(self):
-        rule = HackerOneClient._scope_item_to_rule({
-            "attributes": {
-                "asset_type": "WILDCARD",
-                "asset_identifier": "*.myshopify.com",
-                "eligible_for_submission": True,
-                "max_severity": "high",
+        rule = HackerOneClient._scope_item_to_rule(
+            {
+                "attributes": {
+                    "asset_type": "WILDCARD",
+                    "asset_identifier": "*.myshopify.com",
+                    "eligible_for_submission": True,
+                    "max_severity": "high",
+                }
             }
-        })
+        )
         assert rule is not None
         assert rule.severity_cap == "high"
 
     def test_instruction_kept_as_notes(self):
-        rule = HackerOneClient._scope_item_to_rule({
-            "attributes": {
-                "asset_type": "DOMAIN",
-                "asset_identifier": "x.com",
-                "eligible_for_submission": True,
-                "instruction": "Hello operator.",
+        rule = HackerOneClient._scope_item_to_rule(
+            {
+                "attributes": {
+                    "asset_type": "DOMAIN",
+                    "asset_identifier": "x.com",
+                    "eligible_for_submission": True,
+                    "instruction": "Hello operator.",
+                }
             }
-        })
+        )
         assert rule is not None
         assert rule.notes == "Hello operator."
 
     def test_missing_identifier_returned_as_none(self):
-        rule = HackerOneClient._scope_item_to_rule({
-            "attributes": {
-                "asset_type": "DOMAIN",
-                "asset_identifier": "",
-                "eligible_for_submission": True,
+        rule = HackerOneClient._scope_item_to_rule(
+            {
+                "attributes": {
+                    "asset_type": "DOMAIN",
+                    "asset_identifier": "",
+                    "eligible_for_submission": True,
+                }
             }
-        })
+        )
         assert rule is None
 
 
@@ -356,6 +372,7 @@ class TestEndToEnd:
 class TestHelpers:
     def test_to_program_input(self):
         from netra.integrations.hackerone import H1Program
+
         p = H1Program(
             handle="shopify",
             name="Shopify",
@@ -374,6 +391,7 @@ class TestHelpers:
     async def test_fetch_and_convert_program(self, monkeypatch):
         # Patch HackerOneClient to be MockedClient for the duration of this test.
         from netra.integrations import hackerone as h1mod
+
         monkeypatch.setattr(h1mod, "HackerOneClient", MockedClient)
         # Set creds via env so MockedClient.is_configured() returns True.
         monkeypatch.setenv("H1_API_USERNAME", "x")

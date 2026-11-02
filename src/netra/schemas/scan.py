@@ -1,4 +1,5 @@
 """Pydantic schemas for scan operations."""
+
 import uuid
 from datetime import datetime
 

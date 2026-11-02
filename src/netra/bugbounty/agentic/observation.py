@@ -1,8 +1,9 @@
 """Uniform observation model for tool outputs."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from netra.scanner.tools.base import ToolResult
@@ -43,22 +44,26 @@ def observation_from_tool_result(result: ToolResult) -> Observation:
 
     if result.tool_name in {"subfinder", "amass"}:
         kind = "hosts"
-        facts["hosts"] = _dedupe_str([
-            item.get("hostname") or item.get("url")
-            for item in result.findings
-            if item.get("hostname") or item.get("url")
-        ])
+        facts["hosts"] = _dedupe_str(
+            [
+                item.get("hostname") or item.get("url")
+                for item in result.findings
+                if item.get("hostname") or item.get("url")
+            ]
+        )
     elif result.tool_name == "httpx":
         kind = "tech"
-        facts["tech"] = _dedupe_str([
-            tech
-            for item in result.findings
-            for tech in item.get("tech", [])
-        ])
+        facts["tech"] = _dedupe_str(
+            [tech for item in result.findings for tech in item.get("tech", [])]
+        )
         facts["http_services"] = result.findings
-        facts["titles"] = _dedupe_str([item.get("title") for item in result.findings if item.get("title")])
+        facts["titles"] = _dedupe_str(
+            [item.get("title") for item in result.findings if item.get("title")]
+        )
         facts["status_codes"] = [
-            item.get("status_code") for item in result.findings if item.get("status_code") is not None
+            item.get("status_code")
+            for item in result.findings
+            if item.get("status_code") is not None
         ]
     elif result.tool_name == "nuclei":
         kind = "findings"
@@ -73,21 +78,21 @@ def observation_from_tool_result(result: ToolResult) -> Observation:
             for item in result.findings
         ]
         facts["vuln_classes"] = _dedupe_str(
-            [
-                tag
-                for item in result.findings
-                for tag in (item.get("tags") or [])
-            ]
+            [tag for item in result.findings for tag in (item.get("tags") or [])]
         )
     elif result.tool_name == "ffuf":
         kind = "paths"
-        facts["paths"] = _dedupe_str([
-            item.get("path") or item.get("url")
-            for item in result.findings
-            if item.get("path") or item.get("url")
-        ])
+        facts["paths"] = _dedupe_str(
+            [
+                item.get("path") or item.get("url")
+                for item in result.findings
+                if item.get("path") or item.get("url")
+            ]
+        )
         facts["interesting_statuses"] = [
-            item.get("status_code") for item in result.findings if item.get("status_code") is not None
+            item.get("status_code")
+            for item in result.findings
+            if item.get("status_code") is not None
         ]
     elif result.tool_name in {"nikto", "dalfox", "sqlmap"}:
         kind = "findings"
@@ -136,7 +141,7 @@ def observation_from_tool_result(result: ToolResult) -> Observation:
     return Observation(
         tool_name=result.tool_name,
         target=result.target,
-        ts=result.completed_at or datetime.now(timezone.utc),
+        ts=result.completed_at or datetime.now(UTC),
         kind=kind,
         payload={
             "success": result.success,

@@ -1,4 +1,5 @@
 """Pydantic schemas for compliance operations."""
+
 import uuid
 from datetime import datetime
 
@@ -78,11 +79,27 @@ class ComplianceFrameworkListResponse(BaseModel):
 
     frameworks: list[dict] = Field(
         default=[
-            {"id": "iso27001", "name": "ISO 27001", "description": "Information Security Management"},
-            {"id": "pci_dss", "name": "PCI DSS", "description": "Payment Card Industry Data Security Standard"},
+            {
+                "id": "iso27001",
+                "name": "ISO 27001",
+                "description": "Information Security Management",
+            },
+            {
+                "id": "pci_dss",
+                "name": "PCI DSS",
+                "description": "Payment Card Industry Data Security Standard",
+            },
             {"id": "soc2", "name": "SOC 2", "description": "Service Organization Control 2"},
-            {"id": "hipaa", "name": "HIPAA", "description": "Health Insurance Portability and Accountability Act"},
+            {
+                "id": "hipaa",
+                "name": "HIPAA",
+                "description": "Health Insurance Portability and Accountability Act",
+            },
             {"id": "nist_csf", "name": "NIST CSF", "description": "NIST Cybersecurity Framework"},
-            {"id": "cis_controls", "name": "CIS Controls", "description": "Center for Internet Security Controls"},
+            {
+                "id": "cis_controls",
+                "name": "CIS Controls",
+                "description": "Center for Internet Security Controls",
+            },
         ]
     )

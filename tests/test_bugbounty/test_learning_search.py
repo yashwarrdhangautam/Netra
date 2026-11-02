@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
-from netra.bugbounty.learning.embeddings import embed
 from netra.bugbounty.learning.search import build_corpus_context, find_similar
 from netra.db.models import BBCorpusAdvisory, BBCorpusReport, BBCorpusWriteup
 
@@ -17,7 +16,9 @@ async def test_find_similar_prefers_matching_report(db_session, monkeypatch) -> 
         embedding = [1.0, 0.0, 0.0] if "shopify" in text.lower() else [0.0, 1.0, 0.0]
         return embedding, "test-model-v1"
 
-    monkeypatch.setattr("netra.bugbounty.learning.search.embed_with_version", fake_embed_with_version)
+    monkeypatch.setattr(
+        "netra.bugbounty.learning.search.embed_with_version", fake_embed_with_version
+    )
 
     db_session.add(
         BBCorpusReport(
@@ -34,7 +35,7 @@ async def test_find_similar_prefers_matching_report(db_session, monkeypatch) -> 
             redaction_count=0,
             embedding=[1.0, 0.0, 0.0],
             embedding_model_version="test-model-v1",
-            ingested_at=datetime.now(timezone.utc),
+            ingested_at=datetime.now(UTC),
         )
     )
     db_session.add(
@@ -49,7 +50,7 @@ async def test_find_similar_prefers_matching_report(db_session, monkeypatch) -> 
             redaction_count=0,
             embedding=[0.0, 1.0, 0.0],
             embedding_model_version="test-model-v1",
-            ingested_at=datetime.now(timezone.utc),
+            ingested_at=datetime.now(UTC),
         )
     )
     await db_session.commit()
@@ -71,7 +72,9 @@ async def test_build_corpus_context_formats_hits(db_session, monkeypatch) -> Non
         embedding = [0.0, 1.0, 0.0] if "cve" in text.lower() else [1.0, 0.0, 0.0]
         return embedding, "test-model-v1"
 
-    monkeypatch.setattr("netra.bugbounty.learning.search.embed_with_version", fake_embed_with_version)
+    monkeypatch.setattr(
+        "netra.bugbounty.learning.search.embed_with_version", fake_embed_with_version
+    )
 
     db_session.add(
         BBCorpusAdvisory(
@@ -85,7 +88,7 @@ async def test_build_corpus_context_formats_hits(db_session, monkeypatch) -> Non
             metadata_={},
             embedding=[0.0, 1.0, 0.0],
             embedding_model_version="test-model-v1",
-            ingested_at=datetime.now(timezone.utc),
+            ingested_at=datetime.now(UTC),
         )
     )
     await db_session.commit()
@@ -101,7 +104,9 @@ async def test_find_similar_skips_mismatched_embedding_versions(db_session, monk
     async def fake_embed_with_version(text: str) -> tuple[list[float], str]:
         return [1.0, 0.0, 0.0], "query-model-v2"
 
-    monkeypatch.setattr("netra.bugbounty.learning.search.embed_with_version", fake_embed_with_version)
+    monkeypatch.setattr(
+        "netra.bugbounty.learning.search.embed_with_version", fake_embed_with_version
+    )
 
     db_session.add(
         BBCorpusReport(
@@ -118,7 +123,7 @@ async def test_find_similar_skips_mismatched_embedding_versions(db_session, monk
             redaction_count=0,
             embedding=[1.0, 0.0, 0.0],
             embedding_model_version="legacy-model-v1",
-            ingested_at=datetime.now(timezone.utc),
+            ingested_at=datetime.now(UTC),
         )
     )
     await db_session.commit()

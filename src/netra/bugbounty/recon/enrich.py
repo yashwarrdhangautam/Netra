@@ -1,4 +1,5 @@
 """Passive enrichment for discovered bug bounty assets."""
+
 from __future__ import annotations
 
 import re

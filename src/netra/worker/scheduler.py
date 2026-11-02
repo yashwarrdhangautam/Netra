@@ -6,15 +6,16 @@ Supports:
 - One-time scheduled scans
 - Schedule management API
 """
-import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
 
-from celery.schedules import crontab
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, ForeignKey, Enum
-from sqlalchemy import JSON as JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 import structlog
+from celery.schedules import crontab
+from sqlalchemy import JSON as JSONB
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from netra.db.models.base import Base
 from netra.worker.celery_app import celery_app
@@ -27,6 +28,7 @@ logger = structlog.get_logger()
 
 class ScheduleType(str):
     """Schedule type enumeration."""
+
     CRON = "cron"
     INTERVAL = "interval"
     ONCE = "once"
@@ -37,56 +39,52 @@ class ScanSchedule(Base):
 
     __tablename__ = "scan_schedules"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        primary_key=True, default=uuid.uuid4
-    )
-    
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    
+    description: Mapped[str | None] = mapped_column(Text)
+
     # Target reference
-    target_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("targets.id"), nullable=False
-    )
-    
+    target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("targets.id"), nullable=False)
+
     # Schedule configuration
     schedule_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    
+
     # Cron fields (for CRON type)
-    cron_minute: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "0", "*/15", "0 30"
-    cron_hour: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "*", "9-17", "2"
-    cron_day_of_week: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "*", "mon-fri"
-    cron_day_of_month: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "*", "1,15"
-    cron_month_of_year: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "*", "jan,jul"
-    
+    cron_minute: Mapped[str | None] = mapped_column(String(100))  # e.g., "0", "*/15", "0 30"
+    cron_hour: Mapped[str | None] = mapped_column(String(100))  # e.g., "*", "9-17", "2"
+    cron_day_of_week: Mapped[str | None] = mapped_column(String(100))  # e.g., "*", "mon-fri"
+    cron_day_of_month: Mapped[str | None] = mapped_column(String(100))  # e.g., "*", "1,15"
+    cron_month_of_year: Mapped[str | None] = mapped_column(String(100))  # e.g., "*", "jan,jul"
+
     # Interval fields (for INTERVAL type)
-    interval_seconds: Mapped[Optional[int]] = mapped_column(Integer)
-    
+    interval_seconds: Mapped[int | None] = mapped_column(Integer)
+
     # One-time schedule (for ONCE type)
-    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # Scan configuration
     profile: Mapped[str] = mapped_column(String(50), default="standard")
-    config: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
-    
+    config: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     total_runs: Mapped[int] = mapped_column(Integer, default=0)
     failed_runs: Mapped[int] = mapped_column(Integer, default=0)
-    
+
     # Notifications
     notify_on_complete: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_on_failure: Mapped[bool] = mapped_column(Boolean, default=True)
-    notification_emails: Mapped[Optional[list[str]]] = mapped_column(JSONB, default=list)
-    
+    notification_emails: Mapped[list[str] | None] = mapped_column(JSONB, default=list)
+
     # Metadata
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     def get_crontab(self) -> crontab | None:
         """Get Celery crontab object for this schedule.
@@ -96,7 +94,7 @@ class ScanSchedule(Base):
         """
         if self.schedule_type != "cron":
             return None
-        
+
         return crontab(
             minute=self.cron_minute or "*",
             hour=self.cron_hour or "*",
@@ -111,23 +109,23 @@ class ScanSchedule(Base):
         Returns:
             Next scheduled run datetime
         """
-        now = datetime.now(timezone.utc)
-        
+        now = datetime.now(UTC)
+
         if self.schedule_type == "once":
             return self.scheduled_at
-        
+
         elif self.schedule_type == "interval":
             if self.last_run_at:
                 return self.last_run_at + timedelta(seconds=self.interval_seconds)
             return now + timedelta(seconds=self.interval_seconds)
-        
+
         elif self.schedule_type == "cron":
             # Simple approximation - in production, use proper cron calculation
             crontab_obj = self.get_crontab()
             if crontab_obj:
                 # Get next matching time
                 return now + timedelta(hours=1)  # Simplified
-        
+
         return now
 
 
@@ -149,20 +147,22 @@ def execute_scheduled_scan(
     Returns:
         Task result dictionary
     """
+    import asyncio
+
     from sqlalchemy import select
-    from netra.db.session import AsyncSessionLocal
+
     from netra.db.models.scan import Scan
     from netra.db.models.target import Target
-    import asyncio
+    from netra.db.session import AsyncSessionLocal
 
     schedule_uuid = uuid.UUID(schedule_id)
     db = AsyncSessionLocal()
 
     try:
         # Get schedule
-        result = asyncio.run(db.execute(
-            select(ScanSchedule).where(ScanSchedule.id == schedule_uuid)
-        ))
+        result = asyncio.run(
+            db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_uuid))
+        )
         schedule = result.scalar_one_or_none()
 
         if not schedule:
@@ -174,9 +174,9 @@ def execute_scheduled_scan(
             return {"status": "skipped", "message": "Schedule is inactive"}
 
         # Get target
-        target_result = asyncio.run(db.execute(
-            select(Target).where(Target.id == schedule.target_id)
-        ))
+        target_result = asyncio.run(
+            db.execute(select(Target).where(Target.id == schedule.target_id))
+        )
         target = target_result.scalar_one_or_none()
 
         if not target:
@@ -185,7 +185,7 @@ def execute_scheduled_scan(
 
         # Create new scan
         scan = Scan(
-            name=f"{schedule.name} - {datetime.now(timezone.utc).isoformat()}",
+            name=f"{schedule.name} - {datetime.now(UTC).isoformat()}",
             target_id=schedule.target_id,
             profile=schedule.profile,
             config=schedule.config,
@@ -203,10 +203,11 @@ def execute_scheduled_scan(
 
         # Trigger scan execution via Celery
         from netra.worker.tasks import run_scan
+
         run_scan.delay(str(scan.id))
 
         # Update schedule metadata
-        schedule.last_run_at = datetime.now(timezone.utc)
+        schedule.last_run_at = datetime.now(UTC)
         schedule.total_runs += 1
         schedule.next_run_at = schedule.get_next_run()
         asyncio.run(db.commit())
@@ -223,16 +224,16 @@ def execute_scheduled_scan(
             schedule_id=schedule_id,
             error=str(e),
         )
-        
+
         # Update failed runs counter
         try:
             schedule.failed_runs += 1
             asyncio.run(db.commit())
         except Exception:
             pass
-        
+
         return {"status": "error", "message": str(e)}
-    
+
     finally:
         asyncio.run(db.close())
 
@@ -244,28 +245,32 @@ def cleanup_old_schedules(self) -> dict[str, Any]:
     Returns:
         Task result dictionary
     """
-    from sqlalchemy import select, delete
-    from netra.db.session import AsyncSessionLocal
     import asyncio
 
+    from sqlalchemy import select
+
+    from netra.db.session import AsyncSessionLocal
+
     db = AsyncSessionLocal()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     try:
         # Find old one-time schedules
-        result = asyncio.run(db.execute(
-            select(ScanSchedule).where(
-                ScanSchedule.schedule_type == "once",
-                ScanSchedule.scheduled_at < now - timedelta(days=7),
-                ScanSchedule.is_active == True,
+        result = asyncio.run(
+            db.execute(
+                select(ScanSchedule).where(
+                    ScanSchedule.schedule_type == "once",
+                    ScanSchedule.scheduled_at < now - timedelta(days=7),
+                    ScanSchedule.is_active is True,
+                )
             )
-        ))
+        )
         old_schedules = result.scalars().all()
 
         # Deactivate old schedules
         for schedule in old_schedules:
             schedule.is_active = False
-        
+
         asyncio.run(db.commit())
 
         logger.info(
@@ -281,7 +286,7 @@ def cleanup_old_schedules(self) -> dict[str, Any]:
     except Exception as e:
         logger.error("cleanup_schedules_failed", error=str(e))
         return {"status": "error", "message": str(e)}
-    
+
     finally:
         asyncio.run(db.close())
 
@@ -428,7 +433,7 @@ class ScheduleManager:
         Returns:
             Created schedule
         """
-        if scheduled_at < datetime.now(timezone.utc):
+        if scheduled_at < datetime.now(UTC):
             raise ValueError("Scheduled time must be in the future")
 
         schedule = ScanSchedule(
@@ -470,16 +475,14 @@ class ScheduleManager:
         """
         from sqlalchemy import select
 
-        result = await db.execute(
-            select(ScanSchedule).where(ScanSchedule.id == schedule_id)
-        )
+        result = await db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_id))
         schedule = result.scalar_one_or_none()
 
         if not schedule:
             return False
 
         schedule.is_active = False
-        schedule.updated_at = datetime.now(timezone.utc)
+        schedule.updated_at = datetime.now(UTC)
         await db.commit()
 
         logger.info(
@@ -505,16 +508,14 @@ class ScheduleManager:
         """
         from sqlalchemy import select
 
-        result = await db.execute(
-            select(ScanSchedule).where(ScanSchedule.id == schedule_id)
-        )
+        result = await db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_id))
         schedule = result.scalar_one_or_none()
 
         if not schedule:
             return False
 
         schedule.is_active = True
-        schedule.updated_at = datetime.now(timezone.utc)
+        schedule.updated_at = datetime.now(UTC)
         schedule.next_run_at = schedule.get_next_run()
         await db.commit()
 
@@ -541,7 +542,6 @@ def get_beat_schedule() -> dict[str, dict[str, Any]]:
             "task": "netra.cleanup_old_schedules",
             "schedule": crontab(minute=0, hour=3, day_of_week="sunday"),  # Sunday 3 AM
         },
-        
         # Check and run due schedules every minute
         "check-due-schedules": {
             "task": "netra.check_and_run_due_schedules",
@@ -557,21 +557,25 @@ def check_and_run_due_schedules(self) -> dict[str, Any]:
     Returns:
         Task result dictionary
     """
-    from sqlalchemy import select
-    from netra.db.session import AsyncSessionLocal
     import asyncio
 
+    from sqlalchemy import select
+
+    from netra.db.session import AsyncSessionLocal
+
     db = AsyncSessionLocal()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     try:
         # Find due schedules
-        result = asyncio.run(db.execute(
-            select(ScanSchedule).where(
-                ScanSchedule.is_active == True,
-                ScanSchedule.next_run_at <= now,
+        result = asyncio.run(
+            db.execute(
+                select(ScanSchedule).where(
+                    ScanSchedule.is_active is True,
+                    ScanSchedule.next_run_at <= now,
+                )
             )
-        ))
+        )
         due_schedules = result.scalars().all()
 
         triggered = []
@@ -606,28 +610,29 @@ def check_and_run_due_schedules(self) -> dict[str, Any]:
 @celery_app.task(bind=True, name="netra.check_and_notify_sla_breaches")
 def check_and_notify_sla_breaches(self) -> dict:
     """Check for SLA breaches and send notifications.
-    
+
     Returns:
         Task result dictionary
     """
-    from netra.notifications.manager import NotificationManager
-    from netra.db.session import AsyncSessionLocal
     import asyncio
-    
+
+    from netra.db.session import AsyncSessionLocal
+    from netra.notifications.manager import NotificationManager
+
     db = AsyncSessionLocal()
-    
+
     try:
         manager = NotificationManager(db)
         breaches_notified = asyncio.run(manager.check_and_notify_sla_breaches())
-        
+
         return {
             "status": "success",
             "breaches_notified": breaches_notified,
         }
-        
+
     except Exception as e:
         logger.error("sla_breach_check_failed", error=str(e))
         return {"status": "error", "message": str(e)}
-    
+
     finally:
         asyncio.run(db.close())

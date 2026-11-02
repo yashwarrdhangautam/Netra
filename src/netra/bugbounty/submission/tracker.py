@@ -1,5 +1,8 @@
 """Submission state machine — enforces valid transitions on bb_submissions.status."""
+
 from __future__ import annotations
+
+from datetime import UTC
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,14 +22,10 @@ class InvalidTransition(Exception):
     def __init__(self, from_status: SubmissionStatus, to_status: SubmissionStatus):
         self.from_status = from_status
         self.to_status = to_status
-        super().__init__(
-            f"Invalid submission transition: {from_status.value} → {to_status.value}"
-        )
+        super().__init__(f"Invalid submission transition: {from_status.value} → {to_status.value}")
 
 
-def can_transition(
-    from_status: SubmissionStatus, to_status: SubmissionStatus
-) -> bool:
+def can_transition(from_status: SubmissionStatus, to_status: SubmissionStatus) -> bool:
     """Return True if the transition is allowed."""
     return to_status in SUBMISSION_TRANSITIONS.get(from_status, set())
 
@@ -57,8 +56,9 @@ async def transition(
         submission.verdict_notes = notes
 
     # Stamp times where appropriate.
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
+    from datetime import datetime
+
+    now = datetime.now(UTC)
     if to_status == SubmissionStatus.SENT and submission.submitted_at is None:
         submission.submitted_at = now
     if to_status in {

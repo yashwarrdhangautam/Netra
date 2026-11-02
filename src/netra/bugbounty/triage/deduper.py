@@ -6,6 +6,7 @@ deterministic — the same finding shape always produces the same signature.
 When Graphify is wired in (graph_indexer.py), the deduper will additionally query
 the graph for 'similar' (not just identical) prior findings on the same asset.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -105,12 +106,17 @@ def find_graph_similar(
         if str(attrs.get("vuln_class", "")).lower() != vuln_class.lower():
             continue
         candidate_path = normalise_path(str(attrs.get("asset_path") or ""))
-        if candidate_path == norm_asset or candidate_path.rsplit("/", 1)[0] == norm_asset.rsplit("/", 1)[0]:
-            hints.append({
-                "id": record.get("id"),
-                "title": attrs.get("title"),
-                "reason": "same vuln class on same or neighbouring asset path",
-            })
+        if (
+            candidate_path == norm_asset
+            or candidate_path.rsplit("/", 1)[0] == norm_asset.rsplit("/", 1)[0]
+        ):
+            hints.append(
+                {
+                    "id": record.get("id"),
+                    "title": attrs.get("title"),
+                    "reason": "same vuln class on same or neighbouring asset path",
+                }
+            )
     return hints[:5]
 
 

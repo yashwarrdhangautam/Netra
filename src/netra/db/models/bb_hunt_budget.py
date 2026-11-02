@@ -1,8 +1,9 @@
 """Bug bounty hunt budget model."""
+
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
-from netra.bugbounty.agentic.planner import PlannedStep, TestPlan as AgenticPlan
+from netra.bugbounty.agentic.planner import PlannedStep
+from netra.bugbounty.agentic.planner import TestPlan as AgenticPlan
 from netra.db.models import BBCorpusReport
 from netra.db.models.bb_program import BBPlatform, BBProgram
 from netra.db.models.bb_scope_rule import BBScopeRule, ScopeAssetType, ScopeRuleType
@@ -35,7 +36,9 @@ class StubPlanner:
 
 
 @pytest.mark.asyncio
-async def test_agentic_orchestrator_creates_findings_and_checkpoint(monkeypatch, db_session) -> None:
+async def test_agentic_orchestrator_creates_findings_and_checkpoint(
+    monkeypatch, db_session
+) -> None:
     async def fake_httpx_run(self, target, **kwargs):  # noqa: ANN001
         return ToolResult(
             tool_name="httpx",
@@ -69,13 +72,21 @@ async def test_agentic_orchestrator_creates_findings_and_checkpoint(monkeypatch,
 
     async def fake_build_corpus_context(session, query, *, top_k=5, filters=None):  # noqa: ANN001
         del session, query, top_k, filters
-        return ["[reports] Shopify reflected XSS :: Public disclosed report about a reflected XSS pattern."]
+        return [
+            "[reports] Shopify reflected XSS :: Public disclosed report about a reflected XSS pattern."
+        ]
 
-    monkeypatch.setattr("netra.bugbounty.agentic.planner.Planner.make_plan", StubPlanner().make_plan)
+    monkeypatch.setattr(
+        "netra.bugbounty.agentic.planner.Planner.make_plan", StubPlanner().make_plan
+    )
     monkeypatch.setattr("netra.scanner.tools.httpx.HttpxTool.run", fake_httpx_run)
     monkeypatch.setattr("netra.bugbounty.agentic.router.ToolRouter.next_tool", fake_next_tool)
-    monkeypatch.setattr("netra.scanner.orchestrator.ScanOrchestrator._run_ai_analysis", fake_ai_analysis)
-    monkeypatch.setattr("netra.bugbounty.learning.search.build_corpus_context", fake_build_corpus_context)
+    monkeypatch.setattr(
+        "netra.scanner.orchestrator.ScanOrchestrator._run_ai_analysis", fake_ai_analysis
+    )
+    monkeypatch.setattr(
+        "netra.bugbounty.learning.search.build_corpus_context", fake_build_corpus_context
+    )
 
     program = BBProgram(
         platform=BBPlatform.HACKERONE,
@@ -111,7 +122,7 @@ async def test_agentic_orchestrator_creates_findings_and_checkpoint(monkeypatch,
             metadata_={},
             redaction_count=0,
             embedding=[1.0, 0.0, 0.0],
-            ingested_at=datetime.now(timezone.utc),
+            ingested_at=datetime.now(UTC),
         )
     )
     await db_session.flush()
@@ -147,9 +158,9 @@ async def test_agentic_orchestrator_creates_findings_and_checkpoint(monkeypatch,
     assert scan.checkpoint_data["agentic_corpus_hits"]
     assert len(scan.checkpoint_data["agentic_observations"]) == 1
 
-    findings = (await db_session.execute(
-        Finding.__table__.select().where(Finding.scan_id == scan.id)
-    )).all()
+    findings = (
+        await db_session.execute(Finding.__table__.select().where(Finding.scan_id == scan.id))
+    ).all()
     assert len(findings) == 1
 
 
@@ -158,8 +169,12 @@ async def test_agentic_executor_honors_cancelled_scan(monkeypatch, db_session) -
     async def fake_ai_analysis(self, scan):  # noqa: ANN001
         return None
 
-    monkeypatch.setattr("netra.bugbounty.agentic.planner.Planner.make_plan", StubPlanner().make_plan)
-    monkeypatch.setattr("netra.scanner.orchestrator.ScanOrchestrator._run_ai_analysis", fake_ai_analysis)
+    monkeypatch.setattr(
+        "netra.bugbounty.agentic.planner.Planner.make_plan", StubPlanner().make_plan
+    )
+    monkeypatch.setattr(
+        "netra.scanner.orchestrator.ScanOrchestrator._run_ai_analysis", fake_ai_analysis
+    )
 
     program = BBProgram(
         platform=BBPlatform.HACKERONE,

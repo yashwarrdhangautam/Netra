@@ -1,4 +1,5 @@
 """Report routes for generating security reports."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -53,29 +54,25 @@ async def generate_report(
     return ReportResponse.model_validate(report)
 
 
-async def _generate_report_async(
-    db: AsyncSession, report: Report, scan: Scan
-) -> None:
+async def _generate_report_async(db: AsyncSession, report: Report, scan: Scan) -> None:
     """Generate report asynchronously."""
     try:
         from netra.services.report_service import (
-            generate_executive_report,
-            generate_pentest_report,
-            generate_technical_report,
-            generate_html_report,
-            generate_excel_report,
-            generate_evidence_zip,
-            generate_delta_report,
             generate_api_report,
             generate_cloud_report,
             generate_compliance_report,
+            generate_delta_report,
+            generate_evidence_zip,
+            generate_excel_report,
+            generate_executive_report,
             generate_full_report,
+            generate_html_report,
+            generate_pentest_report,
+            generate_technical_report,
         )
 
         # Get findings
-        result = await db.execute(
-            select(Finding).where(Finding.scan_id == scan.id)
-        )
+        result = await db.execute(select(Finding).where(Finding.scan_id == scan.id))
         findings = list(result.scalars().all())
 
         # Convert findings to dict format
@@ -122,7 +119,9 @@ async def _generate_report_async(
             output_path = await generate_evidence_zip(scan_data, findings_data)
         elif report.report_type == ReportType.DELTA:
             # Delta needs two scans - use previous scan if available
-            output_path = await generate_delta_report(scan_data, scan_data, findings_data, findings_data)
+            output_path = await generate_delta_report(
+                scan_data, scan_data, findings_data, findings_data
+            )
         elif report.report_type == ReportType.API:
             output_path = await generate_api_report(scan_data, findings_data)
         elif report.report_type == ReportType.CLOUD:
@@ -130,9 +129,12 @@ async def _generate_report_async(
         elif report.report_type == ReportType.COMPLIANCE:
             # Get compliance data from service
             from netra.services.compliance_service import ComplianceService
+
             service = ComplianceService(db)
             compliance_data = await service.get_framework_gap_analysis(scan.id, "iso27001")
-            output_path = await generate_compliance_report("iso27001", scan_data, compliance_data, findings_data)
+            output_path = await generate_compliance_report(
+                "iso27001", scan_data, compliance_data, findings_data
+            )
         elif report.report_type == ReportType.FULL:
             output_path = await generate_full_report(scan_data, findings_data)
         else:
@@ -146,6 +148,7 @@ async def _generate_report_async(
         report.file_path = str(output_path) if output_path else None
         if output_path and output_path.exists():
             import os
+
             report.file_size = os.path.getsize(output_path)
 
     except Exception as e:
@@ -216,6 +219,7 @@ async def delete_report(
     # Delete file if exists
     if report.file_path:
         import os
+
         if os.path.exists(report.file_path):
             os.remove(report.file_path)
 

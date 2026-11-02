@@ -1,20 +1,23 @@
 """Tests for Phase 1 scanning engine and vulnerability management."""
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from datetime import UTC
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netra.db.models.finding import Finding, Severity
+from netra.db.models.finding import Severity
 from netra.db.models.scan import Scan, ScanProfile, ScanStatus
 from netra.db.models.scan_phase import PhaseStatus, PhaseType
-from netra.scanner.profiles import get_profile_config, PROFILES
+from netra.scanner.profiles import PROFILES, get_profile_config
 from netra.scanner.tools.base import ToolResult
-from netra.services.finding_service import FindingService, SLA_HOURS
 from netra.services.compliance_service import CWE_TO_CONTROLS, ComplianceService
+from netra.services.finding_service import SLA_HOURS, FindingService
 
 
 class TestScanProfiles:
@@ -57,14 +60,14 @@ class TestToolResult:
 
     def test_tool_result_creation(self) -> None:
         """Test creating a ToolResult."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         result = ToolResult(
             tool_name="nuclei",
             target="https://example.com",
             success=True,
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
         assert result.tool_name == "nuclei"
         assert result.success is True
@@ -72,7 +75,7 @@ class TestToolResult:
 
     def test_tool_result_with_findings(self) -> None:
         """Test ToolResult with findings."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         finding = {
             "title": "Test Finding",
@@ -83,8 +86,8 @@ class TestToolResult:
             tool_name="nuclei",
             target="https://example.com",
             success=True,
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
             findings=[finding],
         )
         assert len(result.findings) == 1
@@ -110,7 +113,6 @@ class TestFindingService:
 
     def test_compute_dedup_hash(self) -> None:
         """Test dedup hash computation."""
-        from netra.services.finding_service import FindingService
 
         # Mock db session
         class MockDB:
@@ -131,7 +133,6 @@ class TestFindingService:
 
     def test_normalize_severity(self) -> None:
         """Test severity normalization."""
-        from netra.services.finding_service import FindingService
 
         class MockDB:
             pass
@@ -258,20 +259,15 @@ class TestFindingModel:
 class TestIntegration:
     """Integration tests for Phase 1 components."""
 
-    async def test_finding_service_create(
-        self, async_db_session: AsyncSession
-    ) -> None:
+    async def test_finding_service_create(self, async_db_session: AsyncSession) -> None:
         """Test creating a finding via FindingService."""
-        from netra.db.models.scan import Scan
         from netra.services.finding_service import FindingService
 
         # Create a test scan first
-        scan = Scan(
+        Scan(
             name="Test Scan",
             profile=ScanProfile.QUICK,
-            target_id=(
-                await async_db_session.execute(select(Scan).limit(1))
-            ).scalar_one_or_none()
+            target_id=(await async_db_session.execute(select(Scan).limit(1))).scalar_one_or_none()
             if False
             else None,
         )
@@ -279,9 +275,7 @@ class TestIntegration:
         service = FindingService(async_db_session)
         assert service.db == async_db_session
 
-    async def test_compliance_service_init(
-        self, async_db_session: AsyncSession
-    ) -> None:
+    async def test_compliance_service_init(self, async_db_session: AsyncSession) -> None:
         """Test ComplianceService initialization."""
         service = ComplianceService(async_db_session)
         assert service.db == async_db_session

@@ -1,5 +1,5 @@
 """Slack notification sender with real webhook implementation."""
-import json
+
 from typing import Any
 
 import httpx
@@ -63,7 +63,9 @@ class SlackNotifier:
                 )
 
                 if response.status_code == 200:
-                    logger.info("slack_notification_sent", message_type=message.get("text", "unknown")[:50])
+                    logger.info(
+                        "slack_notification_sent", message_type=message.get("text", "unknown")[:50]
+                    )
                     return True
                 else:
                     logger.error(

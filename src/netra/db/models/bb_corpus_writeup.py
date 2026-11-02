@@ -1,10 +1,11 @@
 """Corpus models for public writeups and blog posts."""
+
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from netra.db.models.base import Base

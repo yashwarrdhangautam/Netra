@@ -1,4 +1,5 @@
 """Application configuration via Pydantic Settings."""
+
 from pathlib import Path
 from typing import Literal
 

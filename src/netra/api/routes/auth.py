@@ -1,36 +1,25 @@
 """Authentication routes with refresh tokens, MFA, and password reset."""
+
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field, validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.core.security import (
-    TokenBlacklist,
     create_access_token,
-    create_password_reset_token,
     create_refresh_token,
     decode_access_token,
-    decode_password_reset_token,
     decode_refresh_token,
-    generate_backup_codes,
-    generate_mfa_secret,
-    get_mfa_provisioning_uri,
-    get_password_hash,
-    hash_api_key,
-    hash_backup_code,
     token_blacklist,
-    verify_api_key,
-    verify_backup_code,
-    verify_mfa_code,
     verify_password,
 )
-from netra.db.models.user import User, UserRole
+from netra.db.models.user import User
 from netra.db.session import get_db
 
 logger = structlog.get_logger()
@@ -85,7 +74,7 @@ class RegisterRequest(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=255)
 
     @validator("password")
-    def validate_password(cls, v):
+    def validate_password(self, v):
         """Validate password strength."""
         if len(v) < 12:
             raise ValueError("Password must be at least 12 characters")
@@ -292,7 +281,7 @@ async def login(
         )
 
     # Check if account is locked
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+    if user.locked_until and user.locked_until > datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Account locked until {user.locked_until.isoformat()}",
@@ -305,7 +294,7 @@ async def login(
 
         # Lock account after 5 failed attempts
         if user.failed_login_attempts >= 5:
-            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+            user.locked_until = datetime.now(UTC) + timedelta(minutes=15)
             user.failed_login_attempts = 0
             logger.warning(
                 "account_locked",
@@ -322,7 +311,7 @@ async def login(
     # Reset failed login attempts on successful login
     user.failed_login_attempts = 0
     user.locked_until = None
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.commit()
 
     # Generate tokens

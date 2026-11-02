@@ -1,4 +1,5 @@
 """Compliance engine — comprehensive mappings across 6 frameworks."""
+
 import uuid
 from typing import Any
 
@@ -394,9 +395,7 @@ class ComplianceService:
         if frameworks is None:
             frameworks = list(FRAMEWORK_CONTROLS.keys())
 
-        result = await self.db.execute(
-            select(Finding).where(Finding.scan_id == scan_id)
-        )
+        result = await self.db.execute(select(Finding).where(Finding.scan_id == scan_id))
         findings = list(result.scalars().all())
 
         mappings_created = 0
@@ -427,9 +426,7 @@ class ComplianceService:
         await self.db.commit()
         return {"mappings_created": mappings_created, "frameworks": frameworks}
 
-    async def get_compliance_score(
-        self, scan_id: uuid.UUID, framework: str
-    ) -> dict[str, Any]:
+    async def get_compliance_score(self, scan_id: uuid.UUID, framework: str) -> dict[str, Any]:
         """Calculate compliance score for a framework.
 
         Args:
@@ -451,9 +448,7 @@ class ComplianceService:
         mappings = list(result.scalars().all())
 
         total_controls = len(set(m.control_id for m in mappings))
-        failed_controls = len(
-            set(m.control_id for m in mappings if m.status == "fail")
-        )
+        failed_controls = len(set(m.control_id for m in mappings if m.status == "fail"))
         passed_controls = total_controls - failed_controls
 
         score = (passed_controls / total_controls * 100) if total_controls > 0 else 100

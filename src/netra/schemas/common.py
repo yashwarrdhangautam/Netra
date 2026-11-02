@@ -1,9 +1,10 @@
 """Common Pydantic schemas for pagination and shared types."""
+
 from datetime import datetime
 from enum import StrEnum
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 T = TypeVar("T")
 

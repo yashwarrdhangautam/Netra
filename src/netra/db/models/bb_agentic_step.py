@@ -1,8 +1,9 @@
 """Telemetry rows for agentic hunt decisions."""
+
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base

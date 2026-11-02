@@ -4,13 +4,14 @@ All sources in this module are passive: certificate transparency, public search 
 or scanner wrappers running in passive mode. Results are scope-filtered before the
 caller persists them.
 """
+
 from __future__ import annotations
 
 import os
 import re
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 import httpx
 import structlog

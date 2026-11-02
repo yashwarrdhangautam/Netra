@@ -12,10 +12,11 @@ Produces a Markdown body in the standard HackerOne / Bugcrowd shape:
 The draft is committed to bb_submissions.draft_md. The operator reviews and pastes
 it into the platform UI. NETRA-BB never auto-submits.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

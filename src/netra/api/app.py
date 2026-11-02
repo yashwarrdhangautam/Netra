@@ -1,4 +1,5 @@
 """FastAPI application factory with rate limiting and SSRF protection."""
+
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
@@ -14,13 +15,13 @@ from netra.api.routes import (
     health,
     reports,
     scans,
+    schedules,
     targets,
     websocket,
-    schedules,
 )
 from netra.core.config import settings
 from netra.core.logging import setup_logging
-from netra.core.rate_limiter import setup_rate_limiting, limiter
+from netra.core.rate_limiter import setup_rate_limiting
 
 
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log_format=settings.log_format,
         log_level=settings.log_level,
     )
-    
+
     yield
     # Shutdown
     # Cleanup resources if needed
@@ -64,7 +65,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Error handlers
     add_error_handlers(app)
     add_bugbounty_audit_middleware(app)

@@ -4,6 +4,7 @@ The program's scope rules can declare a severity cap (e.g. *.myshopify.com is in
 but capped at 'high'). This module merges that cap with the AI-suggested severity to
 arrive at the final reportable severity.
 """
+
 from __future__ import annotations
 
 from enum import IntEnum
@@ -19,7 +20,7 @@ class Severity(IntEnum):
     CRITICAL = 4
 
     @classmethod
-    def from_string(cls, s: str) -> "Severity":
+    def from_string(cls, s: str) -> Severity:
         return cls[s.upper()]
 
     def to_string(self) -> str:

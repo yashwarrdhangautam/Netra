@@ -1,37 +1,32 @@
 """Tests for Phase 4 features: Celery tasks, notifications, auth, and integrations."""
-import pytest
-import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from netra.worker.tasks import (
-    scope_resolution,
-    recon,
-    vuln_scan,
-    active_test,
-    ai_analysis,
-    reporting,
-    create_scan_pipeline,
-)
-from netra.notifications.slack import SlackNotifier
-from netra.notifications.email import EmailNotifier
-from netra.notifications.manager import NotificationManager
+import uuid
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from netra.core.security import (
     create_access_token,
+    create_password_reset_token,
     create_refresh_token,
     decode_access_token,
-    decode_refresh_token,
-    token_blacklist,
-    generate_mfa_secret,
-    verify_mfa_code,
-    generate_backup_codes,
-    verify_backup_code,
-    create_password_reset_token,
     decode_password_reset_token,
+    decode_refresh_token,
+    generate_backup_codes,
+    generate_mfa_secret,
+    token_blacklist,
+    verify_backup_code,
+    verify_mfa_code,
 )
 from netra.integrations.defectdojo import DefectDojoClient
 from netra.integrations.jira import JiraClient
-
+from netra.notifications.email import EmailNotifier
+from netra.notifications.manager import NotificationManager
+from netra.notifications.slack import SlackNotifier
+from netra.worker.tasks import (
+    create_scan_pipeline,
+)
 
 # ── Celery Task Tests ─────────────────────────────────────────────────────────
 
@@ -50,7 +45,7 @@ class TestCeleryTasks:
         """Test scan pipeline chain creation."""
         scan_id = str(uuid.uuid4())
         pipeline = create_scan_pipeline(scan_id)
-        
+
         # Pipeline should have 6 tasks in chain
         # (scope_resolution, recon, vuln_scan, active_test, ai_analysis, reporting)
         assert pipeline is not None
@@ -59,11 +54,11 @@ class TestCeleryTasks:
     async def test_token_blacklist_add(self):
         """Test adding token to blacklist."""
         token = "test_token_123"
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-        
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
+
         result = await token_blacklist.add(token, expires_at)
         assert result is True
-        
+
         # Check if blacklisted
         is_blacklisted = await token_blacklist.is_blacklisted(token)
         assert is_blacklisted is True
@@ -72,7 +67,7 @@ class TestCeleryTasks:
     async def test_token_blacklist_check_not_found(self):
         """Test checking non-blacklisted token."""
         token = "non_blacklisted_token"
-        
+
         is_blacklisted = await token_blacklist.is_blacklisted(token)
         assert is_blacklisted is False
 
@@ -97,7 +92,7 @@ class TestSlackNotifier:
     def test_get_severity_color(self):
         """Test severity color mapping."""
         notifier = SlackNotifier()
-        
+
         assert notifier._get_severity_color("critical") == "#ff0000"
         assert notifier._get_severity_color("high") == "#ff6600"
         assert notifier._get_severity_color("medium") == "#ffcc00"
@@ -108,7 +103,7 @@ class TestSlackNotifier:
     def test_get_severity_emoji(self):
         """Test severity emoji mapping."""
         notifier = SlackNotifier()
-        
+
         assert notifier._get_severity_emoji("critical") == "🔴"
         assert notifier._get_severity_emoji("high") == "🟠"
         assert notifier._get_severity_emoji("medium") == "🟡"
@@ -126,24 +121,26 @@ class TestSlackNotifier:
     async def test_send_finding_alert_structure(self):
         """Test finding alert message structure."""
         notifier = SlackNotifier()
-        
+
         finding = {
             "title": "SQL Injection",
             "target": "https://example.com",
             "tool_name": "sqlmap",
             "cvss_score": 9.8,
         }
-        
+
         # Test method doesn't fail with valid data
         message = {
             "text": f"New HIGH finding: {finding['title']}",
-            "attachments": [{
-                "color": notifier._get_severity_color("high"),
-                "fields": [
-                    {"title": "Severity", "value": "HIGH", "short": True},
-                    {"title": "Target", "value": finding["target"], "short": True},
-                ],
-            }],
+            "attachments": [
+                {
+                    "color": notifier._get_severity_color("high"),
+                    "fields": [
+                        {"title": "Severity", "value": "HIGH", "short": True},
+                        {"title": "Target", "value": finding["target"], "short": True},
+                    ],
+                }
+            ],
         }
         assert message["text"] is not None
 
@@ -184,12 +181,12 @@ class TestEmailNotifier:
     def test_generate_report_body(self):
         """Test HTML report body generation."""
         notifier = EmailNotifier()
-        
+
         findings = [
             {"title": "Finding 1", "severity": "high"},
             {"title": "Finding 2", "severity": "medium"},
         ]
-        
+
         html = notifier._generate_report_body(findings)
         assert html is not None
         assert "Findings Report" in html
@@ -206,7 +203,7 @@ class TestSecurity:
         """Test access token creation."""
         user_id = uuid.uuid4()
         token = create_access_token(user_id)
-        
+
         assert token is not None
         assert isinstance(token, str)
         assert len(token) > 100
@@ -215,7 +212,7 @@ class TestSecurity:
         """Test access token decoding."""
         user_id = uuid.uuid4()
         token = create_access_token(user_id)
-        
+
         payload = decode_access_token(token)
         assert payload is not None
         assert payload["sub"] == str(user_id)
@@ -225,10 +222,10 @@ class TestSecurity:
         """Test refresh token creation."""
         user_id = uuid.uuid4()
         token = create_refresh_token(user_id)
-        
+
         assert token is not None
         assert isinstance(token, str)
-        
+
         # Refresh token should have longer expiry than access token
         payload = decode_refresh_token(token)
         assert payload is not None
@@ -243,7 +240,7 @@ class TestSecurity:
     def test_mfa_secret_generation(self):
         """Test MFA secret generation."""
         secret = generate_mfa_secret()
-        
+
         assert secret is not None
         assert isinstance(secret, str)
         assert len(secret) == 16  # Base32 encoded, 16 chars
@@ -251,12 +248,13 @@ class TestSecurity:
     def test_mfa_code_verification(self):
         """Test MFA code verification."""
         secret = generate_mfa_secret()
-        
+
         # Generate current code
         import pyotp
+
         totp = pyotp.TOTP(secret)
         current_code = totp.now()
-        
+
         # Verify should succeed with valid code
         result = verify_mfa_code(secret, current_code)
         assert result is True
@@ -264,7 +262,7 @@ class TestSecurity:
     def test_mfa_code_verification_invalid(self):
         """Test MFA code verification with invalid code."""
         secret = generate_mfa_secret()
-        
+
         # Verify should fail with invalid code
         result = verify_mfa_code(secret, "000000")
         assert result is False
@@ -272,7 +270,7 @@ class TestSecurity:
     def test_backup_codes_generation(self):
         """Test backup code generation."""
         codes = generate_backup_codes(10)
-        
+
         assert len(codes) == 10
         assert all(isinstance(code, str) for code in codes)
         assert all(len(code) >= 8 for code in codes)
@@ -280,10 +278,10 @@ class TestSecurity:
     def test_backup_code_verification(self):
         """Test backup code verification."""
         from netra.core.security import hash_backup_code
-        
+
         code = "TESTCODE123"
         hashed = hash_backup_code(code)
-        
+
         assert verify_backup_code(code, hashed) is True
         assert verify_backup_code("WRONGCODE", hashed) is False
 
@@ -291,9 +289,9 @@ class TestSecurity:
         """Test password reset token creation and decoding."""
         user_id = uuid.uuid4()
         token = create_password_reset_token(user_id, expires_hours=1)
-        
+
         assert token is not None
-        
+
         payload = decode_password_reset_token(token)
         assert payload is not None
         assert payload["sub"] == str(user_id)
@@ -323,7 +321,7 @@ class TestDefectDojoClient:
     def test_get_numerical_severity(self):
         """Test severity to numerical mapping."""
         client = DefectDojoClient()
-        
+
         assert client._get_numerical_severity("critical") == 1
         assert client._get_numerical_severity("high") == 2
         assert client._get_numerical_severity("medium") == 3
@@ -357,7 +355,7 @@ class TestJiraClient:
     def test_build_description(self):
         """Test Jira description building."""
         client = JiraClient()
-        
+
         finding = {
             "title": "SQL Injection",
             "description": "SQL injection found in login form",
@@ -367,15 +365,15 @@ class TestJiraClient:
             "cwe": 89,
             "remediation": "Use parameterized queries",
         }
-        
+
         scan = {
             "name": "Q1 Security Scan",
             "target": "https://example.com",
             "profile": "deep",
         }
-        
+
         description = client._build_description(finding, scan)
-        
+
         assert "SQL Injection" in description
         assert "9.8" in description
         assert "CWE-89" in description
@@ -392,7 +390,7 @@ class TestNotificationManager:
         """Test notification manager initialization."""
         mock_db = AsyncMock()
         manager = NotificationManager(mock_db)
-        
+
         assert manager.slack is not None
         assert manager.email is not None
 
@@ -401,11 +399,11 @@ class TestNotificationManager:
         """Test critical finding notification skips medium severity."""
         mock_db = AsyncMock()
         manager = NotificationManager(mock_db)
-        
+
         mock_finding = MagicMock()
         mock_finding.severity = "medium"
         mock_scan = MagicMock()
-        
+
         # Should return early for medium severity
         await manager.notify_critical_finding(mock_finding, mock_scan)
         # No assertions needed - test passes if no exception

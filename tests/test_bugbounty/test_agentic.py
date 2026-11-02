@@ -6,12 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from netra.bugbounty.agentic.knowledge import FileSystemKnowledgeRetriever, GraphifyKnowledgeRetriever
+from netra.bugbounty.agentic.executor import AgenticExecutor
+from netra.bugbounty.agentic.knowledge import (
+    FileSystemKnowledgeRetriever,
+    GraphifyKnowledgeRetriever,
+)
 from netra.bugbounty.agentic.multi_agent import MultiAgentCoordinator
 from netra.bugbounty.agentic.observation import observation_from_tool_result
-from netra.bugbounty.agentic.executor import AgenticExecutor
-from netra.bugbounty.agentic.planner import Planner
-from netra.bugbounty.agentic.planner import PlannedStep
+from netra.bugbounty.agentic.planner import PlannedStep, Planner
 from netra.bugbounty.agentic.router import ToolRouter
 from netra.bugbounty.agentic.side_effects import SideEffectClass, check
 from netra.bugbounty.agentic.tool_registry import TOOL_REGISTRY
@@ -30,9 +32,12 @@ class FakeBrain:
     async def _query_ollama(self, _prompt: str) -> str:
         return self.response
 
-    async def query_structured(self, *, system_prompt: str, user_prompt: str, provider=None, model=None) -> dict:
+    async def query_structured(
+        self, *, system_prompt: str, user_prompt: str, provider=None, model=None
+    ) -> dict:
         del system_prompt, user_prompt, provider, model
         import json
+
         return json.loads(self.response)
 
 
@@ -58,7 +63,9 @@ def test_observation_normalizes_httpx_findings() -> None:
         tool_name="httpx",
         success=True,
         target="https://api.example.com",
-        findings=[{"url": "https://api.example.com", "tech": ["next.js", "react"], "status_code": 200}],
+        findings=[
+            {"url": "https://api.example.com", "tech": ["next.js", "react"], "status_code": 200}
+        ],
         raw_output="",
     )
     observation = observation_from_tool_result(result)
@@ -84,13 +91,18 @@ def test_observation_normalizes_semgrep_and_ffuf_findings() -> None:
         tool_name="semgrep",
         success=True,
         target="repo",
-        findings=[{"rule_id": "python.flask.debug", "severity": "medium", "path": "app.py", "line": 14}],
+        findings=[
+            {"rule_id": "python.flask.debug", "severity": "medium", "path": "app.py", "line": 14}
+        ],
     )
     ffuf = ToolResult(
         tool_name="ffuf",
         success=True,
         target="https://api.example.com/FUZZ",
-        findings=[{"path": "/admin", "status_code": 403}, {"url": "https://api.example.com/metrics", "status_code": 200}],
+        findings=[
+            {"path": "/admin", "status_code": 403},
+            {"url": "https://api.example.com/metrics", "status_code": 200},
+        ],
     )
 
     semgrep_obs = observation_from_tool_result(semgrep)
@@ -105,10 +117,13 @@ def test_observation_normalizes_semgrep_and_ffuf_findings() -> None:
 
 def test_side_effects_classify_readonly_and_destructive_requests() -> None:
     assert check("GET / HTTP/1.1\nHost: example.com\n").verdict == SideEffectClass.PASSIVE
-    assert check("DELETE /users/1 HTTP/1.1\nHost: example.com\n").verdict == SideEffectClass.FORBIDDEN
     assert (
-        check("POST /admin/delete HTTP/1.1\nHost: example.com\nContent-Type: application/x-www-form-urlencoded\n")
-        .verdict
+        check("DELETE /users/1 HTTP/1.1\nHost: example.com\n").verdict == SideEffectClass.FORBIDDEN
+    )
+    assert (
+        check(
+            "POST /admin/delete HTTP/1.1\nHost: example.com\nContent-Type: application/x-www-form-urlencoded\n"
+        ).verdict
         == SideEffectClass.FORBIDDEN
     )
 
@@ -248,7 +263,9 @@ async def test_router_falls_back_to_safe_tool_when_llm_suggests_intrusive_choice
         [ScopeRule(rule_type=RuleType.IN, asset_type=AssetType.DOMAIN, pattern="api.shopify.com")]
     )
     router = ToolRouter(
-        brain=FakeBrain('{"tool":"sqlmap","target":"api.shopify.com","flags":{},"rationale":"try sqli"}')
+        brain=FakeBrain(
+            '{"tool":"sqlmap","target":"api.shopify.com","flags":{},"rationale":"try sqli"}'
+        )
     )
     choice = await router.next_tool(
         plan={"steps": [{"suggested_tool": "sqlmap", "target": "api.shopify.com"}]},

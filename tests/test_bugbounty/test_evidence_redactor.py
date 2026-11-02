@@ -7,13 +7,13 @@ Conventions:
     * Each rule has an "obviously-secret" fixture and a stored-bytes assertion.
     * Cross-boundary tests prove the BBSubmissionService draft path also redacts.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from netra.bugbounty.evidence.redactor import RedactionHit, redact_bytes, redact_text
+from netra.bugbounty.evidence.redactor import redact_bytes, redact_text
 from netra.services.bb_submission_service import BBSubmissionService
-
 
 # ── Per-rule corpus ─────────────────────────────────────────────────────────────
 SECRETS = {
@@ -45,9 +45,7 @@ class TestRedactTextRules:
         assert hits, f"{rule_id} produced empty hit list"
 
     def test_multiple_secrets_get_indexed_replacements(self):
-        text = (
-            "first AKIAIOSFODNN7EXAMPLE then AKIA0000000000000000 in same blob"
-        )
+        text = "first AKIAIOSFODNN7EXAMPLE then AKIA0000000000000000 in same blob"
         out, hits = redact_text(text)
         # Two AWS hits — replacements should carry distinct indices.
         replacements = [h.replacement for h in hits if h.rule_id == "aws_access_key"]

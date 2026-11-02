@@ -1,4 +1,5 @@
 """Third-party integrations for NETRA."""
+
 from netra.integrations.defectdojo import (
     DefectDojoClient,
     defectdojo_client,

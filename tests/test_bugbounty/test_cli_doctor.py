@@ -46,7 +46,10 @@ def test_doctor_checks_include_corpus_freshness(monkeypatch) -> None:
     monkeypatch.setattr("netra.bugbounty.cli.shutil.which", lambda name: f"C:/tools/{name}.exe")
     monkeypatch.setattr("netra.bugbounty.cli._check_broker", lambda _url: (True, "reachable"))
     monkeypatch.setattr("netra.bugbounty.cli._check_agentic_budget_table", lambda: (True, "ok"))
-    monkeypatch.setattr("netra.bugbounty.cli._check_corpus_freshness", lambda source_name, max_age_hours: (True, f"{source_name}:{max_age_hours}"))
+    monkeypatch.setattr(
+        "netra.bugbounty.cli._check_corpus_freshness",
+        lambda source_name, max_age_hours: (True, f"{source_name}:{max_age_hours}"),
+    )
 
     checks = dict((name, ok) for name, ok, _detail in _doctor_checks())
 

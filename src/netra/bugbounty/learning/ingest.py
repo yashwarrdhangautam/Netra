@@ -1,7 +1,8 @@
 """Shared ingestion helpers for the NETRA-BB learning corpus."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, select
@@ -19,7 +20,7 @@ from netra.db.models import (
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 async def log_ingest(
@@ -250,7 +251,9 @@ async def reembed_corpus(session: AsyncSession) -> dict[str, int]:
         (
             BBCorpusReport,
             "reports",
-            lambda row: " ".join(filter(None, [row.title or "", row.vuln_class or "", row.body_summary])),
+            lambda row: " ".join(
+                filter(None, [row.title or "", row.vuln_class or "", row.body_summary])
+            ),
         ),
         (
             BBCorpusWriteup,

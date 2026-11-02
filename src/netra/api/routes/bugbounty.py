@@ -1,10 +1,11 @@
 """NETRA-BB API routes for the operator console."""
+
 from __future__ import annotations
 
-import uuid
 import inspect
+import uuid
 from dataclasses import asdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -45,11 +46,11 @@ from netra.schemas.bugbounty import (
     DoctorCheckResponse,
     EvidenceResponse,
     FindingCorpusContextResponse,
-    PlanPreviewRequest,
-    PlanPreviewResponse,
     HuntCreate,
     HuntExplainResponse,
     HuntResponse,
+    PlanPreviewRequest,
+    PlanPreviewResponse,
     ReplayRequest,
     ReplayResponse,
     ScopeCheckRequest,
@@ -128,9 +129,7 @@ async def _program_counts(db: AsyncSession, program: BBProgram) -> BBCounters:
             BBScopeRule.active.is_(True),
         )
     )
-    assets = await db.scalar(
-        select(func.count(BBAsset.id)).where(BBAsset.program_id == program.id)
-    )
+    assets = await db.scalar(select(func.count(BBAsset.id)).where(BBAsset.program_id == program.id))
     submissions_draft = await db.scalar(
         select(func.count(BBSubmission.id)).where(
             BBSubmission.program_id == program.id,
@@ -198,12 +197,13 @@ async def _hunt_response(db: AsyncSession, scan: Scan) -> HuntResponse:
     program_id = _program_id_from_scan(scan)
     assets_discovered = 0
     if program_id:
-        assets_discovered = await db.scalar(
-            select(func.count(BBAsset.id)).where(BBAsset.program_id == program_id)
-        ) or 0
-    findings_count = await db.scalar(
-        select(func.count(Finding.id)).where(Finding.scan_id == scan.id)
-    ) or 0
+        assets_discovered = (
+            await db.scalar(select(func.count(BBAsset.id)).where(BBAsset.program_id == program_id))
+            or 0
+        )
+    findings_count = (
+        await db.scalar(select(func.count(Finding.id)).where(Finding.scan_id == scan.id)) or 0
+    )
     blocked_count = sum(1 for phase in phases if str(_value(phase.status)) == "blocked")
     return HuntResponse(
         id=scan.id,
@@ -231,7 +231,10 @@ async def _platform_scope_rules(program: BBProgram) -> tuple[list[ScopeRuleInput
 
         async with HackerOneClient() as client:
             if not client.is_configured():
-                return [], "HackerOne credentials are not configured. Set H1_API_USERNAME and H1_API_TOKEN."
+                return (
+                    [],
+                    "HackerOne credentials are not configured. Set H1_API_USERNAME and H1_API_TOKEN.",
+                )
             return await client.get_structured_scopes(program.handle), None
 
     if program.platform == BBPlatform.BUGCROWD:
@@ -337,19 +340,23 @@ async def finding_corpus_context(
 @router.get("/dashboard", response_model=DashboardResponse)
 async def dashboard(db: AsyncSession = Depends(get_db_session)) -> DashboardResponse:
     """Return a single aggregate payload for the BB dashboard."""
-    active_programs = await db.scalar(
-        select(func.count(BBProgram.id)).where(
-            BBProgram.active.is_(True),
-            BBProgram.deleted_at.is_(None),
+    active_programs = (
+        await db.scalar(
+            select(func.count(BBProgram.id)).where(
+                BBProgram.active.is_(True),
+                BBProgram.deleted_at.is_(None),
+            )
         )
-    ) or 0
-    scope_rules = await db.scalar(
-        select(func.count(BBScopeRule.id)).where(BBScopeRule.active.is_(True))
-    ) or 0
+        or 0
+    )
+    scope_rules = (
+        await db.scalar(select(func.count(BBScopeRule.id)).where(BBScopeRule.active.is_(True))) or 0
+    )
     assets = await db.scalar(select(func.count(BBAsset.id))) or 0
-    submissions_draft = await db.scalar(
-        select(func.count(BBSubmission.id)).where(BBSubmission.status == "draft")
-    ) or 0
+    submissions_draft = (
+        await db.scalar(select(func.count(BBSubmission.id)).where(BBSubmission.status == "draft"))
+        or 0
+    )
 
     recent_scan_result = await db.execute(
         select(Scan)
@@ -357,9 +364,7 @@ async def dashboard(db: AsyncSession = Depends(get_db_session)) -> DashboardResp
         .order_by(Scan.created_at.desc())
         .limit(5)
     )
-    recent_hunts = [
-        await _hunt_response(db, scan) for scan in recent_scan_result.scalars().all()
-    ]
+    recent_hunts = [await _hunt_response(db, scan) for scan in recent_scan_result.scalars().all()]
 
     open_findings = 0
     rows = await db.execute(select(Finding, Scan).join(Scan, Finding.scan_id == Scan.id))
@@ -373,13 +378,16 @@ async def dashboard(db: AsyncSession = Depends(get_db_session)) -> DashboardResp
         }:
             open_findings += 1
 
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
-    out_of_scope_blocks = await db.scalar(
-        select(func.count(ScanPhase.id)).where(
-            ScanPhase.status == PhaseStatus.BLOCKED,
-            ScanPhase.created_at >= since,
+    since = datetime.now(UTC) - timedelta(hours=24)
+    out_of_scope_blocks = (
+        await db.scalar(
+            select(func.count(ScanPhase.id)).where(
+                ScanPhase.status == PhaseStatus.BLOCKED,
+                ScanPhase.created_at >= since,
+            )
         )
-    ) or 0
+        or 0
+    )
 
     return DashboardResponse(
         active_programs=active_programs,
@@ -500,7 +508,9 @@ async def list_scope_rules(
     return [BBScopeRuleResponse.model_validate(rule) for rule in result.scalars().all()]
 
 
-@router.post("/scope/rules", response_model=BBScopeRuleResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/scope/rules", response_model=BBScopeRuleResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_scope_rule(
     payload: BBScopeRuleCreate,
     db: AsyncSession = Depends(get_db_session),
@@ -702,13 +712,19 @@ async def explain_hunt(
         .order_by(BBAgenticStep.step_n.asc())
     )
     checkpoint = scan.checkpoint_data or {}
-    coordination = checkpoint.get("agentic_coordination") or checkpoint.get("agentic_plan", {}).get("coordination", {}) or {}
+    coordination = (
+        checkpoint.get("agentic_coordination")
+        or checkpoint.get("agentic_plan", {}).get("coordination", {})
+        or {}
+    )
     return HuntExplainResponse(
         scan_id=scan.id,
         summary=coordination.get("summary"),
         focus_areas=list(coordination.get("focus_areas") or []),
         recommended_tools=list(coordination.get("recommended_tools") or []),
-        corpus_hits=list(checkpoint.get("agentic_corpus_hits") or coordination.get("corpus_hits") or []),
+        corpus_hits=list(
+            checkpoint.get("agentic_corpus_hits") or coordination.get("corpus_hits") or []
+        ),
         retrieval_hits=list(coordination.get("retrieval_hits") or []),
         attack_paths=list(coordination.get("attack_paths") or []),
         report_focus=list(coordination.get("report_focus") or []),
@@ -738,13 +754,13 @@ async def cancel_hunt(
         raise HTTPException(status_code=404, detail="Hunt not found")
     task_id = str((scan.config or {}).get("celery_task_id") or "").strip()
     if task_id:
-        from netra.worker.celery_app import celery_app
         from netra.scanner.tools.process_control import kill_registered_processes
+        from netra.worker.celery_app import celery_app
 
         celery_app.control.revoke(task_id, terminate=True, signal="SIGKILL")
         kill_registered_processes(task_id)
     scan.status = ScanStatus.CANCELLED
-    scan.completed_at = datetime.now(timezone.utc)
+    scan.completed_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(scan)
     return await _hunt_response(db, scan)
@@ -841,7 +857,9 @@ async def triage_detail(
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
     scan = await db.get(Scan, finding.scan_id)
-    return await _triage_row(db, finding, _program_id_from_scan(scan) if scan else None, graph_aware)
+    return await _triage_row(
+        db, finding, _program_id_from_scan(scan) if scan else None, graph_aware
+    )
 
 
 @router.get("/submissions", response_model=list[SubmissionResponse])
@@ -860,7 +878,9 @@ async def list_submissions(
     return [SubmissionResponse.model_validate(row) for row in result.scalars().all()]
 
 
-@router.post("/submissions", response_model=SubmissionDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/submissions", response_model=SubmissionDetailResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_submission(
     payload: SubmissionCreateRequest,
     db: AsyncSession = Depends(get_db_session),
@@ -1024,7 +1044,7 @@ async def ingest_verdict(
         await transition(db, submission, target, payload.notes)
     except InvalidTransition:
         submission.status = target
-        submission.verdict_at = datetime.now(timezone.utc)
+        submission.verdict_at = datetime.now(UTC)
         submission.verdict_notes = payload.notes
     if payload.payout_actual is not None:
         submission.payout_actual = payload.payout_actual
@@ -1047,7 +1067,7 @@ async def scope_blocks(
     db: AsyncSession = Depends(get_db_session),
 ) -> list[dict[str, Any]]:
     """List blocked scope events recorded as blocked scan phases."""
-    since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    since = datetime.now(UTC) - timedelta(hours=since_hours)
     result = await db.execute(
         select(ScanPhase, Scan)
         .join(Scan, ScanPhase.scan_id == Scan.id)
@@ -1082,7 +1102,7 @@ async def ui_actions(
     db: AsyncSession = Depends(get_db_session),
 ) -> list[dict[str, Any]]:
     """List audited state-changing BB API calls."""
-    since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    since = datetime.now(UTC) - timedelta(hours=since_hours)
     result = await db.execute(
         select(AuditUIAction)
         .where(AuditUIAction.created_at >= since)
@@ -1119,7 +1139,11 @@ async def list_evidence(
     return [EvidenceResponse.model_validate(item) for item in result.scalars().all()]
 
 
-@router.post("/findings/{finding_id}/evidence", response_model=EvidenceResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/findings/{finding_id}/evidence",
+    response_model=EvidenceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def upload_evidence(
     finding_id: uuid.UUID,
     file: UploadFile = File(...),
@@ -1132,7 +1156,9 @@ async def upload_evidence(
     scan = await db.get(Scan, finding.scan_id)
     program_id = _program_id_from_scan(scan) if scan else None
     if not program_id:
-        raise HTTPException(status_code=400, detail="Finding is not attached to a bug bounty program")
+        raise HTTPException(
+            status_code=400, detail="Finding is not attached to a bug bounty program"
+        )
 
     from netra.bugbounty.evidence.pipeline import store_evidence
 
@@ -1198,7 +1224,9 @@ async def replay_evidence(
     if not program:
         raise HTTPException(status_code=404, detail="Program not found")
     if payload.typed_confirm and payload.typed_confirm != program.handle:
-        raise HTTPException(status_code=400, detail="Typed confirmation does not match the program handle")
+        raise HTTPException(
+            status_code=400, detail="Typed confirmation does not match the program handle"
+        )
 
     from netra.bugbounty.verifiers.loader import find_verifier
     from netra.bugbounty.verifiers.runner import run_replay
@@ -1254,7 +1282,9 @@ async def program_graph(
         raise HTTPException(status_code=404, detail="Program not found")
     nodes = [{"id": str(program.id), "label": program.handle, "type": "program"}]
     edges: list[dict[str, str]] = []
-    assets = (await db.execute(select(BBAsset).where(BBAsset.program_id == program.id))).scalars().all()
+    assets = (
+        (await db.execute(select(BBAsset).where(BBAsset.program_id == program.id))).scalars().all()
+    )
     for asset in assets:
         nodes.append({"id": str(asset.id), "label": asset.host, "type": "asset"})
         edges.append({"source": str(program.id), "target": str(asset.id), "rel": "has_asset"})
@@ -1262,7 +1292,14 @@ async def program_graph(
     for finding, scan in rows.all():
         if _program_id_from_scan(scan) != program.id:
             continue
-        nodes.append({"id": str(finding.id), "label": finding.title, "type": "finding", "severity": str(_value(finding.severity))})
+        nodes.append(
+            {
+                "id": str(finding.id),
+                "label": finding.title,
+                "type": "finding",
+                "severity": str(_value(finding.severity)),
+            }
+        )
         asset_label = _finding_asset(finding)
         target = str(program.id)
         for asset in assets:
@@ -1270,10 +1307,27 @@ async def program_graph(
                 target = str(asset.id)
                 break
         edges.append({"source": target, "target": str(finding.id), "rel": "has_finding"})
-    submissions = (await db.execute(select(BBSubmission).where(BBSubmission.program_id == program.id))).scalars().all()
+    submissions = (
+        (await db.execute(select(BBSubmission).where(BBSubmission.program_id == program.id)))
+        .scalars()
+        .all()
+    )
     for submission in submissions:
-        nodes.append({"id": str(submission.id), "label": submission.title, "type": "submission", "status": str(_value(submission.status))})
-        edges.append({"source": str(submission.finding_id), "target": str(submission.id), "rel": "drafted_as"})
+        nodes.append(
+            {
+                "id": str(submission.id),
+                "label": submission.title,
+                "type": "submission",
+                "status": str(_value(submission.status)),
+            }
+        )
+        edges.append(
+            {
+                "source": str(submission.finding_id),
+                "target": str(submission.id),
+                "rel": "drafted_as",
+            }
+        )
     return {"nodes": nodes, "edges": edges}
 
 
@@ -1298,8 +1352,9 @@ async def reindex_graph(payload: dict[str, Any]) -> dict[str, Any]:
     """Trigger a best-effort local Graphify reindex."""
     kind = payload.get("kind", "codebase")
     if kind == "codebase":
-        from pathlib import Path
         import asyncio
+        from pathlib import Path
+
         from netra.bugbounty.graph_indexer import index_codebase
 
         asyncio.create_task(index_codebase(Path("src"), Path("data/graphify/netra")))
@@ -1321,7 +1376,7 @@ async def kill_switch(
         )
     )
     scans = list(result.scalars().all())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for scan in scans:
         scan.status = ScanStatus.CANCELLED
         scan.completed_at = now

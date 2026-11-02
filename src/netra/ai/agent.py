@@ -1,6 +1,7 @@
 """Autonomous pentest agent — Claude Agent SDK orchestration."""
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -62,16 +63,18 @@ class PentestAgent:
         self.decisions: list[dict[str, Any]] = []  # Audit trail
         self.requires_approval = False
         self.pending_action: dict[str, Any] | None = None
-        self.started_at = datetime.now(timezone.utc)
+        self.started_at = datetime.now(UTC)
         self.status = "initialized"
 
     def _log_decision(self, decision_type: str, data: Any) -> None:
         """Log agent decision for audit trail."""
-        self.decisions.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "type": decision_type,
-            "data": data,
-        })
+        self.decisions.append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "type": decision_type,
+                "data": data,
+            }
+        )
         logger.info("agent_decision", session_id=self.session_id, type=decision_type, data=data)
 
     async def start(self, target: str, profile: str = "standard") -> dict[str, Any]:
@@ -100,7 +103,7 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
         # Agent loop
         while self.tool_calls < MAX_TOOL_CALLS:
             # Check duration limit
-            elapsed_minutes = (datetime.now(timezone.utc) - self.started_at).total_seconds() / 60
+            elapsed_minutes = (datetime.now(UTC) - self.started_at).total_seconds() / 60
             if elapsed_minutes > MAX_DURATION_MINUTES:
                 self._log_decision("duration_limit_reached", {"elapsed_minutes": elapsed_minutes})
                 break
@@ -137,33 +140,42 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
                             "args": block.input,
                             "tool_use_id": block.id,
                         }
-                        self._log_decision("approval_required", {
-                            "tool": block.name,
-                            "args": block.input,
-                        })
+                        self._log_decision(
+                            "approval_required",
+                            {
+                                "tool": block.name,
+                                "args": block.input,
+                            },
+                        )
                         self.status = "awaiting_approval"
                         # Return to caller — wait for human approval
                         return self._get_status_response()
 
                     # Execute tool
                     result = await self._execute_tool(block.name, block.input)
-                    assistant_content.append({
-                        "type": "tool_use",
-                        "id": block.id,
-                        "name": block.name,
-                        "input": block.input,
-                    })
+                    assistant_content.append(
+                        {
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        }
+                    )
 
                     # Add tool result to conversation
                     self.conversation.append({"role": "assistant", "content": assistant_content})
-                    self.conversation.append({
-                        "role": "user",
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": str(result)[:3000],
-                        }],
-                    })
+                    self.conversation.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": str(result)[:3000],
+                                }
+                            ],
+                        }
+                    )
                     assistant_content = []
 
             if assistant_content:
@@ -190,14 +202,18 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
         )
 
         # Continue agent conversation with tool result
-        self.conversation.append({
-            "role": "user",
-            "content": [{
-                "type": "tool_result",
-                "tool_use_id": self.pending_action["tool_use_id"],
-                "content": str(result)[:3000],
-            }],
-        })
+        self.conversation.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": self.pending_action["tool_use_id"],
+                        "content": str(result)[:3000],
+                    }
+                ],
+            }
+        )
 
         self.pending_action = None
         self.requires_approval = False
@@ -211,20 +227,27 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
             return {"error": "No pending action"}
 
         logger.info("agent_action_rejected", tool=self.pending_action["tool"], reason=reason)
-        self._log_decision("action_rejected", {
-            "tool": self.pending_action["tool"],
-            "reason": reason,
-        })
+        self._log_decision(
+            "action_rejected",
+            {
+                "tool": self.pending_action["tool"],
+                "reason": reason,
+            },
+        )
 
-        self.conversation.append({
-            "role": "user",
-            "content": [{
-                "type": "tool_result",
-                "tool_use_id": self.pending_action["tool_use_id"],
-                "content": f"Action REJECTED by operator. Reason: {reason or 'Not approved'}. Choose a different approach.",
-                "is_error": True,
-            }],
-        })
+        self.conversation.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": self.pending_action["tool_use_id"],
+                        "content": f"Action REJECTED by operator. Reason: {reason or 'Not approved'}. Choose a different approach.",
+                        "is_error": True,
+                    }
+                ],
+            }
+        )
 
         self.pending_action = None
         self.requires_approval = False
@@ -234,10 +257,22 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
     async def _execute_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         """Execute a NETRA tool and return results."""
         from netra.scanner.tools import (
-            NucleiTool, NmapTool, SubfinderTool, HttpxTool,
-            FfufTool, DalfoxTool, NiktoTool, SqlmapTool,
-            AmassTool, ShodanTool, SemgrepTool, TrivyTool,
-            ProwlerTool, GitleaksTool, CheckovTool, LLMSecurityTool,
+            AmassTool,
+            CheckovTool,
+            DalfoxTool,
+            FfufTool,
+            GitleaksTool,
+            HttpxTool,
+            LLMSecurityTool,
+            NiktoTool,
+            NmapTool,
+            NucleiTool,
+            ProwlerTool,
+            SemgrepTool,
+            ShodanTool,
+            SqlmapTool,
+            SubfinderTool,
+            TrivyTool,
         )
 
         tool_classes = {
@@ -268,12 +303,15 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
             target = args.pop("target", args.pop("url", args.pop("domain", "")))
             result = await tool.run(target, **args)
 
-            self._log_decision("tool_execution", {
-                "tool": tool_name,
-                "target": target,
-                "findings_count": len(result.findings),
-                "success": result.success,
-            })
+            self._log_decision(
+                "tool_execution",
+                {
+                    "tool": tool_name,
+                    "target": target,
+                    "findings_count": len(result.findings),
+                    "success": result.success,
+                },
+            )
 
             return {
                 "success": result.success,
@@ -322,7 +360,11 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "targets": {"type": "array", "items": {"type": "string"}, "description": "List of domains/IPs to probe"},
+                        "targets": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of domains/IPs to probe",
+                        },
                         "follow_redirects": {"type": "boolean", "default": True},
                         "tech_detect": {"type": "boolean", "default": True},
                     },
@@ -348,7 +390,10 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "url": {"type": "string", "description": "Target URL with injectable parameter"},
+                        "url": {
+                            "type": "string",
+                            "description": "Target URL with injectable parameter",
+                        },
                         "method": {"type": "string", "default": "GET"},
                         "parameter": {"type": "string", "default": ""},
                         "level": {"type": "integer", "default": 1},
@@ -393,7 +438,7 @@ Begin your reconnaissance. Explain your approach, then start scanning."""
             "decisions": self.decisions[-20:],  # Last 20 decisions
             "tool_calls": self.tool_calls,
             "conversation_length": len(self.conversation),
-            "elapsed_minutes": (datetime.now(timezone.utc) - self.started_at).total_seconds() / 60,
+            "elapsed_minutes": (datetime.now(UTC) - self.started_at).total_seconds() / 60,
         }
 
 

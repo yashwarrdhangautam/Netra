@@ -1,8 +1,9 @@
 """Audit rows for state-changing GUI/API actions."""
+
 import uuid
 
-from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from netra.db.models.base import Base
@@ -23,4 +24,3 @@ class AuditUIAction(Base):
     ip: Mapped[str | None] = mapped_column(String(80))
     user_agent: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict | None] = mapped_column("metadata_", JSONB, default=dict)
-

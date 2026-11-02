@@ -1,10 +1,11 @@
 """Corpus models for weekly learning trends."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Integer, String
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import Date, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from netra.db.models.base import Base

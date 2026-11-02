@@ -1,4 +1,5 @@
 """Scan profile configurations."""
+
 from typing import Any
 
 PROFILES: dict[str, dict[str, Any]] = {
@@ -76,7 +77,6 @@ PROFILES: dict[str, dict[str, Any]] = {
         "timeout_minutes": 120,
         "threads": 10,
     },
-
     # ── Phase 2 Profiles ──
     "cloud": {
         "description": "Cloud security posture assessment — AWS, Azure, GCP",
@@ -130,13 +130,12 @@ PROFILES: dict[str, dict[str, Any]] = {
         "run_checkov": True,
         "run_trivy_config": True,
     },
-
     # ── Phase 5 Profiles (NETRA-BB) ──
     "bugbounty_passive": {
         "description": "Bug bounty passive recon — no probes ever leave the agent",
         "severity_filter": "critical,high,medium,low,info",
         "max_targets": 500,
-        "rate_limit": 10,        # rps cap on outbound passive sources
+        "rate_limit": 10,  # rps cap on outbound passive sources
         "scope_required": True,  # the orchestrator MUST attach a ScopeValidator
         "active_phases": False,  # no active probing in this profile
         "use_amass": True,
@@ -151,14 +150,14 @@ PROFILES: dict[str, dict[str, Any]] = {
         "description": "Bug bounty active recon — scope-gated, opt-in, low-noise",
         "severity_filter": "critical,high,medium",
         "max_targets": 200,
-        "rate_limit": 10,        # rps cap, per-host 2 rps
+        "rate_limit": 10,  # rps cap, per-host 2 rps
         "per_host_rate_limit": 2,
         "scope_required": True,
         "active_phases": True,
         # Active phases each require explicit operator approval at CLI invocation time.
         "use_httpx": True,
         "httpx_head_only": True,
-        "use_ffuf": False,       # opt in via --enable-ffuf
+        "use_ffuf": False,  # opt in via --enable-ffuf
         "use_nuclei_safe": False,  # opt in via --enable-nuclei
         "nuclei_template_tags": ["cve", "exposure", "misconfig"],
         "nuclei_severity_cap": "medium",

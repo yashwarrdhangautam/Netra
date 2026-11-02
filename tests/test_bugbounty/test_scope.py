@@ -9,6 +9,7 @@ Conventions:
     * adversarial tests live in TestAdversarial — these are the ones that matter
     * a test failing in TestAdversarial means an out-of-scope target could leak through
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,7 +27,9 @@ from netra.bugbounty.scope import (
 
 # ── Fixtures ────────────────────────────────────────────────────────────────────
 def _allow(asset_type: AssetType, pattern: str, severity_cap: str | None = None) -> ScopeRule:
-    return ScopeRule(rule_type=RuleType.IN, asset_type=asset_type, pattern=pattern, severity_cap=severity_cap)
+    return ScopeRule(
+        rule_type=RuleType.IN, asset_type=asset_type, pattern=pattern, severity_cap=severity_cap
+    )
 
 
 def _deny(asset_type: AssetType, pattern: str) -> ScopeRule:
@@ -36,18 +39,20 @@ def _deny(asset_type: AssetType, pattern: str) -> ScopeRule:
 @pytest.fixture
 def shopify_validator() -> ScopeValidator:
     """A representative-looking program with mixed allow/deny rules."""
-    return ScopeValidator([
-        _allow(AssetType.WILDCARD, "*.shopify.com"),
-        _allow(AssetType.DOMAIN, "shopify.com"),
-        _allow(AssetType.WILDCARD, "*.myshopify.com", severity_cap="high"),
-        _allow(AssetType.CIDR, "203.0.113.0/24"),
-        _allow(AssetType.URL, "api.shopify.com/v1"),
-        _allow(AssetType.MOBILE, "com.shopify.mobile"),
-        _allow(AssetType.REPO, "https://github.com/Shopify/cli"),
-        _deny(AssetType.DOMAIN, "internal.shopify.com"),
-        _deny(AssetType.WILDCARD, "*.staging.shopify.com"),
-        _deny(AssetType.CIDR, "203.0.113.250/32"),
-    ])
+    return ScopeValidator(
+        [
+            _allow(AssetType.WILDCARD, "*.shopify.com"),
+            _allow(AssetType.DOMAIN, "shopify.com"),
+            _allow(AssetType.WILDCARD, "*.myshopify.com", severity_cap="high"),
+            _allow(AssetType.CIDR, "203.0.113.0/24"),
+            _allow(AssetType.URL, "api.shopify.com/v1"),
+            _allow(AssetType.MOBILE, "com.shopify.mobile"),
+            _allow(AssetType.REPO, "https://github.com/Shopify/cli"),
+            _deny(AssetType.DOMAIN, "internal.shopify.com"),
+            _deny(AssetType.WILDCARD, "*.staging.shopify.com"),
+            _deny(AssetType.CIDR, "203.0.113.250/32"),
+        ]
+    )
 
 
 # ── parse_target ────────────────────────────────────────────────────────────────
@@ -209,8 +214,8 @@ class TestAdversarial:
     def test_unicode_homograph_does_not_match_ascii_domain(self):
         # Cyrillic 'a' (U+0430) looks like ascii 'a' but is a different character.
         # Punycode encoding turns it into a different host, which must not match.
-        v = ScopeValidator([_allow(AssetType.DOMAIN, "shopify.com")])
-        homograph = "shopify.com".replace("a", "а")  # cyrillic a in 'shopify'... wait, no 'a' there
+        ScopeValidator([_allow(AssetType.DOMAIN, "shopify.com")])
+        "shopify.com".replace("a", "а")  # cyrillic a in 'shopify'... wait, no 'a' there
         # Use a sample with a real 'a'
         v2 = ScopeValidator([_allow(AssetType.DOMAIN, "amazon.com")])
         homograph2 = "аmazon.com"  # cyrillic a + mazon.com
@@ -229,10 +234,12 @@ class TestAdversarial:
         # %2520 is a URL-encoded '%20'. We decode ONCE, so the parsed path keeps the
         # literal '%20'. This means a deny rule on '/admin' is NOT bypassed by encoding
         # '/%2541dmin' or similar.
-        v = ScopeValidator([
-            _allow(AssetType.URL, "example.com/"),
-            _deny(AssetType.URL, "example.com/admin"),
-        ])
+        v = ScopeValidator(
+            [
+                _allow(AssetType.URL, "example.com/"),
+                _deny(AssetType.URL, "example.com/admin"),
+            ]
+        )
         d = v.check("https://example.com/%2541dmin")
         # The path becomes '/%41dmin' after one decode, which does NOT match '/admin' prefix.
         # Therefore it falls through to the allow root rule. That's the SAFE behaviour:
@@ -266,10 +273,16 @@ class TestAdversarial:
         assert d.allowed is False
 
     def test_inactive_rule_is_ignored(self):
-        v = ScopeValidator([
-            ScopeRule(rule_type=RuleType.IN, asset_type=AssetType.DOMAIN,
-                      pattern="shopify.com", active=False),
-        ])
+        v = ScopeValidator(
+            [
+                ScopeRule(
+                    rule_type=RuleType.IN,
+                    asset_type=AssetType.DOMAIN,
+                    pattern="shopify.com",
+                    active=False,
+                ),
+            ]
+        )
         assert v.rule_count == 0
         assert v.check("shopify.com").allowed is False
 
@@ -312,10 +325,12 @@ class TestAdversarial:
         assert v.check("https://api.example.com/v1/foo").allowed is False
 
     def test_deny_rule_evaluated_before_allow_even_if_listed_after(self):
-        v = ScopeValidator([
-            _allow(AssetType.WILDCARD, "*.example.com"),
-            _deny(AssetType.DOMAIN, "internal.example.com"),
-        ])
+        v = ScopeValidator(
+            [
+                _allow(AssetType.WILDCARD, "*.example.com"),
+                _deny(AssetType.DOMAIN, "internal.example.com"),
+            ]
+        )
         d = v.check("internal.example.com")
         assert d.allowed is False
         assert d.matched_rule is not None
@@ -347,8 +362,9 @@ class TestFromDbRules:
     def test_constructs_from_orm_like_objects(self):
         # Use simple dataclass stand-ins so we don't pull in the DB layer.
         class _Row:
-            def __init__(self, rule_type, asset_type, pattern, severity_cap=None,
-                         notes=None, active=True):
+            def __init__(
+                self, rule_type, asset_type, pattern, severity_cap=None, notes=None, active=True
+            ):
                 self.rule_type = rule_type
                 self.asset_type = asset_type
                 self.pattern = pattern
@@ -381,28 +397,36 @@ class TestEnumSync:
     """
 
     EXPECTED_ASSET_TYPES = {
-        "domain", "wildcard", "ip", "cidr", "url", "mobile", "repo", "other",
+        "domain",
+        "wildcard",
+        "ip",
+        "cidr",
+        "url",
+        "mobile",
+        "repo",
+        "other",
     }
     EXPECTED_RULE_TYPES = {"in", "out"}
 
     def test_local_asset_types_match_canonical_set(self):
         local = {a.value for a in AssetType}
-        assert local == self.EXPECTED_ASSET_TYPES, (
-            f"drift: {local ^ self.EXPECTED_ASSET_TYPES}"
-        )
+        assert local == self.EXPECTED_ASSET_TYPES, f"drift: {local ^ self.EXPECTED_ASSET_TYPES}"
 
     def test_local_rule_types_match_canonical_set(self):
         local = {r.value for r in RuleType}
-        assert local == self.EXPECTED_RULE_TYPES, (
-            f"drift: {local ^ self.EXPECTED_RULE_TYPES}"
-        )
+        assert local == self.EXPECTED_RULE_TYPES, f"drift: {local ^ self.EXPECTED_RULE_TYPES}"
 
     def test_db_asset_types_match_canonical_set(self):
         """Read the DB enum source as text and assert it lists the same values."""
         from pathlib import Path
+
         path = (
             Path(__file__).resolve().parents[2]
-            / "src" / "netra" / "db" / "models" / "bb_scope_rule.py"
+            / "src"
+            / "netra"
+            / "db"
+            / "models"
+            / "bb_scope_rule.py"
         )
         text = path.read_text()
         for value in self.EXPECTED_ASSET_TYPES:
@@ -410,9 +434,14 @@ class TestEnumSync:
 
     def test_db_rule_types_match_canonical_set(self):
         from pathlib import Path
+
         path = (
             Path(__file__).resolve().parents[2]
-            / "src" / "netra" / "db" / "models" / "bb_scope_rule.py"
+            / "src"
+            / "netra"
+            / "db"
+            / "models"
+            / "bb_scope_rule.py"
         )
         text = path.read_text()
         for value in self.EXPECTED_RULE_TYPES:

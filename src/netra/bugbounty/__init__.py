@@ -16,6 +16,7 @@ Module layout (see docs/NETRA_BB_Architecture.docx for the full design):
 The scope validator is the single most important piece. It is pure Python with zero
 AI in the path. AI may RECOMMEND scope changes; only an operator can ACCEPT them.
 """
+
 from netra.bugbounty.scope import (
     ScopeDecision,
     ScopeValidator,

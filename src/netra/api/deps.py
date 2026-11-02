@@ -1,10 +1,10 @@
 """FastAPI dependency injection utilities."""
+
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
-from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 

@@ -1,4 +1,5 @@
 """Worker module for NETRA Celery tasks."""
+
 from netra.worker.celery_app import celery_app
 from netra.worker.tasks import (
     active_test,

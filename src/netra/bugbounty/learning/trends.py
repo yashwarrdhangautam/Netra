@@ -1,8 +1,9 @@
 """Trend summaries over the local learning corpus."""
+
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -13,31 +14,43 @@ from netra.db.models import BBCorpusAdvisory, BBCorpusReport, BBCorpusWriteup
 
 async def summarize_trends(session: AsyncSession, *, days: int = 7) -> dict[str, Any]:
     """Build a compact week-style summary from corpus rows."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     reports = (
-        await session.execute(
-            select(BBCorpusReport).where(
-                BBCorpusReport.deleted_at.is_(None),
-                BBCorpusReport.ingested_at >= since,
+        (
+            await session.execute(
+                select(BBCorpusReport).where(
+                    BBCorpusReport.deleted_at.is_(None),
+                    BBCorpusReport.ingested_at >= since,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     writeups = (
-        await session.execute(
-            select(BBCorpusWriteup).where(
-                BBCorpusWriteup.deleted_at.is_(None),
-                BBCorpusWriteup.ingested_at >= since,
+        (
+            await session.execute(
+                select(BBCorpusWriteup).where(
+                    BBCorpusWriteup.deleted_at.is_(None),
+                    BBCorpusWriteup.ingested_at >= since,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     advisories = (
-        await session.execute(
-            select(BBCorpusAdvisory).where(
-                BBCorpusAdvisory.deleted_at.is_(None),
-                BBCorpusAdvisory.ingested_at >= since,
+        (
+            await session.execute(
+                select(BBCorpusAdvisory).where(
+                    BBCorpusAdvisory.deleted_at.is_(None),
+                    BBCorpusAdvisory.ingested_at >= since,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     vuln_counter: Counter[str] = Counter()
     tech_counter: Counter[str] = Counter()
@@ -67,7 +80,11 @@ async def summarize_trends(session: AsyncSession, *, days: int = 7) -> dict[str,
         "total_reports": len(reports),
         "total_writeups": len(writeups),
         "total_advisories": len(advisories),
-        "top_vuln_classes": [{"name": name, "count": count} for name, count in vuln_counter.most_common(5)],
+        "top_vuln_classes": [
+            {"name": name, "count": count} for name, count in vuln_counter.most_common(5)
+        ],
         "top_tech": [{"name": name, "count": count} for name, count in tech_counter.most_common(5)],
-        "top_programs": [{"name": name, "count": count} for name, count in program_counter.most_common(5)],
+        "top_programs": [
+            {"name": name, "count": count} for name, count in program_counter.most_common(5)
+        ],
     }

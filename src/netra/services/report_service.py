@@ -1,13 +1,12 @@
 """Report generation service for NETRA."""
-import uuid
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import structlog
 
 from netra.core.config import settings
-from netra.db.models.finding import Severity
 
 logger = structlog.get_logger()
 
@@ -44,19 +43,17 @@ async def generate_executive_report(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            SimpleDocTemplate,
             Paragraph,
+            SimpleDocTemplate,
             Spacer,
             Table,
             TableStyle,
         )
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     except ImportError:
-        raise ImportError(
-            "ReportLab not installed. Install with: pip install reportlab"
-        )
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -68,12 +65,8 @@ async def generate_executive_report(
     elements: list[Any] = []
 
     # Title
-    title_style = ParagraphStyle(
-        "Title", parent=styles["Title"], fontSize=24, spaceAfter=20
-    )
-    elements.append(
-        Paragraph("NETRA — Executive Security Report", title_style)
-    )
+    title_style = ParagraphStyle("Title", parent=styles["Title"], fontSize=24, spaceAfter=20)
+    elements.append(Paragraph("NETRA — Executive Security Report", title_style))
     elements.append(Spacer(1, 0.2 * inch))
 
     # Scan metadata
@@ -136,9 +129,7 @@ async def generate_executive_report(
             )
         )
     if not critical_findings:
-        elements.append(
-            Paragraph("No critical findings detected.", styles["Normal"])
-        )
+        elements.append(Paragraph("No critical findings detected.", styles["Normal"]))
 
     elements.append(Spacer(1, 0.2 * inch))
 
@@ -195,12 +186,10 @@ async def generate_technical_report(
     """
     try:
         from docx import Document
-        from docx.shared import Inches, Pt, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.shared import Inches, Pt, RGBColor
     except ImportError:
-        raise ImportError(
-            "python-docx not installed. Install with: pip install python-docx"
-        )
+        raise ImportError("python-docx not installed. Install with: pip install python-docx")
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -259,26 +248,20 @@ async def generate_technical_report(
 
     # Group by severity
     for severity in ["critical", "high", "medium", "low", "info"]:
-        severity_findings = [
-            f for f in findings if f.get("severity") == severity
-        ]
+        severity_findings = [f for f in findings if f.get("severity") == severity]
         if not severity_findings:
             continue
 
         doc.add_heading(f"{severity.upper()} Findings ({len(severity_findings)})", level=2)
 
         for i, finding in enumerate(severity_findings, 1):
-            doc.add_heading(
-                f"{i}. {finding.get('title', 'Unknown')}", level=3
-            )
+            doc.add_heading(f"{i}. {finding.get('title', 'Unknown')}", level=3)
 
             # Details
             doc.add_paragraph(f"<b>Severity:</b> {severity.upper()}")
             doc.add_paragraph(f"<b>URL:</b> {finding.get('url', 'N/A')}")
             doc.add_paragraph(f"<b>CWE:</b> {finding.get('cwe_id', 'N/A')}")
-            doc.add_paragraph(
-                f"<b>Tool:</b> {finding.get('tool_source', 'Unknown')}"
-            )
+            doc.add_paragraph(f"<b>Tool:</b> {finding.get('tool_source', 'Unknown')}")
 
             # Description
             doc.add_heading("Description", level=4)
@@ -299,17 +282,13 @@ async def generate_technical_report(
 
                 defender = ai_analysis.get("defender", {})
                 if defender and isinstance(defender, dict):
-                    doc.add_paragraph(
-                        f"<b>Remediation:</b> {defender.get('immediate_fix', 'N/A')}"
-                    )
+                    doc.add_paragraph(f"<b>Remediation:</b> {defender.get('immediate_fix', 'N/A')}")
 
                 analyst = ai_analysis.get("analyst", {})
                 if analyst and isinstance(analyst, dict):
                     mappings = analyst.get("framework_mappings", {})
                     if mappings:
-                        doc.add_paragraph(
-                            f"<b>Compliance:</b> {', '.join(mappings.keys())}"
-                        )
+                        doc.add_paragraph(f"<b>Compliance:</b> {', '.join(mappings.keys())}")
 
             doc.add_paragraph("\n")
 
@@ -345,21 +324,19 @@ async def generate_pentest_report(
     """
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.lib.pagesizes import A4, letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            SimpleDocTemplate,
+            PageBreak,
             Paragraph,
+            SimpleDocTemplate,
             Spacer,
             Table,
             TableStyle,
-            PageBreak,
         )
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     except ImportError:
-        raise ImportError(
-            "ReportLab not installed. Install with: pip install reportlab"
-        )
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -371,9 +348,7 @@ async def generate_pentest_report(
     elements: list[Any] = []
 
     # Title
-    title_style = ParagraphStyle(
-        "Title", parent=styles["Title"], fontSize=24, spaceAfter=20
-    )
+    title_style = ParagraphStyle("Title", parent=styles["Title"], fontSize=24, spaceAfter=20)
     elements.append(Paragraph("Penetration Test Report", title_style))
     elements.append(Spacer(1, 0.2 * inch))
 
@@ -392,7 +367,7 @@ async def generate_pentest_report(
     )
     elements.append(
         Paragraph(
-            f"<b>Report Generated:</b> {datetime.now(timezone.utc).isoformat()}",
+            f"<b>Report Generated:</b> {datetime.now(UTC).isoformat()}",
             styles["Normal"],
         )
     )
@@ -445,9 +420,7 @@ async def generate_pentest_report(
             if isinstance(chain, dict):
                 chain_name = chain.get("name", f"Chain {i}")
                 chain_desc = chain.get("description", "No description")
-                elements.append(
-                    Paragraph(f"<b>{i}. {chain_name}</b>", styles["Heading2"])
-                )
+                elements.append(Paragraph(f"<b>{i}. {chain_name}</b>", styles["Heading2"]))
                 elements.append(Paragraph(chain_desc, styles["Normal"]))
                 elements.append(Spacer(1, 0.1 * inch))
         elements.append(PageBreak())
@@ -456,15 +429,11 @@ async def generate_pentest_report(
     elements.append(Paragraph("Detailed Findings", styles["Heading1"]))
 
     for severity in ["critical", "high", "medium", "low", "info"]:
-        severity_findings = [
-            f for f in findings if f.get("severity") == severity
-        ]
+        severity_findings = [f for f in findings if f.get("severity") == severity]
         if not severity_findings:
             continue
 
-        elements.append(
-            Paragraph(f"{severity.upper()} Severity Findings", styles["Heading2"])
-        )
+        elements.append(Paragraph(f"{severity.upper()} Severity Findings", styles["Heading2"]))
 
         for i, finding in enumerate(severity_findings, 1):
             title = finding.get("title", "Unknown")
@@ -787,7 +756,7 @@ async def generate_html_report(
 <body>
     <div class="container">
         <h1>🛡️ NETRA Security Report</h1>
-        
+
         <div class="header-grid">
             <div class="stat-card">
                 <div class="stat-value">{scan_data.get('name', 'Unknown')}</div>
@@ -867,7 +836,7 @@ async def generate_html_report(
             const severityFilter = document.getElementById('severityFilter').value;
             const searchInput = document.getElementById('searchInput').value.toLowerCase();
             const rows = document.querySelectorAll('.finding-row');
-            
+
             rows.forEach(row => {{
                 const severity = row.dataset.severity;
                 const text = row.textContent.toLowerCase();
@@ -881,13 +850,13 @@ async def generate_html_report(
             const table = document.getElementById('findingsTable');
             const rows = Array.from(table.querySelectorAll('tbody tr'));
             const isAscending = table.dataset.sortOrder === 'asc';
-            
+
             rows.sort((a, b) => {{
                 const aText = a.cells[columnIndex].textContent;
                 const bText = b.cells[columnIndex].textContent;
                 return isAscending ? aText.localeCompare(bText) : bText.localeCompare(aText);
             }});
-            
+
             rows.forEach(row => table.querySelector('tbody').appendChild(row));
             table.dataset.sortOrder = isAscending ? 'desc' : 'asc';
         }}
@@ -928,7 +897,7 @@ async def generate_excel_report(
     """
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     except ImportError:
         raise ImportError("openpyxl not installed. Install with: pip install openpyxl")
 
@@ -943,20 +912,12 @@ async def generate_excel_report(
     # Define styles
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1a1a2e", end_color="1a1a2e", fill_type="solid")
-    thin_border = Border(
+    Border(
         left=Side(style="thin"),
         right=Side(style="thin"),
         top=Side(style="thin"),
         bottom=Side(style="thin"),
     )
-
-    severity_colors = {
-        "critical": "FF0000",
-        "high": "FFA500",
-        "medium": "FFFF00",
-        "low": "00FF00",
-        "info": "808080",
-    }
 
     # Sheet 1: Summary
     ws_summary = wb.create_sheet("Summary")
@@ -966,7 +927,7 @@ async def generate_excel_report(
     ws_summary.append(["Date", scan_data.get("created_at", "N/A")])
     ws_summary.append(["Profile", scan_data.get("profile", "standard")])
     ws_summary.append([])
-    
+
     severity_counts = _count_severities(findings)
     risk_score = _calculate_risk_score(severity_counts)
     ws_summary.append(["Risk Score", f"{risk_score}/100"])
@@ -979,16 +940,18 @@ async def generate_excel_report(
     ws_findings = wb.create_sheet("Findings")
     ws_findings.append(["#", "Severity", "Title", "URL", "CWE", "CVE", "Tool", "Description"])
     for i, f in enumerate(findings, 1):
-        ws_findings.append([
-            i,
-            f.get("severity", "info").upper(),
-            f.get("title", ""),
-            f.get("url", ""),
-            f.get("cwe_id", ""),
-            ", ".join(f.get("cve_ids", [])),
-            f.get("tool_source", ""),
-            f.get("description", "")[:32000],  # Excel limit
-        ])
+        ws_findings.append(
+            [
+                i,
+                f.get("severity", "info").upper(),
+                f.get("title", ""),
+                f.get("url", ""),
+                f.get("cwe_id", ""),
+                ", ".join(f.get("cve_ids", [])),
+                f.get("tool_source", ""),
+                f.get("description", "")[:32000],  # Excel limit
+            ]
+        )
 
     # Sheet 3: Compliance
     ws_compliance = wb.create_sheet("Compliance")
@@ -996,7 +959,9 @@ async def generate_excel_report(
     for f in findings:
         cwe = f.get("cwe_id", "")
         if cwe:
-            ws_compliance.append(["ISO 27001", cwe, "Fail", f.get("title", ""), f.get("severity", "")])
+            ws_compliance.append(
+                ["ISO 27001", cwe, "Fail", f.get("title", ""), f.get("severity", "")]
+            )
 
     # Sheet 4: Assets
     ws_assets = wb.create_sheet("Assets")
@@ -1022,9 +987,27 @@ async def generate_excel_report(
     # Sheet 7: Remediation
     ws_remediation = wb.create_sheet("Remediation")
     ws_remediation.append(["Priority", "Finding", "Severity", "Recommended Action"])
-    for f in sorted(findings, key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(x.get("severity", "info"), 5))[:50]:
-        priority = "Immediate" if f.get("severity") == "critical" else "High" if f.get("severity") == "high" else "Standard"
-        ws_remediation.append([priority, f.get("title", ""), f.get("severity", ""), "Review and remediate based on AI recommendations"])
+    for f in sorted(
+        findings,
+        key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(
+            x.get("severity", "info"), 5
+        ),
+    )[:50]:
+        priority = (
+            "Immediate"
+            if f.get("severity") == "critical"
+            else "High"
+            if f.get("severity") == "high"
+            else "Standard"
+        )
+        ws_remediation.append(
+            [
+                priority,
+                f.get("title", ""),
+                f.get("severity", ""),
+                "Review and remediate based on AI recommendations",
+            ]
+        )
 
     # Sheet 8: Evidence Log
     ws_evidence = wb.create_sheet("Evidence Log")
@@ -1083,17 +1066,18 @@ async def generate_evidence_zip(
 
     # Create temp directory for evidence
     import tempfile
+
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-        
+
         # Create findings.json
         findings_file = temp_path / "findings.json"
         findings_file.write_text(json.dumps(findings, indent=2))
-        
+
         # Create scan_config.json
         config_file = temp_path / "scan_config.json"
         config_file.write_text(json.dumps(scan_data, indent=2))
-        
+
         # Create chain_of_custody.txt
         custody_file = temp_path / "chain_of_custody.txt"
         custody_content = f"""CHAIN OF CUSTODY
@@ -1102,7 +1086,7 @@ async def generate_evidence_zip(
 Scan ID: {scan_data.get('id', 'N/A')}
 Scan Name: {scan_data.get('name', 'Unknown')}
 Target: {scan_data.get('target', 'N/A')}
-Generated: {datetime.now(timezone.utc).isoformat()}
+Generated: {datetime.now(UTC).isoformat()}
 
 EVIDENCE LOG
 ------------
@@ -1116,26 +1100,26 @@ INTEGRITY
 All files are hashed with SHA256. See manifest.json for hashes.
 """
         custody_file.write_text(custody_content)
-        
+
         # Create manifest.json with SHA256 hashes
-        manifest = {"generated_at": datetime.now(timezone.utc).isoformat(), "files": {}}
+        manifest = {"generated_at": datetime.now(UTC).isoformat(), "files": {}}
         for file in [findings_file, config_file, custody_file]:
             with open(file, "rb") as f:
                 file_hash = hashlib.sha256(f.read()).hexdigest()
                 manifest["files"][file.name] = file_hash
-        
+
         manifest_file = temp_path / "manifest.json"
         manifest_file.write_text(json.dumps(manifest, indent=2))
-        
+
         # Create ZIP
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             for file in temp_path.glob("*"):
                 zipf.write(file, file.name)
-        
+
         # Add hash of ZIP itself to manifest (for external verification)
         with open(output_path, "rb") as f:
             zip_hash = hashlib.sha256(f.read()).hexdigest()
-        
+
         # Append ZIP hash to a separate verification file
         verification_path = output_path.with_suffix(".sha256")
         verification_path.write_text(f"{zip_hash}  {output_path.name}\n")
@@ -1173,15 +1157,15 @@ async def generate_delta_report(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            SimpleDocTemplate,
             Paragraph,
+            SimpleDocTemplate,
             Spacer,
             Table,
             TableStyle,
         )
-        from reportlab.lib.styles import getSampleStyleSheet
     except ImportError:
         raise ImportError("ReportLab not installed. Install with: pip install reportlab")
 
@@ -1193,13 +1177,15 @@ async def generate_delta_report(
     # Calculate deltas
     a_hashes = {f.get("dedup_hash", f.get("title", "")) for f in findings_a}
     b_hashes = {f.get("dedup_hash", f.get("title", "")) for f in findings_b}
-    
+
     new_hashes = b_hashes - a_hashes
     resolved_hashes = a_hashes - b_hashes
     common_hashes = a_hashes & b_hashes
-    
+
     new_findings = [f for f in findings_b if f.get("dedup_hash", f.get("title", "")) in new_hashes]
-    resolved_findings = [f for f in findings_a if f.get("dedup_hash", f.get("title", "")) in resolved_hashes]
+    resolved_findings = [
+        f for f in findings_a if f.get("dedup_hash", f.get("title", "")) in resolved_hashes
+    ]
 
     doc = SimpleDocTemplate(str(output_path), pagesize=letter)
     styles = getSampleStyleSheet()
@@ -1208,8 +1194,13 @@ async def generate_delta_report(
     # Title
     elements.append(Paragraph("Scan Delta Report", styles["Title"]))
     elements.append(Spacer(1, 0.2 * inch))
-    
-    elements.append(Paragraph(f"Comparing: {scan_a_data.get('name', 'A')} → {scan_b_data.get('name', 'B')}", styles["Normal"]))
+
+    elements.append(
+        Paragraph(
+            f"Comparing: {scan_a_data.get('name', 'A')} → {scan_b_data.get('name', 'B')}",
+            styles["Normal"],
+        )
+    )
     elements.append(Spacer(1, 0.3 * inch))
 
     # Summary table
@@ -1221,21 +1212,27 @@ async def generate_delta_report(
         ["Net Change", str(len(new_findings) - len(resolved_findings))],
     ]
     t = Table(summary_data, colWidths=[3 * inch, 2 * inch])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ]
+        )
+    )
     elements.append(t)
     elements.append(Spacer(1, 0.3 * inch))
 
     # New findings
     elements.append(Paragraph("New Findings", styles["Heading2"]))
     for i, f in enumerate(new_findings[:20], 1):
-        elements.append(Paragraph(
-            f"{i}. [{f.get('severity', 'info').upper()}] {f.get('title', 'Unknown')[:80]}",
-            styles["Normal"],
-        ))
+        elements.append(
+            Paragraph(
+                f"{i}. [{f.get('severity', 'info').upper()}] {f.get('title', 'Unknown')[:80]}",
+                styles["Normal"],
+            )
+        )
     if not new_findings:
         elements.append(Paragraph("No new findings.", styles["Normal"]))
 
@@ -1244,10 +1241,12 @@ async def generate_delta_report(
     # Resolved findings
     elements.append(Paragraph("Resolved Findings", styles["Heading2"]))
     for i, f in enumerate(resolved_findings[:20], 1):
-        elements.append(Paragraph(
-            f"{i}. [{f.get('severity', 'info').upper()}] {f.get('title', 'Unknown')[:80]}",
-            styles["Normal"],
-        ))
+        elements.append(
+            Paragraph(
+                f"{i}. [{f.get('severity', 'info').upper()}] {f.get('title', 'Unknown')[:80]}",
+                styles["Normal"],
+            )
+        )
     if not resolved_findings:
         elements.append(Paragraph("No resolved findings.", styles["Normal"]))
 
@@ -1264,11 +1263,17 @@ async def generate_api_report(
     """Generate API Security Report focused on OWASP API Top 10."""
     # Filter for API-related findings
     api_findings = [
-        f for f in findings
-        if any(tag in str(f.get("tags", [])).lower() for tag in ["api", "rest", "graphql", "owasp-api"])
-        or any(cwe in (f.get("cwe_id", "") or "") for cwe in ["CWE-89", "CWE-284", "CWE-287", "CWE-306"])
+        f
+        for f in findings
+        if any(
+            tag in str(f.get("tags", [])).lower() for tag in ["api", "rest", "graphql", "owasp-api"]
+        )
+        or any(
+            cwe in (f.get("cwe_id", "") or "")
+            for cwe in ["CWE-89", "CWE-284", "CWE-287", "CWE-306"]
+        )
     ]
-    
+
     # Generate as PDF similar to pentest report but API-focused
     return await generate_pentest_report(scan_data, api_findings or findings, output_path)
 
@@ -1281,11 +1286,15 @@ async def generate_cloud_report(
     """Generate Cloud Security Report focused on CSPM findings."""
     # Filter for cloud-related findings
     cloud_findings = [
-        f for f in findings
-        if any(tag in str(f.get("tags", [])).lower() for tag in ["aws", "azure", "gcp", "cloud", "cspm"])
+        f
+        for f in findings
+        if any(
+            tag in str(f.get("tags", [])).lower()
+            for tag in ["aws", "azure", "gcp", "cloud", "cspm"]
+        )
         or f.get("tool_source", "") in ["prowler", "trivy", "checkov"]
     ]
-    
+
     return await generate_pentest_report(scan_data, cloud_findings or findings, output_path)
 
 
@@ -1300,16 +1309,16 @@ async def generate_compliance_report(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            SimpleDocTemplate,
+            PageBreak,
             Paragraph,
+            SimpleDocTemplate,
             Spacer,
             Table,
             TableStyle,
-            PageBreak,
         )
-        from reportlab.lib.styles import getSampleStyleSheet
     except ImportError:
         raise ImportError("ReportLab not installed. Install with: pip install reportlab")
 
@@ -1337,23 +1346,29 @@ async def generate_compliance_report(
     # Controls table
     elements.append(Paragraph("Control Assessment", styles["Heading2"]))
     controls_data = [["Control ID", "Control Name", "Status", "Related Finding"]]
-    
+
     gaps = compliance_data.get("gaps", [])
     for gap in gaps[:50]:
-        controls_data.append([
-            gap.get("control_id", ""),
-            gap.get("control_name", "")[:50],
-            "FAIL",
-            gap.get("finding_title", "")[:40],
-        ])
+        controls_data.append(
+            [
+                gap.get("control_id", ""),
+                gap.get("control_name", "")[:50],
+                "FAIL",
+                gap.get("finding_title", "")[:40],
+            ]
+        )
 
     t = Table(controls_data, colWidths=[1 * inch, 2.5 * inch, 1 * inch, 2.5 * inch])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ]
+        )
+    )
     elements.append(t)
 
     doc.build(elements)
@@ -1371,16 +1386,16 @@ async def generate_full_report(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            SimpleDocTemplate,
+            PageBreak,
             Paragraph,
+            SimpleDocTemplate,
             Spacer,
             Table,
             TableStyle,
-            PageBreak,
         )
-        from reportlab.lib.styles import getSampleStyleSheet
     except ImportError:
         raise ImportError("ReportLab not installed. Install with: pip install reportlab")
 
@@ -1403,17 +1418,21 @@ async def generate_full_report(
     risk_grade = _score_to_grade(risk_score)
 
     elements.append(Paragraph(f"Risk Grade: {risk_grade} ({risk_score}/100)", styles["Heading2"]))
-    
+
     severity_data = [["Severity", "Count"]]
     for sev, count in severity_counts.items():
         severity_data.append([sev.upper(), str(count)])
-    
+
     t = Table(severity_data, colWidths=[3 * inch, 2 * inch])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ]
+        )
+    )
     elements.append(t)
     elements.append(PageBreak())
 
@@ -1422,12 +1441,16 @@ async def generate_full_report(
     for severity in ["critical", "high", "medium", "low", "info"]:
         sev_findings = [f for f in findings if f.get("severity") == severity]
         if sev_findings:
-            elements.append(Paragraph(f"{severity.upper()} ({len(sev_findings)})", styles["Heading2"]))
+            elements.append(
+                Paragraph(f"{severity.upper()} ({len(sev_findings)})", styles["Heading2"])
+            )
             for i, f in enumerate(sev_findings[:10], 1):
-                elements.append(Paragraph(
-                    f"{i}. {f.get('title', 'Unknown')[:80]}",
-                    styles["Normal"],
-                ))
+                elements.append(
+                    Paragraph(
+                        f"{i}. {f.get('title', 'Unknown')[:80]}",
+                        styles["Normal"],
+                    )
+                )
             elements.append(Spacer(1, 0.2 * inch))
 
     doc.build(elements)

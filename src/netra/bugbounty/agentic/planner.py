@@ -1,4 +1,5 @@
 """Hypothesis-driven plan generator."""
+
 from __future__ import annotations
 
 import json
@@ -59,7 +60,9 @@ class Planner:
             scope=scope,
             corpus_hits=corpus_hits,
         )
-        merged_corpus_hits = list(dict.fromkeys([*(corpus_hits or []), *coordination.get("corpus_hits", [])]))
+        merged_corpus_hits = list(
+            dict.fromkeys([*(corpus_hits or []), *coordination.get("corpus_hits", [])])
+        )
 
         if not tech:
             return TestPlan(
@@ -112,7 +115,9 @@ class Planner:
             pass
 
         recommended_tools = coordination.get("recommended_tools") or []
-        fallback_tool = str(recommended_tools[0] if recommended_tools else ("httpx" if tech else "nuclei"))
+        fallback_tool = str(
+            recommended_tools[0] if recommended_tools else ("httpx" if tech else "nuclei")
+        )
         return TestPlan(
             steps=[
                 PlannedStep(
@@ -130,7 +135,9 @@ class Planner:
 
     async def _query_structured(self, *, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         if hasattr(self.brain, "query_structured"):
-            return await self.brain.query_structured(system_prompt=system_prompt, user_prompt=user_prompt)
+            return await self.brain.query_structured(
+                system_prompt=system_prompt, user_prompt=user_prompt
+            )
         raw = await self.brain._query_ollama(user_prompt)  # type: ignore[attr-defined]  # pragma: no cover
         if isinstance(raw, dict):
             return raw

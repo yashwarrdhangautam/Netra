@@ -1,4 +1,5 @@
 """Static side-effect classification for generated requests."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,7 +22,10 @@ class SideEffectVerdict:
 def check(http_request: str) -> SideEffectVerdict:
     upper = http_request.upper()
     first_line = upper.splitlines()[0] if upper.splitlines() else upper
-    if any(token in upper for token in ("X-HTTP-METHOD-OVERRIDE", " DELETE ", "\nDELETE ", " PATCH ", "\nPATCH ")):
+    if any(
+        token in upper
+        for token in ("X-HTTP-METHOD-OVERRIDE", " DELETE ", "\nDELETE ", " PATCH ", "\nPATCH ")
+    ):
         return SideEffectVerdict(SideEffectClass.FORBIDDEN, "destructive override or verb")
     if first_line.startswith(("DELETE ", "PATCH ", "PUT ")):
         return SideEffectVerdict(SideEffectClass.FORBIDDEN, "destructive verb")

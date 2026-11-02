@@ -1,4 +1,5 @@
 """JSON structured logging configuration."""
+
 import logging
 import sys
 from typing import Any
@@ -71,9 +72,7 @@ def setup_logging(log_format: str = "json", log_level: str = "INFO") -> None:
 
     structlog.configure(
         processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, log_level.upper())
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, log_level.upper())),
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,

@@ -1,4 +1,5 @@
 """Validate agentic LLM outputs before dispatch."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -19,7 +20,10 @@ def validate(response: dict[str, Any], validator: ScopeValidator) -> dict[str, A
     spec = get_tool_spec(tool_name)
     if spec is None:
         raise SanitiserError(f"unknown tool: {tool_name}")
-    if any(marker in str(response).lower() for marker in ("ignore previous", "rm -rf", "bash -c", "curl | sh")):
+    if any(
+        marker in str(response).lower()
+        for marker in ("ignore previous", "rm -rf", "bash -c", "curl | sh")
+    ):
         raise SanitiserError("prompt-injection marker detected")
     validator.require(target)
     if spec.safety_class == SafetyClass.ACTIVE_INTRUSIVE:

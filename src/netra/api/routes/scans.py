@@ -1,4 +1,5 @@
 """Scan routes for managing security scans."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -60,6 +61,7 @@ async def create_scan(
     orchestrator = ScanOrchestrator(db, scan.id)
     # Run async in background
     import asyncio
+
     asyncio.create_task(orchestrator.execute())
 
     return ScanResponse.model_validate(scan)
@@ -247,6 +249,7 @@ async def resume_scan(
 
     orchestrator = ScanOrchestrator(db, scan.id)
     import asyncio
+
     asyncio.create_task(orchestrator.execute())
 
     return ScanResponse.model_validate(scan)
@@ -269,14 +272,10 @@ async def diff_scans(
     from netra.db.models.finding import Finding
 
     # Get findings from both scans
-    scan_a_result = await db.execute(
-        select(Finding).where(Finding.scan_id == payload.scan_a_id)
-    )
+    scan_a_result = await db.execute(select(Finding).where(Finding.scan_id == payload.scan_a_id))
     scan_a_findings = list(scan_a_result.scalars().all())
 
-    scan_b_result = await db.execute(
-        select(Finding).where(Finding.scan_id == payload.scan_b_id)
-    )
+    scan_b_result = await db.execute(select(Finding).where(Finding.scan_id == payload.scan_b_id))
     scan_b_findings = list(scan_b_result.scalars().all())
 
     # Create sets of dedup hashes for comparison

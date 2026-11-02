@@ -1,9 +1,10 @@
 """Bug bounty program model."""
+
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy import JSON as JSONB
+from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
