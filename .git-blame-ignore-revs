@@ -1,0 +1,3 @@
+# Mechanical reformatting — skip in git blame (git blame --ignore-revs-file)
+# ruff format + lint --fix pass
+40ee8d26e2fea95c65912abc824fd9b9ae43e1f2
