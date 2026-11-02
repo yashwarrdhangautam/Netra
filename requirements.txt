@@ -10,8 +10,8 @@ aiohttp==3.11.11                # Async HTTP for concurrent recon/scanning (Wind
 requests==2.32.3               # Sync HTTP for simple tool calls
 fastapi==0.115.0               # Modern async web framework (security update)
 uvicorn==0.34.0                # ASGI server for FastAPI
-starlette==0.41.3              # ASGI framework (security update - fixes DoS)
-python-multipart==0.0.18       # Form data parsing (security update)
+starlette==0.38.6              # ASGI framework (security update - fixes DoS)
+python-multipart==0.0.33       # Form data parsing (security update)
 
 # ── CLI & configuration ───────────────────────────────────────────────────────
 click==8.1.7                   # CLI framework
@@ -41,8 +41,7 @@ pycryptodome==3.20.0           # Crypto primitives for evidence ZIP signing
 PyJWT==2.10.1                  # JWT encoding/decoding (replaces python-jose; CVE-2024-33663/33664)
 bcrypt==4.2.0                  # Bcrypt password hashing
 pyotp==2.9.0                   # TOTP for MFA/2FA
-cryptography==44.0.1           # Cryptographic primitives (security update)
-ecdsa==0.19.0                  # ECDSA cryptography (security update)
+cryptography==50.0.2           # Cryptographic primitives (security update)
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 # slack-sdk removed — using httpx directly
