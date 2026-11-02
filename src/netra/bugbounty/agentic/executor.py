@@ -11,6 +11,7 @@ from netra.bugbounty.agentic.budget import HuntBudget
 from netra.bugbounty.agentic.observation import observation_from_tool_result
 from netra.bugbounty.agentic.planner import PlannedStep, TestPlan
 from netra.bugbounty.agentic.router import ToolRouter
+from netra.bugbounty.agentic.token_budget import count_tokens
 from netra.bugbounty.agentic.tool_registry import SafetyClass, get_tool_spec
 from netra.bugbounty.scope import ScopeValidator
 from netra.db.models.bb_agentic_step import BBAgenticStep
@@ -66,6 +67,11 @@ class AgenticExecutor:
                 observations=observations,
                 validator=validator,
                 available_tools=[step.suggested_tool],
+            )
+            budget.record_tokens(
+                count_tokens(str(plan.to_dict()))
+                + count_tokens(str(observations))
+                + count_tokens(choice.raw_response or "")
             )
             step_row = BBAgenticStep(
                 scan_id=scan.id,
