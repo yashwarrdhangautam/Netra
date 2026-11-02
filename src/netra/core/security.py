@@ -5,13 +5,18 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bcrypt
+import jwt
 import pyotp
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from netra.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_BCRYPT_MAX_BYTES = 72
+
+
+def _bcrypt_prepare(secret: str) -> bytes:
+    """Encode to bytes, truncated to bcrypt's 72-byte limit (passlib truncated silently)."""
+    return secret.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
 # ── Password Hashing ──────────────────────────────────────────────────────────
@@ -27,7 +32,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if the password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(_bcrypt_prepare(plain_password), hashed_password.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 
 def get_password_hash(password: str) -> str:
@@ -39,7 +47,7 @@ def get_password_hash(password: str) -> str:
     Returns:
         The hashed password
     """
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_bcrypt_prepare(password), bcrypt.gensalt()).decode("utf-8")
 
 
 # ── JWT Access & Refresh Tokens ───────────────────────────────────────────────
@@ -136,7 +144,7 @@ def decode_access_token(token: str) -> dict | None:
             return None
 
         return payload
-    except JWTError:
+    except jwt.PyJWTError:
         return None
 
 
@@ -161,7 +169,7 @@ def decode_refresh_token(token: str) -> dict | None:
             return None
 
         return payload
-    except JWTError:
+    except jwt.PyJWTError:
         return None
 
 
@@ -447,7 +455,7 @@ def decode_password_reset_token(token: str) -> dict | None:
             return None
 
         return payload
-    except JWTError:
+    except jwt.PyJWTError:
         return None
 
 

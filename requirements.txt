@@ -38,8 +38,7 @@ censys==2.2.9                  # Censys API integration (optional, needs API key
 
 # ── Cryptography & encoding ───────────────────────────────────────────────────
 pycryptodome==3.20.0           # Crypto primitives for evidence ZIP signing
-python-jose==3.3.0             # JWT encoding/decoding (with cryptography extras)
-passlib==1.7.4                 # Password hashing (bcrypt)
+PyJWT==2.10.1                  # JWT encoding/decoding (replaces python-jose; CVE-2024-33663/33664)
 bcrypt==4.2.0                  # Bcrypt password hashing
 pyotp==2.9.0                   # TOTP for MFA/2FA
 cryptography==44.0.1           # Cryptographic primitives (security update)
