@@ -7,7 +7,7 @@ from typing import Annotated
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,8 +73,9 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=12, description="Minimum 12 characters")
     full_name: str = Field(..., min_length=1, max_length=255)
 
-    @validator("password")
-    def validate_password(self, v):
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v):
         """Validate password strength."""
         if len(v) < 12:
             raise ValueError("Password must be at least 12 characters")

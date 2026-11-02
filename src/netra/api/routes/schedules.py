@@ -25,7 +25,7 @@ router = APIRouter(prefix="/schedules", tags=["Schedules"])
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class CronScheduleCreate(BaseModel):
@@ -41,8 +41,9 @@ class CronScheduleCreate(BaseModel):
     notify_on_complete: bool = True
     notify_emails: list[str] = Field(default_factory=list)
 
-    @validator("cron_expression")
-    def validate_cron(self, v):
+    @field_validator("cron_expression")
+    @classmethod
+    def validate_cron(cls, v):
         parts = v.split()
         if len(parts) != 5:
             raise ValueError("Cron expression must have 5 parts: minute hour day month weekday")
@@ -58,8 +59,9 @@ class IntervalScheduleCreate(BaseModel):
     interval_seconds: int = Field(..., ge=300)  # Minimum 5 minutes
     profile: str = "standard"
 
-    @validator("interval_seconds")
-    def validate_interval(self, v):
+    @field_validator("interval_seconds")
+    @classmethod
+    def validate_interval(cls, v):
         if v < 300:
             raise ValueError("Minimum interval is 300 seconds (5 minutes)")
         return v
@@ -74,8 +76,9 @@ class OneTimeScheduleCreate(BaseModel):
     scheduled_at: datetime
     profile: str = "standard"
 
-    @validator("scheduled_at")
-    def validate_future(self, v):
+    @field_validator("scheduled_at")
+    @classmethod
+    def validate_future(cls, v):
         if v < datetime.now(UTC):
             raise ValueError("Scheduled time must be in the future")
         return v
