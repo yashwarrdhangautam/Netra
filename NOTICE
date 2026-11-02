@@ -1,0 +1,12 @@
+NETRA
+Copyright (c) NETRA contributors
+Licensed under AGPL-3.0.
+
+This product includes code derived from other open-source projects:
+
+- src/netra/bugbounty/agentic/token_budget.py is adapted from Strix
+  (https://github.com/usestrix/strix), licensed under the Apache License 2.0.
+
+- src/netra/bugbounty/agentic/privacy_gateway.py is derived from Darkmoon
+  (https://github.com/ASCIT31/Dark-Moon), licensed under GPL-3.0. NETRA is
+  distributed under AGPL-3.0, with which GPL-3.0 is compatible.
