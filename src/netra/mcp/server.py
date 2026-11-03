@@ -134,7 +134,7 @@ async def nuclei_scan(
         }
     result = await tool.run(target, templates=templates, severity=severity, rate_limit=rate_limit)
     return {
-        "status": "mock",
+        "status": "ok",
         "tool": "nuclei",
         "success": result.success,
         "findings_count": len(result.findings),
@@ -172,6 +172,8 @@ async def nmap_scan(
         }
     result = await tool.run(target, scan_type=scan_type, ports=ports, scripts=scripts)
     return {
+        "status": "ok",
+        "tool": "nmap",
         "success": result.success,
         "ports_found": len(result.findings),
         "findings": result.findings[:30],
