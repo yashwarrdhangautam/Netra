@@ -24,7 +24,7 @@ router = APIRouter(prefix="/targets", tags=["Targets"])
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TargetCreate(BaseModel):
@@ -55,8 +55,7 @@ class TargetListResponse(BaseModel):
     value: str
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TargetResponse(BaseModel):
@@ -71,8 +70,7 @@ class TargetResponse(BaseModel):
     metadata: dict | None
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TargetValidationResponse(BaseModel):

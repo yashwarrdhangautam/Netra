@@ -25,7 +25,7 @@ router = APIRouter(prefix="/schedules", tags=["Schedules"])
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CronScheduleCreate(BaseModel):
@@ -99,8 +99,7 @@ class ScheduleResponse(BaseModel):
     total_runs: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Schedule Routes ──────────────────────────────────────────────────────────
