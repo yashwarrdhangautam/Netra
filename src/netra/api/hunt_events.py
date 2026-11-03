@@ -11,6 +11,7 @@ kind/severity (never embedded as markup) so the console can render text-only.
 
 from __future__ import annotations
 
+import time
 from collections import deque
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -124,3 +125,51 @@ class HuntEventBuffer:
         return ReplayResult(
             events=[e for e in self._events if e.seq > last_seq], resync_required=False
         )
+
+
+class EventAggregator:
+    """Bounds console event volume (ADR-004 aggregation).
+
+    High-signal kinds always pass through. Repeated low-signal events from the
+    same agent within ``window`` seconds are coalesced (dropped), and a
+    per-window rate cap bounds how many low-signal events are emitted. The clock
+    is injectable so behaviour is deterministic under test.
+    """
+
+    _PASS_THROUGH = {
+        HuntEventKind.HIT,
+        HuntEventKind.PROVE,
+        HuntEventKind.BLOCK,
+        HuntEventKind.PHASE_CHANGE,
+        HuntEventKind.STATUS,
+        HuntEventKind.AGENT_RETIRED,
+    }
+
+    def __init__(self, window: float = 1.0, max_per_window: int = 20, now=time.monotonic) -> None:
+        self._window = window
+        self._cap = max_per_window
+        self._now = now
+        self._start = now()
+        self._count = 0
+        self._seen: set[tuple[str, str]] = set()
+
+    def _roll(self) -> None:
+        t = self._now()
+        if t - self._start >= self._window:
+            self._start = t
+            self._count = 0
+            self._seen.clear()
+
+    def offer(self, event: HuntEvent) -> bool:
+        """Return True to emit the event, False to suppress it."""
+        self._roll()
+        if event.kind in self._PASS_THROUGH:
+            return True
+        key = (event.agent_id or "", str(event.kind))
+        if key in self._seen:
+            return False  # coalesce a repeat within the window
+        if self._count >= self._cap:
+            return False  # rate cap reached
+        self._seen.add(key)
+        self._count += 1
+        return True

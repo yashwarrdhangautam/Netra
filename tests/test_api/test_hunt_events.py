@@ -78,3 +78,53 @@ def test_operator_command_validates():
 def test_severity_and_refs():
     e = _mk(severity=Severity.HIGH, refs=[{"type": "finding", "id": "fnd_1"}])
     assert e.severity == "high" and e.refs[0].type == "finding"
+
+
+class _Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+
+def _ev(kind=HuntEventKind.ACTION, agent="A-1"):
+    return HuntEvent(hunt_id="h", phase=HuntPhase.ATTACK, kind=kind, agent_id=agent, message="m")
+
+
+def test_aggregator_high_signal_always_passes():
+    from netra.api.hunt_events import EventAggregator
+
+    ag = EventAggregator(window=1, max_per_window=1, now=_Clock())
+    assert ag.offer(_ev(HuntEventKind.HIT)) is True
+    for _ in range(5):
+        assert ag.offer(_ev(HuntEventKind.PROVE)) is True  # never rate-capped
+
+
+def test_aggregator_coalesces_low_signal_within_window():
+    from netra.api.hunt_events import EventAggregator
+
+    ag = EventAggregator(window=1, max_per_window=10, now=_Clock())
+    assert ag.offer(_ev(agent="A-1")) is True
+    assert ag.offer(_ev(agent="A-1")) is False  # same agent+kind -> coalesced
+    assert ag.offer(_ev(agent="A-2")) is True  # different agent passes
+
+
+def test_aggregator_rate_cap():
+    from netra.api.hunt_events import EventAggregator
+
+    ag = EventAggregator(window=1, max_per_window=2, now=_Clock())
+    assert ag.offer(_ev(agent="A-1")) is True
+    assert ag.offer(_ev(agent="A-2")) is True
+    assert ag.offer(_ev(agent="A-3")) is False  # cap reached
+
+
+def test_aggregator_window_reset():
+    from netra.api.hunt_events import EventAggregator
+
+    clk = _Clock()
+    ag = EventAggregator(window=1, max_per_window=1, now=clk)
+    assert ag.offer(_ev(agent="A-1")) is True
+    assert ag.offer(_ev(agent="A-2")) is False  # cap
+    clk.t = 1.5  # advance past the window
+    assert ag.offer(_ev(agent="A-2")) is True  # counters reset
