@@ -64,7 +64,9 @@ async def embed_with_version(text: str) -> tuple[list[float], str]:
                     current_embedding_model_version(),
                 )
     except Exception:
-        pass
+        import structlog as _sl
+
+        _sl.get_logger().debug("embedding_attempt_failed", exc_info=True)
     return _hashed_embedding(payload), f"local:{HASHED_EMBED_MODEL}:{EMBEDDING_DIM}"
 
 

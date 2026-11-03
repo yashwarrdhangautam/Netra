@@ -112,7 +112,9 @@ class Planner:
                     coordination=coordination,
                 )
         except Exception:
-            pass
+            import structlog as _sl
+
+            _sl.get_logger().debug("planner_structured_plan_parse_failed", exc_info=True)
 
         recommended_tools = coordination.get("recommended_tools") or []
         fallback_tool = str(

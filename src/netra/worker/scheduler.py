@@ -230,7 +230,9 @@ def execute_scheduled_scan(
             schedule.failed_runs += 1
             asyncio.run(db.commit())
         except Exception:
-            pass
+            import structlog as _sl
+
+            _sl.get_logger().debug("schedule_failed_runs_update_failed", exc_info=True)
 
         return {"status": "error", "message": str(e)}
 

@@ -1054,7 +1054,9 @@ async def ingest_verdict(
 
         export_bugbounty_submissions.delay()
     except Exception:
-        pass
+        import structlog as _sl
+
+        _sl.get_logger().debug("bb_submission_export_enqueue_failed", exc_info=True)
     await db.refresh(submission)
     return SubmissionDetailResponse.model_validate(submission)
 

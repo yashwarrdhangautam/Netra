@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
-router = APIRouter(prefix="/api/v1/agent", tags=["Agent"])
+router = APIRouter(tags=["Agent"])
 
 
 @router.post("/start")

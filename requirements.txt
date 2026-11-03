@@ -72,3 +72,9 @@ pytest-cov==6.0.0              # Coverage reporting
 black==24.10.0                 # Code formatter
 ruff==0.7.0                    # Fast linter
 mypy==1.12.0                   # Static type checker
+
+# ── Framework extras (align with pyproject.toml) ──
+slowapi==0.1.10
+structlog==24.4.0
+mcp==1.12.4
+email-validator==2.2.0
