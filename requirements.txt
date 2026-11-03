@@ -7,10 +7,10 @@
 # ── Core framework ────────────────────────────────────────────────────────────
 httpx==0.27.0                  # Async HTTP client (API calls, PoC requests, Ollama calls)
 aiohttp==3.11.11                # Async HTTP for concurrent recon/scanning (Windows compatible)
-requests==2.32.3               # Sync HTTP for simple tool calls
-fastapi==0.115.0               # Modern async web framework (security update)
+requests==2.34.2               # Sync HTTP for simple tool calls
+fastapi==0.162.0               # Modern async web framework (security update)
 uvicorn==0.34.0                # ASGI server for FastAPI
-starlette==0.38.6              # ASGI framework (security update - fixes DoS)
+starlette==1.10.0              # ASGI framework (security update - fixes DoS)
 python-multipart==0.0.33       # Form data parsing (security update)
 
 # ── CLI & configuration ───────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ pydantic-settings==2.6.0       # Settings management with env vars
 python-docx==1.1.2             # Word (.docx) report generation
 reportlab==4.2.5               # PDF report generation (compliance + main report)
 openpyxl==3.1.5                # Excel (.xlsx) 9-sheet workbook generation
-jinja2==3.1.4                  # HTML template rendering (html_report.py)
+jinja2==3.1.6                  # HTML template rendering (html_report.py)
 
 # ── Data processing ───────────────────────────────────────────────────────────
 beautifulsoup4==4.12.3         # HTML parsing for JS/endpoint extraction

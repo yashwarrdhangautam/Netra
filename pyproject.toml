@@ -17,8 +17,10 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.12"
-fastapi = "==0.115.0"
-starlette = "==0.38.6"
+fastapi = "==0.162.0"
+starlette = "==1.10.0"
+jinja2 = "==3.1.6"
+requests = "==2.34.2"
 uvicorn = { version = "==0.34.0", extras = ["standard"] }
 sqlalchemy = { version = "==2.0.35", extras = ["asyncio"] }
 asyncpg = "==0.30.0"
