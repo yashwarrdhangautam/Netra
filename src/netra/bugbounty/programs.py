@@ -206,3 +206,43 @@ async def replace_scope_rules(
         program.scope_synced_at = datetime.now(UTC)
         await session.flush()
     return diff
+
+
+async def add_scope_rule(
+    session: AsyncSession,
+    program: BBProgram,
+    *,
+    pattern: str,
+    asset_type: str = "domain",
+    rule_type: str = "in",
+    severity_cap: str | None = None,
+    notes: str | None = None,
+) -> BBScopeRule:
+    """Manually add a single scope rule.
+
+    Lets an operator authorize a target on a program that has no platform to
+    sync from (e.g. a private program or a local lab target). The rule is
+    marked synced_from_platform=False so a later platform sync will not clobber
+    operator-authored rules unexpectedly.
+    """
+    from netra.db.models.bb_scope_rule import ScopeAssetType, ScopeRuleType
+
+    rule = BBScopeRule(
+        program_id=program.id,
+        rule_type=ScopeRuleType(rule_type),
+        asset_type=ScopeAssetType(asset_type),
+        pattern=pattern.strip(),
+        severity_cap=severity_cap,
+        notes=notes,
+        active=True,
+        synced_from_platform=False,
+    )
+    session.add(rule)
+    await session.flush()
+    logger.info(
+        "bb.scope.rule_added_manual",
+        program_id=str(program.id),
+        pattern=pattern,
+        rule_type=rule_type,
+    )
+    return rule

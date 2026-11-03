@@ -478,9 +478,32 @@ def _render_scope_diff(diff, platform: str, program: str) -> None:
 @click.option("--check", help="Target to test against the program scope.")
 @click.option("--list", "list_rules", is_flag=True, help="List all active scope rules.")
 @click.option("--sync", is_flag=True, help="Pull fresh scope from the platform and apply the diff.")
+@click.option(
+    "--add",
+    "add_pattern",
+    default=None,
+    help="Manually add a scope rule (pattern) you are authorized to test.",
+)
+@click.option(
+    "--asset-type",
+    default="domain",
+    type=click.Choice(["domain", "wildcard", "ip", "cidr", "url", "mobile", "repo", "other"]),
+)
+@click.option("--rule-type", default="in", type=click.Choice(["in", "out"]))
+@click.option(
+    "--severity-cap", "severity_cap", default=None, help="Optional severity cap for the rule."
+)
 @_async
 async def scope_cmd(
-    program: str, platform: str, check: str | None, list_rules: bool, sync: bool
+    program: str,
+    platform: str,
+    check: str | None,
+    list_rules: bool,
+    sync: bool,
+    add_pattern: str | None,
+    asset_type: str,
+    rule_type: str,
+    severity_cap: str | None,
 ) -> None:
     from netra.bugbounty.programs import get_active_scope_rules, get_program
     from netra.bugbounty.scope import ScopeValidator
@@ -492,6 +515,22 @@ async def scope_cmd(
         if prog is None:
             console.print(f"[red]program not found[/red]: {platform}/{program}")
             sys.exit(1)
+        if add_pattern:
+            from netra.bugbounty.programs import add_scope_rule
+
+            rule = await add_scope_rule(
+                session,
+                prog,
+                pattern=add_pattern,
+                asset_type=asset_type,
+                rule_type=rule_type,
+                severity_cap=severity_cap,
+            )
+            await session.commit()
+            console.print(
+                f"[green]scope rule added[/green]: {rule.rule_type} {rule.asset_type} {rule.pattern}"
+            )
+            return
         rules = await get_active_scope_rules(session, prog.id)
 
     if sync:
