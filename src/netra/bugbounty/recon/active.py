@@ -26,8 +26,16 @@ class ActiveReconResult:
     errors: list[str] = field(default_factory=list)
 
 
-async def httpx_alive(host: str) -> bool:
+def _gate(validator: ScopeValidator | None, host: str) -> None:
+    """Every direct active probe checks scope itself, not only the orchestrator loop."""
+    if validator is None:
+        raise ValueError("a ScopeValidator is required for active probes")
+    validator.require(host)
+
+
+async def httpx_alive(host: str, *, validator: ScopeValidator | None = None) -> bool:
     """HEAD-only liveness probe via httpx; true only for 2xx/3xx."""
+    _gate(validator, host)
     tool = HttpxTool()
     result = await tool.run(host, follow_redirects=False, tech_detect=True, head=True)
     if not result.success:
@@ -37,9 +45,14 @@ async def httpx_alive(host: str) -> bool:
 
 
 async def ffuf_paths(
-    host: str, wordlist: str = "common.txt", rate_limit: int | None = None
+    host: str,
+    wordlist: str = "common.txt",
+    rate_limit: int | None = None,
+    *,
+    validator: ScopeValidator | None = None,
 ) -> list[str]:
     """Run ffuf content discovery and return normalized paths."""
+    _gate(validator, host)
     target = host.rstrip("/") + "/FUZZ"
     result = await FfufTool().run(target, wordlist=wordlist, rate_limit=rate_limit)
     if not result.success:
@@ -55,8 +68,14 @@ async def ffuf_paths(
     return sorted(paths)
 
 
-async def nuclei_safe(host: str, severity_cap: str | None = None) -> list[dict]:
+async def nuclei_safe(
+    host: str,
+    severity_cap: str | None = None,
+    *,
+    validator: ScopeValidator | None = None,
+) -> list[dict]:
     """Run nuclei's safe template subset and normalize output."""
+    _gate(validator, host)
     severity = severity_cap or "medium"
     result = await NucleiTool().run(
         host,
@@ -101,18 +120,23 @@ async def run_active_recon(
             continue
 
         try:
-            if enable_alive and await httpx_alive(host):
+            if enable_alive and await httpx_alive(host, validator=validator):
                 result.alive_hosts.append(host)
 
             if enable_ffuf:
-                for path in await ffuf_paths(host, wordlist=wordlist, rate_limit=rate_limit):
+                paths = await ffuf_paths(
+                    host, wordlist=wordlist, rate_limit=rate_limit, validator=validator
+                )
+                for path in paths:
                     target = host.rstrip("/") + path
                     validator.require(target)
                     result.discovered_paths.append(target)
 
             if enable_nuclei:
                 result.nuclei_findings.extend(
-                    await nuclei_safe(host, severity_cap=decision.severity_cap)
+                    await nuclei_safe(
+                        host, severity_cap=decision.severity_cap, validator=validator
+                    )
                 )
 
         except Exception as exc:

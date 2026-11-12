@@ -1239,7 +1239,9 @@ async def replay_evidence(
     rules = await get_active_scope_rules(db, program.id)
     validator = ScopeValidator.from_db_rules(rules)
     try:
-        result = await run_replay(evidence, spec, validator)
+        result = await run_replay(
+            evidence, spec, validator, vuln_class=_finding_vuln_class(finding)
+        )
     except Exception as exc:
         result = {"status": "blocked", "error": str(exc), "diff": {}}
     replay = BBEvidenceReplay(

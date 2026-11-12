@@ -10,7 +10,7 @@ import httpx
 
 from netra.bugbounty.evidence.pipeline import read_evidence_blob
 from netra.bugbounty.scope import ScopeValidator
-from netra.bugbounty.verifiers.loader import VerifierSpec
+from netra.bugbounty.verifiers.loader import VerifierSpec, find_verifier
 from netra.db.models.bb_evidence import BBEvidence
 
 
@@ -37,8 +37,16 @@ async def run_replay(
     evidence: BBEvidence,
     spec: VerifierSpec,
     validator: ScopeValidator,
+    *,
+    vuln_class: str | None,
 ) -> dict[str, Any]:
-    """Replay an allowlisted read-only request after a scope check."""
+    """Replay an allowlisted read-only request after a scope check.
+
+    The spec must be the one the allowlist holds for this finding's vuln_class.
+    Caller-supplied specs that are not on the allowlist are refused here, not only in routes.
+    """
+    if not vuln_class or find_verifier(spec.id, vuln_class) is None:
+        return {"status": "blocked", "error": f"Verifier {spec.id} is not allowlisted for this finding"}
     request = parse_captured_request(evidence)
     method = request["method"]
     url = request["url"]

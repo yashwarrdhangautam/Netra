@@ -33,9 +33,9 @@ logger = structlog.get_logger()
 
 def _get_db_session() -> AsyncSession:
     """Create a new database session for task execution."""
-    from netra.db.session import AsyncSessionLocal
+    from netra.db.session import async_session_factory
 
-    return AsyncSessionLocal()
+    return async_session_factory()
 
 
 def _phase_dir(scan_id: uuid.UUID, phase_type: str) -> Path:

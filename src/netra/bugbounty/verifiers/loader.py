@@ -49,7 +49,8 @@ def load_verifiers(path: Path | None = None) -> list[VerifierSpec]:
             verifiers.append(
                 VerifierSpec(
                     id=str(item["id"]),
-                    vuln_class=str(item.get("vuln_class", "*")).lower(),
+                    # Required: a missing class must never widen to "allowed for every class".
+                    vuln_class=str(item["vuln_class"]).lower(),
                     description=str(item.get("description", "")),
                     methods=tuple(str(m).upper() for m in item.get("methods", ["GET"])),
                     will_do=tuple(str(v) for v in item.get("will_do", [])),

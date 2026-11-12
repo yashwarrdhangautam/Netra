@@ -1054,7 +1054,7 @@ async def verify_cmd(
 
         rules = await get_active_scope_rules(session, program.id)
         validator = ScopeValidator.from_db_rules(rules)
-        result = await run_replay(evidence, spec, validator)
+        result = await run_replay(evidence, spec, validator, vuln_class=vuln_class)
         replay = BBEvidenceReplay(
             evidence_id=evidence.id,
             verifier_id=spec.id,

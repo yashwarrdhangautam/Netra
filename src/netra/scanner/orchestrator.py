@@ -8,6 +8,7 @@ from typing import Any
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from netra.db.models.bb_asset import BBAsset
 from netra.db.models.bb_program import BBProgram
@@ -658,7 +659,7 @@ class ScanOrchestrator:
             scan.status = ScanStatus.COMPLETED
             scan.completed_at = datetime.now(UTC)
         except Exception as exc:
-            logger.error("bb.scan_failed", scan_id=str(scan.id), error=str(exc))
+            logger.error("bb.scan_failed", scan_id=str(scan.id), error=str(exc), exc_info=True)
             scan.status = ScanStatus.FAILED
             scan.error_message = str(exc)
         await self.db.commit()
@@ -798,7 +799,9 @@ class ScanOrchestrator:
 
     async def _get_scan(self) -> Scan | None:
         """Get scan by ID."""
-        result = await self.db.execute(select(Scan).where(Scan.id == self.scan_id))
+        result = await self.db.execute(
+            select(Scan).options(selectinload(Scan.target)).where(Scan.id == self.scan_id)
+        )
         return result.scalar_one_or_none()
 
     async def _create_phase(self, scan: Scan, phase_type: PhaseType) -> ScanPhase:

@@ -177,6 +177,11 @@ async def run_passive_recon(
     seen: set[str] = set()
 
     for seed in seed_domains:
+        # Gate the seed itself: passive sources must never be queried for an out-of-scope domain.
+        if not validator.check(seed).allowed:
+            result.errors.append(f"seed_out_of_scope:{seed}")
+            logger.warning("bb.recon.passive.seed_blocked", seed=seed, program=program_handle)
+            continue
         for src_name in selected:
             fn = SOURCES.get(src_name)
             if fn is None:
