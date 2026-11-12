@@ -34,6 +34,15 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
+def _normalise_methods(raw: Any) -> tuple[str, ...]:
+    """Accept one method as a string, or a list of strings. Anything else fails closed."""
+    if isinstance(raw, str):
+        return (raw.upper(),)
+    if isinstance(raw, list) and all(isinstance(m, str) for m in raw):
+        return tuple(m.upper() for m in raw)
+    raise VerifierConfigError("Verifier 'methods' must be a string or a list of strings")
+
+
 @lru_cache(maxsize=1)
 def load_verifiers(path: Path | None = None) -> list[VerifierSpec]:
     """Load verifier specs from the allowlist."""
@@ -43,8 +52,18 @@ def load_verifiers(path: Path | None = None) -> list[VerifierSpec]:
     except Exception as exc:
         raise VerifierConfigError(f"Could not parse verifier allowlist: {exc}") from exc
 
+    if not isinstance(data, dict):
+        raise VerifierConfigError("Verifier allowlist must be an object with a 'verifiers' list")
+    raw_verifiers = data.get("verifiers", [])
+    if not isinstance(raw_verifiers, list):
+        raise VerifierConfigError("Verifier allowlist 'verifiers' must be a list")
+
     verifiers: list[VerifierSpec] = []
-    for item in data.get("verifiers", []):
+    for item in raw_verifiers:
+        if not isinstance(item, dict):
+            raise VerifierConfigError(
+                f"Verifier entry must be an object, got {type(item).__name__}"
+            )
         try:
             verifiers.append(
                 VerifierSpec(
@@ -52,7 +71,7 @@ def load_verifiers(path: Path | None = None) -> list[VerifierSpec]:
                     # Required: a missing class must never widen to "allowed for every class".
                     vuln_class=str(item["vuln_class"]).lower(),
                     description=str(item.get("description", "")),
-                    methods=tuple(str(m).upper() for m in item.get("methods", ["GET"])),
+                    methods=_normalise_methods(item.get("methods", ["GET"])),
                     will_do=tuple(str(v) for v in item.get("will_do", [])),
                     will_not_do=tuple(str(v) for v in item.get("will_not_do", [])),
                     requires=tuple(str(v) for v in item.get("requires", [])),

@@ -123,7 +123,18 @@ async def index_codebase(
         "--backend",
         os.getenv("GRAPHIFY_BACKEND", "ollama"),
     ]
-    rc, out, err = await _run_graphify(args)
+    try:
+        rc, out, err = await _run_graphify(args)
+    except GraphifyNotAvailable as exc:
+        logger.error("bb.graphify.unavailable", target=str(src_root), error=str(exc))
+        return IndexResult(
+            target=str(src_root),
+            output_dir=output_dir,
+            nodes=0,
+            edges=0,
+            success=False,
+            error=str(exc)[:500],
+        )
     if rc != 0:
         logger.error("bb.graphify.index_failed", target=str(src_root), rc=rc, stderr=err[:500])
         return IndexResult(

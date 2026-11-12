@@ -97,6 +97,10 @@ def find_graph_similar(
     except (OSError, json.JSONDecodeError):
         return []
 
+    # An empty or missing asset path has no location, so it cannot have neighbours.
+    if not str(asset_path or "").strip():
+        return []
+
     hints: list[dict] = []
     norm_asset = normalise_path(asset_path)
     for record in records if isinstance(records, list) else []:
@@ -105,7 +109,10 @@ def find_graph_similar(
             continue
         if str(attrs.get("vuln_class", "")).lower() != vuln_class.lower():
             continue
-        candidate_path = normalise_path(str(attrs.get("asset_path") or ""))
+        raw_candidate = str(attrs.get("asset_path") or "").strip()
+        if not raw_candidate:
+            continue
+        candidate_path = normalise_path(raw_candidate)
         if (
             candidate_path == norm_asset
             or candidate_path.rsplit("/", 1)[0] == norm_asset.rsplit("/", 1)[0]

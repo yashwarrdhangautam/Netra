@@ -11,6 +11,7 @@ Filesystem writes are confined to pytest's tmp_path.
 from __future__ import annotations
 
 import io
+import json
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,7 +23,6 @@ from rich.console import Console
 
 from netra.bugbounty import cli as bb_cli
 from netra.bugbounty.graph_indexer import IndexResult
-from netra.bugbounty.submission.tracker import InvalidTransition
 from netra.db.models.bb_submission import SubmissionStatus
 
 
@@ -549,17 +549,21 @@ class TestSubmissionStatus:
         assert result.exit_code == 1
         assert "submission not found" in out_console.getvalue()
 
-    def test_unknown_status_string_is_not_handled(self, runner, monkeypatch, out_console):
-        # BUG (documented): cli.py:1172 builds SubmissionStatus(new_status) inside the
-        # try block, but only InvalidTransition is caught. A bogus status name escapes
-        # as an unhandled ValueError instead of a clean "invalid status" message.
+    def test_unknown_status_string_exits_2_with_valid_list(
+        self, runner, monkeypatch, out_console
+    ):
         sub = _submission(SubmissionStatus.DRAFT)
         session = FakeSession(objects={"sub-1": sub})
         _install_session(monkeypatch, session)
 
         result = _invoke(runner, ["submission", "status", "sub-1", "bogus"])
-        assert result.exit_code != 0
-        assert isinstance(result.exception, ValueError)
+        assert result.exit_code == 2
+        assert isinstance(result.exception, SystemExit)
+        out = out_console.getvalue()
+        assert "invalid status" in out
+        for status in SubmissionStatus:
+            assert status.value in out
+        assert sub.status == SubmissionStatus.DRAFT
         assert session.commits == 0
 
 
@@ -574,19 +578,12 @@ class TestSubmissionVerdict:
         ],
     )
     def test_verdict_maps_to_resolved_status(
-        self, runner, monkeypatch, out_console, verdict, expected
+        self, runner, monkeypatch, out_console, tmp_path, verdict, expected
     ):
+        monkeypatch.chdir(tmp_path)
         sub = _submission(SubmissionStatus.TRIAGING)
         session = FakeSession(objects={"sub-1": sub})
         _install_session(monkeypatch, session)
-        exported = {}
-
-        def _export(records, path):
-            exported["records"] = records
-            exported["path"] = path
-            return path
-
-        monkeypatch.setattr("netra.bugbounty.graph_indexer.export_submissions_json", _export)
 
         result = _invoke(
             runner,
@@ -599,49 +596,79 @@ class TestSubmissionVerdict:
         assert sub.verdict_at is not None
         assert session.commits == 1
         assert "recorded" in out_console.getvalue()
-        assert exported["path"] == Path("data/graphify/submissions.json")
-        assert exported["records"][0]["vuln_class"] == "xss"
 
-    def test_verdict_export_overwrites_history_with_single_record(
-        self, runner, monkeypatch, out_console
+        history = json.loads((tmp_path / "data/graphify/submissions.json").read_text())
+        assert len(history) == 1
+        assert history[0]["id"] == "sub-1"
+        assert history[0]["attrs"]["vuln_class"] == "xss"
+        assert history[0]["attrs"]["status"] == expected.value
+
+    def test_verdict_merges_into_existing_history(
+        self, runner, monkeypatch, out_console, tmp_path
     ):
-        # Documents current behaviour: cli.py:1209-1222 passes only the one submission
-        # being judged to export_submissions_json, which writes the file with
-        # write_text (graph_indexer.py:200), so the shared submissions.json is
-        # replaced by a single-record list instead of the full history.
+        monkeypatch.chdir(tmp_path)
+        history_file = tmp_path / "data/graphify/submissions.json"
+        history_file.parent.mkdir(parents=True)
+        older = {"id": "sub-0", "type": "submission", "attrs": {"title": "old"}, "edges": []}
+        stale = {"id": "sub-1", "type": "submission", "attrs": {"title": "stale"}, "edges": []}
+        history_file.write_text(json.dumps([older, stale]))
+
         sub = _submission(SubmissionStatus.TRIAGING)
         _install_session(monkeypatch, FakeSession(objects={"sub-1": sub}))
-        exported = {}
-
-        def _export(records, path):
-            exported["records"] = records
-
-        monkeypatch.setattr("netra.bugbounty.graph_indexer.export_submissions_json", _export)
         result = _invoke(runner, ["submission", "verdict", "sub-1", "na"])
-        assert result.exit_code == 0
-        assert len(exported["records"]) == 1
+        assert result.exit_code == 0, result.output
+
+        history = json.loads(history_file.read_text())
+        assert [r["id"] for r in history] == ["sub-0", "sub-1"]
+        assert history[0] == older  # unrelated history preserved
+        assert history[1]["attrs"]["title"] == "Reflected XSS in search"  # replaced
+
+    def test_verdict_starts_history_when_file_missing(
+        self, runner, monkeypatch, out_console, tmp_path
+    ):
+        monkeypatch.chdir(tmp_path)
+        sub = _submission(SubmissionStatus.TRIAGING)
+        _install_session(monkeypatch, FakeSession(objects={"sub-1": sub}))
+        result = _invoke(runner, ["submission", "verdict", "sub-1", "na"])
+        assert result.exit_code == 0, result.output
+        assert "starting a new history" in out_console.getvalue()
+        history = json.loads((tmp_path / "data/graphify/submissions.json").read_text())
+        assert [r["id"] for r in history] == ["sub-1"]
+
+    def test_verdict_recovers_from_unreadable_history(
+        self, runner, monkeypatch, out_console, tmp_path
+    ):
+        monkeypatch.chdir(tmp_path)
+        history_file = tmp_path / "data/graphify/submissions.json"
+        history_file.parent.mkdir(parents=True)
+        history_file.write_text("{not json")
+
+        sub = _submission(SubmissionStatus.TRIAGING)
+        _install_session(monkeypatch, FakeSession(objects={"sub-1": sub}))
+        result = _invoke(runner, ["submission", "verdict", "sub-1", "na"])
+        assert result.exit_code == 0, result.output
+        assert "starting from an empty history" in out_console.getvalue()
+        history = json.loads(history_file.read_text())
+        assert [r["id"] for r in history] == ["sub-1"]
 
     def test_verdict_from_draft_is_rejected_by_state_machine(
-        self, runner, monkeypatch, out_console
+        self, runner, monkeypatch, out_console, tmp_path
     ):
-        # Documents a rough edge: cli.py:1206-1207 sets payout_actual before
-        # transition() runs, and InvalidTransition is not caught, so the command
-        # aborts with a traceback. Nothing is committed.
+        monkeypatch.chdir(tmp_path)
         sub = _submission(SubmissionStatus.DRAFT)
         session = FakeSession(objects={"sub-1": sub})
         _install_session(monkeypatch, session)
-        monkeypatch.setattr(
-            "netra.bugbounty.graph_indexer.export_submissions_json",
-            lambda *_a, **_k: pytest.fail("export must not run on an invalid transition"),
-        )
 
         result = _invoke(
             runner, ["submission", "verdict", "sub-1", "paid", "--payout-actual", "999"]
         )
-        assert result.exit_code == 1
-        assert isinstance(result.exception, InvalidTransition)
+        assert result.exit_code == 2
+        assert isinstance(result.exception, SystemExit)
+        assert "Invalid submission transition" in out_console.getvalue()
         assert session.commits == 0
-        assert sub.payout_actual == 999  # mutated in memory before validation
+        assert sub.status == SubmissionStatus.DRAFT
+        assert sub.payout_actual is None  # not touched by the rejected verdict
+        assert not (tmp_path / "data/graphify/submissions.json").exists()
 
     def test_verdict_unknown_submission_exits_1(self, runner, monkeypatch, out_console):
         _install_session(monkeypatch, FakeSession())

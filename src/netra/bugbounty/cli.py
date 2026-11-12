@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import socket
@@ -1163,13 +1164,21 @@ async def submission_status_cmd(submission_id: str, new_status: str, notes: str 
     from netra.db.engine import get_session
     from netra.db.models.bb_submission import BBSubmission, SubmissionStatus
 
+    try:
+        target_status = SubmissionStatus(new_status)
+    except ValueError:
+        valid = ", ".join(s.value for s in SubmissionStatus)
+        console.print(f"[red]invalid status:[/red] {new_status}")
+        console.print(f"valid statuses: {valid}")
+        sys.exit(2)
+
     async with get_session() as session:
         submission = await session.get(BBSubmission, submission_id)
         if submission is None:
             console.print(f"[red]submission not found:[/red] {submission_id}")
             sys.exit(1)
         try:
-            await transition(session, submission, SubmissionStatus(new_status), notes=notes)
+            await transition(session, submission, target_status, notes=notes)
             await session.commit()
         except InvalidTransition as exc:
             console.print(f"[red]{exc}[/red]")
@@ -1187,8 +1196,7 @@ async def submission_status_cmd(submission_id: str, new_status: str, notes: str 
 async def submission_verdict_cmd(
     submission_id: str, verdict: str, payout_actual: int | None, notes: str
 ) -> None:
-    from netra.bugbounty.graph_indexer import export_submissions_json
-    from netra.bugbounty.submission.tracker import transition
+    from netra.bugbounty.submission.tracker import InvalidTransition, transition
     from netra.db.engine import get_session
     from netra.db.models.bb_submission import BBSubmission, SubmissionStatus
 
@@ -1198,30 +1206,74 @@ async def submission_verdict_cmd(
         "na": SubmissionStatus.RESOLVED_NA,
         "info": SubmissionStatus.RESOLVED_INFORMATIVE,
     }
+    history_path = Path("data/graphify/submissions.json")
     async with get_session() as session:
         submission = await session.get(BBSubmission, submission_id)
         if submission is None:
             console.print(f"[red]submission not found:[/red] {submission_id}")
             sys.exit(1)
+        # transition() validates before mutating, so a rejected verdict leaves the
+        # submission untouched (payout_actual is only set once the transition is accepted).
+        try:
+            await transition(session, submission, status_map[verdict], notes=notes)
+        except InvalidTransition as exc:
+            console.print(f"[red]{exc}[/red]")
+            sys.exit(2)
         submission.payout_actual = payout_actual
-        await transition(session, submission, status_map[verdict], notes=notes)
+        record = _submission_graph_record(submission)
         await session.commit()
-        export_submissions_json(
-            [
-                {
-                    "id": submission.id,
-                    "title": submission.title,
-                    "severity": submission.severity,
-                    "status": submission.status,
-                    "program_id": submission.program_id,
-                    "finding_id": submission.finding_id,
-                    "vuln_class": (submission.metadata_ or {}).get("vuln_class"),
-                }
-            ],
-            Path("data/graphify/submissions.json"),
-        )
 
+    _merge_submission_history(history_path, record)
     console.print(f"[green]recorded[/green] verdict={verdict} for {submission_id}")
+
+
+def _submission_graph_record(submission) -> dict:
+    """Map a BBSubmission to the Graphify submissions.json record shape."""
+    return {
+        "id": str(submission.id),
+        "type": "submission",
+        "attrs": {
+            "title": submission.title,
+            "severity": submission.severity,
+            "status": str(submission.status),
+            "program_id": str(submission.program_id),
+            "vuln_class": (submission.metadata_ or {}).get("vuln_class"),
+            "asset_path": None,
+        },
+        "edges": [
+            {"to": str(submission.program_id), "rel": "for_program"},
+            {"to": str(submission.finding_id), "rel": "from_finding"},
+        ],
+    }
+
+
+def _merge_submission_history(path: Path, record: dict) -> None:
+    """Upsert one record (keyed by id) into the shared submissions history file."""
+    records: list = []
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(loaded, list):
+                raise ValueError("expected a JSON list of records")
+            records = loaded
+        except (OSError, ValueError) as exc:
+            console.print(
+                f"[yellow]warning:[/yellow] could not read {path} ({exc}); "
+                "starting from an empty history"
+            )
+    else:
+        console.print(f"[yellow]note:[/yellow] {path} not found; starting a new history")
+
+    replaced = False
+    for i, existing in enumerate(records):
+        if isinstance(existing, dict) and existing.get("id") == record["id"]:
+            records[i] = record
+            replaced = True
+    if not replaced:
+        records.append(record)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(records, indent=2), encoding="utf-8")
 
 
 @bb.group("graphify", help="Graphify local-output indexing.")

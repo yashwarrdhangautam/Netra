@@ -43,12 +43,16 @@ def estimate_payout(
     The estimate is the weighted point in the program's range. Low and high apply
     a ±20% confidence band, clamped to the program's min/max.
     """
+    key = severity.strip().lower()
+    if key not in SEVERITY_WEIGHTS:
+        valid = ", ".join(SEVERITY_WEIGHTS)
+        raise ValueError(f"Unknown severity {severity!r}; valid values: {valid}")
     if program_min is None or program_max is None:
         return None
     if program_max < program_min:
         return None  # bad data — refuse to extrapolate
 
-    weight = SEVERITY_WEIGHTS.get(severity.strip().lower(), 0.0)
+    weight = SEVERITY_WEIGHTS[key]
     estimate = int(program_min + (program_max - program_min) * weight)
 
     # ±20% confidence band, clamped to program range.

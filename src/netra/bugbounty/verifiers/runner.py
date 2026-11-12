@@ -21,6 +21,9 @@ def parse_captured_request(evidence: BBEvidence) -> dict[str, Any]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        data = None
+    if not isinstance(data, dict):
+        # Non-object JSON (scalars, arrays) and non-JSON text are both treated as raw text.
         data = evidence.metadata_ or {}
         data.setdefault("raw", text)
     request = data.get("request") if isinstance(data.get("request"), dict) else data

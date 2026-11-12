@@ -31,9 +31,9 @@ def test_severity_from_string_is_case_insensitive() -> None:
 
 
 def test_severity_from_string_rejects_unknown_value() -> None:
-    # Current behaviour: unknown labels surface as a bare KeyError.
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="'severe'") as exc_info:
         Severity.from_string("severe")
+    assert "info, low, medium, high, critical" in str(exc_info.value)
 
 
 def test_severity_to_string_is_lowercase_name() -> None:
@@ -61,8 +61,14 @@ def test_cap_severity_equal_values() -> None:
 
 
 def test_cap_severity_invalid_cap_raises() -> None:
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="'bogus'") as exc_info:
         cap_severity("high", "bogus")
+    assert "critical" in str(exc_info.value)
+
+
+def test_cap_severity_invalid_suggestion_raises() -> None:
+    with pytest.raises(ValueError, match="'severe'"):
+        cap_severity("severe", None)
 
 
 @pytest.mark.parametrize(
@@ -83,9 +89,10 @@ def test_cvss_bucket_boundaries(score: float, expected: str) -> None:
     assert cvss_to_severity(score) == expected
 
 
-def test_cvss_negative_score_falls_through_to_info() -> None:
-    # Current behaviour: anything not > 0.0 is reported as info, including invalid negatives.
-    assert cvss_to_severity(-1.0) == "info"
+@pytest.mark.parametrize("score", [-1.0, -0.1, 10.1, 42.0, float("nan")])
+def test_cvss_out_of_range_score_raises(score: float) -> None:
+    with pytest.raises(ValueError, match="0.0 and 10.0"):
+        cvss_to_severity(score)
 
 
 # ---------------------------------------------------------------------------
@@ -279,11 +286,10 @@ def test_estimate_severity_is_case_and_whitespace_insensitive() -> None:
     assert estimate_payout("  HIGH ", 100, 1000) == estimate_payout("high", 100, 1000)
 
 
-def test_estimate_unknown_severity_falls_back_to_minimum() -> None:
-    # Current behaviour: unrecognised severities silently get weight 0.0 (the minimum).
-    est = estimate_payout("severe", 100, 1000)
-    assert est is not None
-    assert est.estimate == 100
+def test_estimate_unknown_severity_raises() -> None:
+    with pytest.raises(ValueError, match="'severe'") as exc_info:
+        estimate_payout("severe", 100, 1000)
+    assert "critical" in str(exc_info.value)
 
 
 def test_estimate_zero_width_range_collapses_to_point() -> None:

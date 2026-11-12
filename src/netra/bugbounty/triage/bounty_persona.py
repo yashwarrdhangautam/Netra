@@ -100,11 +100,21 @@ def parse_response(raw: str) -> BountyScore:
         raise ValueError(f"BountyHunter response was not valid JSON: {exc}") from exc
 
     try:
-        return BountyScore(
-            impact=int(data["impact"]),
-            novelty=int(data["novelty"]),
-            payout=int(data["payout"]),
-            rationale=str(data.get("rationale_short", ""))[:280],
-        )
+        impact = int(data["impact"])
+        novelty = int(data["novelty"])
+        payout = int(data["payout"])
     except (KeyError, ValueError, TypeError) as exc:
         raise ValueError(f"BountyHunter response missing/invalid fields: {exc}") from exc
+
+    # Each dimension is documented as 1-10; out-of-range scores make composite
+    # leave its documented 1.0-10.0 range, so the response is rejected.
+    for name, value in (("impact", impact), ("novelty", novelty), ("payout", payout)):
+        if not 1 <= value <= 10:
+            raise ValueError(f"BountyHunter score out of range 1-10: {name}={value}")
+
+    return BountyScore(
+        impact=impact,
+        novelty=novelty,
+        payout=payout,
+        rationale=str(data.get("rationale_short", ""))[:280],
+    )

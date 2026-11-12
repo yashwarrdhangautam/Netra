@@ -14,12 +14,20 @@ from netra.db.models.base import Base
 class SubmissionStatus(StrEnum):
     """Submission state machine.
 
-    Transitions:
-        draft → ready_to_send → sent → acknowledged → triaging
-                                                       ↘ resolved_paid
-                                                       ↘ resolved_dup
-                                                       ↘ resolved_na
-                                                       ↘ resolved_informative
+    Transitions (mirrors SUBMISSION_TRANSITIONS):
+        draft → ready_to_send
+        draft → resolved_na
+        ready_to_send → sent
+        ready_to_send → draft
+        sent → acknowledged
+        sent → resolved_na
+        acknowledged → triaging
+        acknowledged → resolved_na
+        triaging → resolved_paid
+        triaging → resolved_dup
+        triaging → resolved_na
+        triaging → resolved_informative
+        resolved_paid, resolved_dup, resolved_na and resolved_informative are terminal.
     """
 
     DRAFT = "draft"

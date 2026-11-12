@@ -21,7 +21,11 @@ class Severity(IntEnum):
 
     @classmethod
     def from_string(cls, s: str) -> Severity:
-        return cls[s.upper()]
+        try:
+            return cls[s.upper()]
+        except KeyError:
+            valid = ", ".join(m.name.lower() for m in cls)
+            raise ValueError(f"Unknown severity {s!r}; valid values: {valid}") from None
 
     def to_string(self) -> str:
         return self.name.lower()
@@ -45,7 +49,11 @@ def cvss_to_severity(cvss_score: float) -> str:
         4.0-6.9   → medium
         7.0-8.9   → high
         9.0-10.0  → critical
+
+    Raises ValueError for scores outside 0.0-10.0.
     """
+    if not 0.0 <= cvss_score <= 10.0:
+        raise ValueError(f"CVSS score must be between 0.0 and 10.0, got {cvss_score!r}")
     if cvss_score >= 9.0:
         return "critical"
     if cvss_score >= 7.0:

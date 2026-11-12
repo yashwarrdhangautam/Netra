@@ -208,30 +208,46 @@ def test_entry_missing_id_raises_config_error(tmp_path):
         load_verifiers(path)
 
 
-def test_non_object_entry_raises_type_error_not_config_error(tmp_path):
-    """BUG (not a safety hole, it still fails closed): a non-object entry escapes the
-    KeyError handler, so callers see TypeError instead of VerifierConfigError.
-    loader.py:47-61."""
+def test_non_object_entry_raises_config_error(tmp_path):
     path = _write_yaml(tmp_path, {"verifiers": ["not-an-object"]})
-    with pytest.raises(TypeError):
+    with pytest.raises(VerifierConfigError, match="must be an object"):
         load_verifiers(path)
 
 
-def test_top_level_list_raises_attribute_error(tmp_path):
-    """BUG (fails closed): a top-level JSON array hits data.get() and raises
-    AttributeError rather than VerifierConfigError. loader.py:47."""
-    path = _write_yaml(tmp_path, [{"id": "x"}])
-    with pytest.raises(AttributeError):
+def test_top_level_list_raises_config_error(tmp_path):
+    path = _write_yaml(tmp_path, [{"id": "x", "vuln_class": "xss"}])
+    with pytest.raises(VerifierConfigError, match="must be an object"):
         load_verifiers(path)
 
 
-def test_string_methods_are_split_into_characters(tmp_path):
-    """BUG: methods given as a bare string is iterated character by character, so
-    "GET" becomes ('G', 'E', 'T'). Still fails closed (no GET/HEAD match), but the
-    manifest shown to operators is wrong. loader.py:54."""
-    path = _write_yaml(tmp_path, {"verifiers": [{"id": "s", "vuln_class": "xss", "methods": "GET"}]})
+def test_verifiers_must_be_a_list(tmp_path):
+    path = _write_yaml(tmp_path, {"verifiers": {"id": "x", "vuln_class": "xss"}})
+    with pytest.raises(VerifierConfigError, match="must be a list"):
+        load_verifiers(path)
+
+
+def test_string_methods_are_one_method(tmp_path):
+    """A bare string is a single method, not a sequence of characters."""
+    path = _write_yaml(tmp_path, {"verifiers": [{"id": "s", "vuln_class": "xss", "methods": "get"}]})
     (spec,) = load_verifiers(path)
-    assert spec.methods == ("G", "E", "T")
+    assert spec.methods == ("GET",)
+
+
+def test_list_methods_are_uppercased(tmp_path):
+    path = _write_yaml(
+        tmp_path, {"verifiers": [{"id": "s", "vuln_class": "xss", "methods": ["get", "HEAD"]}]}
+    )
+    (spec,) = load_verifiers(path)
+    assert spec.methods == ("GET", "HEAD")
+
+
+@pytest.mark.parametrize("methods", [5, None, {"GET": 1}, ["GET", 1], [["GET"]]])
+def test_invalid_methods_raise_config_error(tmp_path, methods):
+    path = _write_yaml(
+        tmp_path, {"verifiers": [{"id": "s", "vuln_class": "xss", "methods": methods}]}
+    )
+    with pytest.raises(VerifierConfigError, match="methods"):
+        load_verifiers(path)
 
 
 def test_missing_vuln_class_is_rejected_not_wildcarded(tmp_path):
@@ -351,12 +367,20 @@ def test_parse_non_json_mutates_evidence_metadata(tmp_path):
     assert meta.get("raw") == "plain"
 
 
-def test_parse_json_scalar_raises_attribute_error(tmp_path):
-    """BUG: a JSON scalar such as 123 is valid JSON, so the fallback is skipped and
-    data.get() fails with AttributeError. runner.py:26."""
-    ev = _evidence(tmp_path, "123")
-    with pytest.raises(AttributeError):
-        runner.parse_captured_request(ev)
+def test_parse_json_scalar_is_treated_as_raw_text(tmp_path):
+    """A JSON scalar such as 123 is handled like non-JSON text: metadata is used and the
+    scalar is kept under "raw"."""
+    ev = _evidence(tmp_path, "123", metadata={"url": "https://app.test/s"})
+    parsed = runner.parse_captured_request(ev)
+    assert parsed["method"] == "GET"
+    assert parsed["url"] == "https://app.test/s"
+    assert ev.metadata_["raw"] == "123"
+
+
+def test_parse_json_array_is_treated_as_raw_text(tmp_path):
+    ev = _evidence(tmp_path, '[{"url": "https://app.test/a"}]', metadata={"target": "https://app.test/t"})
+    parsed = runner.parse_captured_request(ev)
+    assert parsed["url"] == "https://app.test/t"
 
 
 # ── runner.py: run_replay ──────────────────────────────────────────────────────

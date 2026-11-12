@@ -2,8 +2,6 @@
 
 All Graphify CLI calls are mocked; no real subprocess, LLM or network is used.
 
-Known source defects are recorded as strict xfail tests so the suite stays green
-while the defect remains visible. Source files are intentionally not modified.
 """
 
 from __future__ import annotations
@@ -273,18 +271,11 @@ async def test_index_codebase_reindexes_when_manifest_is_stale_or_garbage(
     assert result.success is True
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Known defect: graph_indexer.py:126 does not catch GraphifyNotAvailable from "
-        "_run_graphify, so a missing CLI raises instead of returning a failed IndexResult."
-    ),
-)
 @pytest.mark.asyncio
 async def test_index_codebase_missing_graphify_returns_failure_result(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Desired behaviour: degrade to success=False when the Graphify CLI is absent."""
+    """A missing Graphify CLI degrades to success=False instead of raising."""
     monkeypatch.setattr(graph_indexer.shutil, "which", lambda name: None)
     src = tmp_path / "src"
     src.mkdir()
@@ -294,18 +285,24 @@ async def test_index_codebase_missing_graphify_returns_failure_result(
 
     assert result.success is False
     assert result.error is not None
+    assert "graphify CLI not found" in result.error
+    assert (result.nodes, result.edges) == (0, 0)
+    assert not (tmp_path / "out" / ".netra_graphify_mtime").exists()
 
 
 @pytest.mark.asyncio
-async def test_index_codebase_missing_graphify_raises_current_behaviour(
+async def test_index_codebase_other_runner_exceptions_still_propagate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(graph_indexer.shutil, "which", lambda name: None)
     src = tmp_path / "src"
     src.mkdir()
     (src / "a.py").write_text("x")
 
-    with pytest.raises(GraphifyNotAvailable):
+    async def boom(args, cwd=None):
+        raise RuntimeError("pipe broke")
+
+    monkeypatch.setattr(graph_indexer, "_run_graphify", boom)
+    with pytest.raises(RuntimeError, match="pipe broke"):
         await index_codebase(src, tmp_path / "out")
 
 
@@ -581,13 +578,6 @@ def test_find_graph_similar_round_trips_export_submissions_json(tmp_path: Path) 
     assert [h["id"] for h in hints] == ["1"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Known defect: deduper.py:108-112 normalises a missing asset_path to '/', so a "
-        "record with no asset_path matches every top-level asset as a 'neighbour'."
-    ),
-)
 def test_find_graph_similar_ignores_records_without_asset_path(tmp_path: Path) -> None:
     path = _write_export(
         tmp_path / "s.json",
@@ -596,13 +586,13 @@ def test_find_graph_similar_ignores_records_without_asset_path(tmp_path: Path) -
     assert find_graph_similar("p1", "/login", "xss", export_path=path) == []
 
 
-def test_find_graph_similar_missing_asset_path_currently_matches_top_level(tmp_path: Path) -> None:
-    """Documents current behaviour behind the xfail above."""
+@pytest.mark.parametrize("query_asset", ["", "   ", None])
+def test_find_graph_similar_empty_query_asset_produces_no_neighbours(tmp_path: Path, query_asset) -> None:
     path = _write_export(
         tmp_path / "s.json",
-        [{"id": "no-path", "attrs": {"program_id": "p1", "vuln_class": "xss", "asset_path": None}}],
+        [{"id": "top", "attrs": {"program_id": "p1", "vuln_class": "xss", "asset_path": "/login"}}],
     )
-    assert [h["id"] for h in find_graph_similar("p1", "/login", "xss", export_path=path)] == ["no-path"]
+    assert find_graph_similar("p1", query_asset, "xss", export_path=path) == []
 
 
 def test_deduper_module_exports_expected_surface() -> None:
@@ -705,22 +695,24 @@ def test_parse_response_invalid_shapes_raise_value_error(raw: str) -> None:
         parse_response(raw)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Known defect: bounty_persona.py:102-108 does not range-check scores, so values "
-        "outside 1-10 pass through and push composite outside its documented 1.0-10.0 range."
-    ),
-)
 def test_parse_response_rejects_out_of_range_scores() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="out of range"):
         parse_response('{"impact": 42, "novelty": 42, "payout": 42}')
 
 
-def test_parse_response_currently_accepts_out_of_range_scores() -> None:
-    """Documents current behaviour behind the xfail above."""
-    score = parse_response('{"impact": 42, "novelty": 42, "payout": 42}')
-    assert score.composite == pytest.approx(42.0)
+@pytest.mark.parametrize("field", ["impact", "novelty", "payout"])
+@pytest.mark.parametrize("bad", [0, 11, -3])
+def test_parse_response_rejects_each_dimension_outside_1_to_10(field: str, bad: int) -> None:
+    data = {"impact": 5, "novelty": 5, "payout": 5}
+    data[field] = bad
+    with pytest.raises(ValueError, match="out of range"):
+        parse_response(json.dumps(data))
+
+
+def test_parse_response_accepts_range_boundaries() -> None:
+    score = parse_response('{"impact": 1, "novelty": 10, "payout": 1}')
+    assert score.composite == pytest.approx(0.5 + 3.0 + 0.2)
+    assert parse_response('{"impact": 10, "novelty": 10, "payout": 10}').composite == pytest.approx(10.0)
 
 
 def test_prompt_template_formats_with_all_placeholders() -> None:
