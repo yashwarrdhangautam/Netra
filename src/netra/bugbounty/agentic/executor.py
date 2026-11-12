@@ -161,12 +161,12 @@ class AgenticExecutor:
         if choice.tool == "httpx":
             return await HttpxTool().run(choice.target, head=True, tech_detect=True, **kwargs)
         if choice.tool == "nuclei":
-            return await NucleiTool().run(
-                choice.target,
-                tags="cve,exposure,misconfig",
-                severity="critical,high,medium",
-                **kwargs,
-            )
+            defaults = {"tags": "cve,exposure,misconfig", "severity": "critical,high,medium"}
+            # Flags may not override the executor's safe template and severity set.
+            conflicts = sorted(set(kwargs) & set(defaults))
+            if conflicts:
+                raise ValueError(f"nuclei flags cannot override executor defaults: {conflicts}")
+            return await NucleiTool().run(choice.target, **defaults, **kwargs)
         if choice.tool == "ffuf":
             return await FfufTool().run(choice.target, **kwargs)
         raise ValueError(

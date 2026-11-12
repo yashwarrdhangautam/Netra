@@ -207,6 +207,9 @@ def parse_target(target: str) -> ParsedTarget:
     if host:
         ip_obj = _try_parse_ip(host)
         if ip_obj is not None:
+            # ::ffff:10.0.0.5 is the same host as 10.0.0.5; unwrap it so IPv4 rules apply.
+            if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped is not None:
+                ip_obj = ip_obj.ipv4_mapped
             is_ip = True
             normalised_host = str(ip_obj)
             asset_kind_hint = AssetType.IP
@@ -215,13 +218,10 @@ def parse_target(target: str) -> ParsedTarget:
             if normalised_host and asset_kind_hint == AssetType.OTHER:
                 asset_kind_hint = AssetType.DOMAIN
 
-    # Path normalisation: collapse duplicate slashes, strip trailing slash unless root.
-    if path != "/":
-        path = re.sub(r"/+", "/", path)
-        if path.endswith("/") and len(path) > 1:
-            path = path.rstrip("/")
-    if not path.startswith("/"):
-        path = "/" + path
+    # Path normalisation: resolve "." and ".." segments before any rule matches, so
+    # "/admin/../secret" cannot slip past a "/admin" rule. Also collapses duplicate
+    # slashes and strips any trailing slash.
+    path = _resolve_dot_segments(path)
 
     return ParsedTarget(
         original=raw,
@@ -233,6 +233,23 @@ def parse_target(target: str) -> ParsedTarget:
         ip_obj=ip_obj,
         asset_kind_hint=asset_kind_hint,
     )
+
+
+def _resolve_dot_segments(path: str) -> str:
+    """Return a canonical absolute path: '.' dropped, '..' applied, empty segments removed.
+
+    '..' never climbs above the root, so '/../x' becomes '/x'.
+    """
+    out: list[str] = []
+    for segment in path.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            if out:
+                out.pop()
+            continue
+        out.append(segment)
+    return "/" + "/".join(out)
 
 
 # ── Per-rule matchers ───────────────────────────────────────────────────────────

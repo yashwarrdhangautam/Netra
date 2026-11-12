@@ -144,7 +144,13 @@ def diff_scope(existing: Iterable[BBScopeRule], fresh: Iterable[ScopeRuleInput])
     }
 
     added = [fresh_sigs[s] for s in fresh_sigs.keys() - existing_sigs.keys()]
-    removed = [existing_sigs[s] for s in existing_sigs.keys() - fresh_sigs.keys()]
+    # Only platform-synced rules can be removed by a sync. Operator-authored rules
+    # (synced_from_platform=False), such as a manual OUT exclusion, are never deactivated here.
+    removed = [
+        existing_sigs[s]
+        for s in existing_sigs.keys() - fresh_sigs.keys()
+        if existing_sigs[s].synced_from_platform
+    ]
     unchanged = len(existing_sigs.keys() & fresh_sigs.keys())
 
     return ScopeDiff(added=added, removed=removed, unchanged_count=unchanged)
