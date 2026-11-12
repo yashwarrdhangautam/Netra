@@ -104,16 +104,24 @@ class LearningFetcher:
         created_client = self.client is None
         try:
             response = await client.get(robots_url)
-            if response.status_code >= 400:
+            status = response.status_code
+            if 200 <= status < 300:
+                parser = robotparser.RobotFileParser()
+                parser.parse(response.text.splitlines())
+                self._robots_cache[host] = parser
+                return parser
+            if 400 <= status < 500 and status != 429:
+                # RFC 9309 2.3.1.3: unavailable robots.txt means no restrictions. Safe to cache.
                 self._robots_cache[host] = None
                 return None
-            parser = robotparser.RobotFileParser()
-            parser.parse(response.text.splitlines())
-            self._robots_cache[host] = parser
-            return parser
-        except Exception:
-            self._robots_cache[host] = None
-            return None
+            # RFC 9309 2.3.1.4: 5xx (and 429) means the rules are unknown, so refuse this fetch.
+            # Not cached: the next request retries.
+            raise RobotsDeniedError(f"robots.txt unavailable (HTTP {status}); refusing {url}")
+        except RobotsDeniedError:
+            raise
+        except Exception as exc:
+            # Transient network failure: refuse this fetch, do not cache a permissive result.
+            raise RobotsDeniedError(f"robots.txt fetch failed; refusing {url}: {exc}") from exc
         finally:
             if created_client:
                 await client.aclose()

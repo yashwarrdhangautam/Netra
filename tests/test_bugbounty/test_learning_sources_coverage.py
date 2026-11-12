@@ -643,7 +643,7 @@ async def test_fetcher_robots_missing_allows_and_is_cached() -> None:
     assert calls.count("https://robots-missing.test/robots.txt") == 1
 
 
-async def test_fetcher_robots_fetch_error_fails_open() -> None:
+async def test_fetcher_robots_fetch_error_fails_closed() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url).endswith("/robots.txt"):
             raise httpx.ConnectError("boom")
@@ -652,7 +652,8 @@ async def test_fetcher_robots_fetch_error_fails_open() -> None:
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
         fetcher = LearningFetcher(client=client, obey_robots=True, default_rps=0)
-        assert await fetcher.get_text("https://robots-error.test/x") == "ok"
+        with pytest.raises(RobotsDeniedError, match="robots.txt fetch failed"):
+            await fetcher.get_text("https://robots-error.test/x")
     finally:
         await client.aclose()
 
@@ -679,10 +680,10 @@ async def test_fetcher_robots_parser_fetch_failure_builds_own_client(monkeypatch
     created: list[httpx.AsyncClient] = []
     _patch_async_client(monkeypatch, handler, created)
 
-    parser = await LearningFetcher(obey_robots=True, default_rps=0)._robots_parser(
-        "https://robots-offline.test/x"
-    )
-    assert parser is None
+    with pytest.raises(RobotsDeniedError):
+        await LearningFetcher(obey_robots=True, default_rps=0)._robots_parser(
+            "https://robots-offline.test/x"
+        )
     assert created and created[0].is_closed
 
 
@@ -761,10 +762,6 @@ async def test_fetcher_no_sleep_when_interval_already_elapsed(monkeypatch) -> No
     assert sleeps == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG: robots.txt 5xx is treated as allow-all instead of fail-closed (fetcher.py:107-108)",
-)
 async def test_fetcher_robots_server_error_should_fail_closed() -> None:
     """RFC 9309 section 2.3.1.4: a 5xx robots.txt means the crawler must assume disallow."""
 
@@ -782,10 +779,6 @@ async def test_fetcher_robots_server_error_should_fail_closed() -> None:
         await client.aclose()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG: transient robots.txt fetch error is cached as allow-all for the process lifetime (fetcher.py:114-115)",
-)
 async def test_fetcher_robots_transient_error_is_not_cached_forever() -> None:
     state = {"robots_up": False}
 
@@ -793,16 +786,18 @@ async def test_fetcher_robots_transient_error_is_not_cached_forever() -> None:
         if str(request.url).endswith("/robots.txt"):
             if not state["robots_up"]:
                 raise httpx.ConnectError("temporarily unreachable")
-            return httpx.Response(200, text="User-agent: *\nDisallow: /\n")
+            return httpx.Response(200, text="User-agent: *\nAllow: /\n")
         return httpx.Response(200, text="ok")
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
         fetcher = LearningFetcher(client=client, obey_robots=True, default_rps=0)
-        assert await fetcher.get_text("https://robots-transient.test/page") == "ok"
-        state["robots_up"] = True
+        # During the outage the fetch is refused (fail closed), not allowed.
         with pytest.raises(RobotsDeniedError):
             await fetcher.get_text("https://robots-transient.test/page")
+        # Nothing permissive was cached, so once robots.txt is back the fetch proceeds.
+        state["robots_up"] = True
+        assert await fetcher.get_text("https://robots-transient.test/page") == "ok"
     finally:
         await client.aclose()
 
