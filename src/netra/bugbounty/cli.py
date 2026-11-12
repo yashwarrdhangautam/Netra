@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import socket
 import sys
@@ -973,6 +974,52 @@ async def program_approve_cmd(program: str, platform: str, vuln_classes: str) ->
     )
 
 
+def _is_interactive_stdin() -> bool:
+    return sys.stdin is not None and sys.stdin.isatty()
+
+
+def _require_typed_handle(typed_confirm: str | None, handle: str) -> None:
+    """Refuse unless the operator confirms the exact program handle.
+
+    Exits 2 on any refusal. Never returns when the handle does not match.
+    """
+    if typed_confirm is None:
+        if not _is_interactive_stdin():
+            console.print(
+                "[red]refusing replay: typed confirmation required and stdin is not "
+                "interactive. Re-run with --typed-confirm <program handle>.[/red]"
+            )
+            sys.exit(2)
+        typed_confirm = click.prompt(
+            "Type the program handle to confirm replay",
+            default="",
+            show_default=False,
+        )
+    if typed_confirm != handle:
+        console.print("[red]typed confirmation does not match the program handle[/red]")
+        sys.exit(2)
+
+
+_SINCE_PATTERN = re.compile(r"(\d+)([hd])")
+
+
+def parse_since_window(value: str) -> timedelta:
+    """Parse a relative window such as '24h' or '7d' into a timedelta.
+
+    Raises ValueError for any other format or a zero-length window.
+    """
+    match = _SINCE_PATTERN.fullmatch(value)
+    if match is None:
+        raise ValueError(
+            f"invalid --since value {value!r}: expected <number>h or <number>d, e.g. 24h or 7d"
+        )
+    amount = int(match.group(1))
+    if amount <= 0:
+        raise ValueError(f"invalid --since value {value!r}: window must be greater than zero")
+    unit = match.group(2)
+    return timedelta(hours=amount) if unit == "h" else timedelta(days=amount)
+
+
 @bb.command("verify", help="Generate a PoC preview and run the allowlisted replay verifier.")
 @click.option("--finding-id", required=True, help="Finding UUID.")
 @click.option(
@@ -1036,9 +1083,7 @@ async def verify_cmd(
                 f"[red]verifier not allowlisted for vuln class {vuln_class}:[/red] {chosen_verifier}"
             )
             sys.exit(2)
-        if typed_confirm and typed_confirm != program.handle:
-            console.print("[red]typed confirmation does not match the program handle[/red]")
-            sys.exit(2)
+        _require_typed_handle(typed_confirm, program.handle)
 
         poc = await PocBuilder().build(
             {
@@ -1287,7 +1332,12 @@ def audit_group() -> None:
 
 
 @audit_group.command("out-of-scope", help="List blocked scope-gate events.")
-@click.option("--since", default="7d", help="Time window, currently informational.")
+@click.option(
+    "--since",
+    default="7d",
+    show_default=True,
+    help="Relative window: <number>h or <number>d, e.g. 24h or 7d.",
+)
 @click.option("--limit", default=100, type=int)
 @_async
 async def audit_out_of_scope_cmd(since: str, limit: int) -> None:
@@ -1296,10 +1346,18 @@ async def audit_out_of_scope_cmd(since: str, limit: int) -> None:
     from netra.db.engine import get_session
     from netra.db.models.scan_phase import PhaseStatus, ScanPhase
 
+    try:
+        window = parse_since_window(since)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+    cutoff = datetime.now(UTC) - window
+
     async with get_session() as session:
         result = await session.execute(
             select(ScanPhase)
             .where(ScanPhase.status == PhaseStatus.BLOCKED)
+            .where(ScanPhase.created_at >= cutoff)
             .order_by(ScanPhase.created_at.desc())
             .limit(limit)
         )

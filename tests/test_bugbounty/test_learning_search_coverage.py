@@ -597,7 +597,7 @@ async def test_pgvector_path_applies_fallbacks_for_missing_fields(monkeypatch) -
                     program_handle=None,
                     source_platform="bugcrowd",
                     snippet=None,
-                    score=None,
+                    score=0.25,
                 )
             ],
             "bb_corpus_writeups": [_pg_writeup_row(tech_stack=None, snippet="y" * 500)],
@@ -612,7 +612,7 @@ async def test_pgvector_path_applies_fallbacks_for_missing_fields(monkeypatch) -
 
     assert by_kind["reports"].title == "bugcrowd:report"
     assert by_kind["reports"].snippet == ""
-    assert by_kind["reports"].score == 0.0
+    assert by_kind["reports"].score == pytest.approx(0.25)
     assert by_kind["writeups"].metadata["tech_stack"] == []
     assert len(by_kind["writeups"].snippet) == 280
     assert by_kind["advisories"].title == "advisory"
@@ -667,18 +667,16 @@ async def test_find_similar_pgvector_direct_respects_top_k() -> None:
     assert [hit.title for hit in hits] == ["best"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG: pgvector path keeps non-positive similarity hits that the Python fallback drops "
-        "(search.py:185 extends without the score <= 0 filter applied at search.py:155)"
-    ),
-)
 @pytest.mark.asyncio
 async def test_pgvector_path_drops_non_positive_scores_like_fallback(monkeypatch) -> None:
     _patch_search_embed(monkeypatch, [1.0, 0.0])
     session = _FakePgSession(
-        {"bb_corpus_reports": [_pg_report_row(title="opposed", score=-0.25)]}
+        {
+            "bb_corpus_reports": [
+                _pg_report_row(title="opposed", score=-0.25),
+                _pg_report_row(title="orthogonal", score=0.0),
+            ]
+        }
     )
 
     hits = await find_similar(session, "q", top_k=5, kinds=["reports"])
@@ -902,13 +900,6 @@ async def test_upsert_advisory_lookup_by_cve_and_ghsa_without_url(db_session, mo
     assert ghsa_again.summary == "ghsa updated"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG: upsert_advisory with no source_url, cve_id or ghsa_id filters on "
-        "ghsa_id == None (IS NULL) and overwrites an unrelated advisory (ingest.py:175)"
-    ),
-)
 @pytest.mark.asyncio
 async def test_upsert_advisory_without_identifiers_does_not_overwrite_other_rows(
     db_session, monkeypatch
@@ -941,6 +932,67 @@ async def test_upsert_advisory_without_identifiers_does_not_overwrite_other_rows
     assert created is True
     await db_session.refresh(existing)
     assert existing.summary == "untouched summary"
+
+
+@pytest.mark.asyncio
+async def test_upsert_advisory_identity_less_rows_with_different_titles_stay_separate(
+    db_session, monkeypatch
+) -> None:
+    _patch_ingest_embed(monkeypatch, [1.0, 0.0])
+    first, created_first = await upsert_advisory(
+        db_session,
+        source_url=None,
+        cve_id=None,
+        ghsa_id=None,
+        severity="low",
+        cvss_vector=None,
+        affected_packages=None,
+        summary="first advisory",
+        source="vendor-feed",
+        title="Alpha advisory",
+        published_at="2026-03-01",
+    )
+    second, created_second = await upsert_advisory(
+        db_session,
+        source_url=None,
+        cve_id=None,
+        ghsa_id=None,
+        severity="high",
+        cvss_vector=None,
+        affected_packages=None,
+        summary="second advisory",
+        source="vendor-feed",
+        title="Beta advisory",
+        published_at="2026-03-01",
+    )
+    await db_session.commit()
+
+    assert created_first is True
+    assert created_second is True
+    assert first.id != second.id
+    await db_session.refresh(first)
+    assert first.summary == "first advisory"
+    assert first.severity == "low"
+
+    # Same identity (source, title, published date) does update the matching row only.
+    again, created_again = await upsert_advisory(
+        db_session,
+        source_url=None,
+        cve_id=None,
+        ghsa_id=None,
+        severity="medium",
+        cvss_vector=None,
+        affected_packages=None,
+        summary="first advisory updated",
+        source="vendor-feed",
+        title="Alpha advisory",
+        published_at="2026-03-01",
+    )
+    await db_session.commit()
+    assert created_again is False
+    assert again.id == first.id
+    await db_session.refresh(second)
+    assert second.summary == "second advisory"
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,7 @@ import importlib
 import io
 import uuid
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -966,6 +967,8 @@ class TestVerify:
                 str(verify_env.finding.id),
                 "--evidence-id",
                 "ev-1",
+                "--typed-confirm",
+                "shopify",
             ],
         )
         # evidence was found via session.get, so the replay path executes
@@ -1017,7 +1020,10 @@ class TestVerify:
     ):
         self._session(monkeypatch, verify_env)
         verify_env.state["replay_result"] = {"status": "completed", "status_code": 200}
-        result = _invoke(runner, ["verify", "--finding-id", str(verify_env.finding.id)])
+        result = _invoke(
+            runner,
+            ["verify", "--finding-id", str(verify_env.finding.id), "--typed-confirm", "shopify"],
+        )
         assert result.exit_code == 0, result.output
         assert verify_env.state["find_args"] == ("xss_reflected_passive", "xss")
 
@@ -1027,7 +1033,10 @@ class TestVerify:
         verify_env.finding.tags = ["idor"]
         self._session(monkeypatch, verify_env)
         verify_env.state["replay_result"] = {"status": "completed", "status_code": 204}
-        result = _invoke(runner, ["verify", "--finding-id", str(verify_env.finding.id)])
+        result = _invoke(
+            runner,
+            ["verify", "--finding-id", str(verify_env.finding.id), "--typed-confirm", "shopify"],
+        )
         assert result.exit_code == 0, result.output
         assert verify_env.state["find_args"] == ("generic_read_only_replay", "idor")
 
@@ -1069,7 +1078,10 @@ class TestVerify:
     ):
         session = self._session(monkeypatch, verify_env)
         verify_env.state["replay_result"] = {"error": "connection reset"}
-        result = _invoke(runner, ["verify", "--finding-id", str(verify_env.finding.id)])
+        result = _invoke(
+            runner,
+            ["verify", "--finding-id", str(verify_env.finding.id), "--typed-confirm", "shopify"],
+        )
         assert result.exit_code == 0, result.output
         out = out_console.getvalue()
         assert "failed verifier=xss_reflected_passive" in out
@@ -1077,13 +1089,6 @@ class TestVerify:
         assert session.added[0].status == "failed"
         assert session.added[0].error_message == "connection reset"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG: verify runs the replay without the typed program-handle confirmation "
-            "when --typed-confirm is omitted (src/netra/bugbounty/cli.py:1039)"
-        ),
-    )
     def test_replay_requires_typed_confirmation(
         self, runner, monkeypatch, out_console, verify_env
     ):
@@ -1093,6 +1098,120 @@ class TestVerify:
         # Intended: no replay without a matching typed confirmation.
         assert verify_env.state["replay_args"] is None
         assert result.exit_code == 2
+
+    def test_refused_without_matching_handle_when_prompted(
+        self, runner, monkeypatch, out_console, verify_env
+    ):
+        self._session(monkeypatch, verify_env)
+        monkeypatch.setattr(bb_cli, "_is_interactive_stdin", lambda: True)
+        monkeypatch.setattr("click.prompt", lambda *_a, **_k: "not-the-handle")
+        result = _invoke(runner, ["verify", "--finding-id", str(verify_env.finding.id)])
+        assert result.exit_code == 2
+        assert "does not match the program handle" in out_console.getvalue()
+        assert verify_env.state["replay_args"] is None
+
+    def test_proceeds_when_prompted_handle_matches(
+        self, runner, monkeypatch, out_console, verify_env
+    ):
+        self._session(monkeypatch, verify_env)
+        verify_env.state["replay_result"] = {"status": "completed", "status_code": 200}
+        monkeypatch.setattr(bb_cli, "_is_interactive_stdin", lambda: True)
+        monkeypatch.setattr("click.prompt", lambda *_a, **_k: "shopify")
+        result = _invoke(runner, ["verify", "--finding-id", str(verify_env.finding.id)])
+        assert result.exit_code == 0, result.output
+        assert verify_env.state["replay_args"] is not None
+
+    def test_refused_when_not_interactive_without_typed_confirm(
+        self, runner, monkeypatch, out_console, verify_env
+    ):
+        self._session(monkeypatch, verify_env)
+        monkeypatch.setattr(bb_cli, "_is_interactive_stdin", lambda: False)
+
+        def _no_prompt(*_a, **_k):
+            raise AssertionError("must not prompt when stdin is not interactive")
+
+        monkeypatch.setattr("click.prompt", _no_prompt)
+        result = _invoke(runner, ["verify", "--finding-id", str(verify_env.finding.id)])
+        assert result.exit_code == 2
+        assert "stdin is not interactive" in out_console.getvalue()
+        assert verify_env.state["replay_args"] is None
+        assert _FakePoc.calls == []
+
+    def test_matching_handle_runs_replay(self, runner, monkeypatch, out_console, verify_env):
+        session = self._session(monkeypatch, verify_env)
+        verify_env.state["replay_result"] = {"status": "completed", "status_code": 200}
+        result = _invoke(
+            runner,
+            ["verify", "--finding-id", str(verify_env.finding.id), "--typed-confirm", "shopify"],
+        )
+        assert result.exit_code == 0, result.output
+        assert verify_env.state["replay_args"] is not None
+        assert len(session.added) == 1
+
+
+class TestSinceParser:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [("24h", timedelta(hours=24)), ("7d", timedelta(days=7)), ("1h", timedelta(hours=1))],
+    )
+    def test_accepts_hours_and_days(self, value, expected):
+        assert bb_cli.parse_since_window(value) == expected
+
+    @pytest.mark.parametrize(
+        "value", ["7w", "d", "h", "1.5d", "-1h", "0d", "24", "24hours", " 7d", "7D", ""]
+    )
+    def test_rejects_other_formats(self, value):
+        with pytest.raises(ValueError, match="invalid --since"):
+            bb_cli.parse_since_window(value)
+
+    def test_cli_rejects_bad_since_without_touching_db(self, runner, monkeypatch, out_console):
+        _forbid_db(monkeypatch)
+        result = _invoke(runner, ["audit", "out-of-scope", "--since", "7w"])
+        assert result.exit_code == 2
+        assert "invalid --since" in out_console.getvalue()
+
+
+class _RecordingSession(FakeSession):
+    def __init__(self, rows=None):
+        super().__init__(rows=rows)
+        self.statements: list = []
+
+    async def execute(self, stmt):
+        self.statements.append(stmt)
+        return _Result(self.rows)
+
+
+class TestAuditSinceWindow:
+    @staticmethod
+    def _cutoff_from(session):
+        compiled = session.statements[0].compile()
+        stamps = [v for v in compiled.params.values() if isinstance(v, datetime)]
+        assert len(stamps) == 1, compiled.params
+        return stamps[0]
+
+    @pytest.mark.parametrize(
+        ("since", "window"), [("24h", timedelta(hours=24)), ("7d", timedelta(days=7))]
+    )
+    def test_filters_rows_to_window(self, runner, monkeypatch, out_console, since, window):
+        session = _RecordingSession(rows=[])
+        _install_session(monkeypatch, session)
+        before = datetime.now(UTC)
+        result = _invoke(runner, ["audit", "out-of-scope", "--since", since])
+        after = datetime.now(UTC)
+        assert result.exit_code == 0, result.output
+        assert "created_at >=" in str(session.statements[0])
+        cutoff = self._cutoff_from(session)
+        assert before - window <= cutoff <= after - window
+
+    def test_defaults_to_seven_days(self, runner, monkeypatch, out_console):
+        session = _RecordingSession(rows=[])
+        _install_session(monkeypatch, session)
+        result = _invoke(runner, ["audit", "out-of-scope"])
+        assert result.exit_code == 0, result.output
+        cutoff = self._cutoff_from(session)
+        now = datetime.now(UTC)
+        expected = now - timedelta(days=7)
+        assert expected - timedelta(minutes=1) <= cutoff <= expected + timedelta(minutes=1)
 
 
 def BBEvidenceModel():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +11,8 @@ from netra.ai.brain import AIBrain
 from netra.bugbounty.agentic.sanitiser import SanitiserError, validate
 from netra.bugbounty.agentic.tool_registry import registered_tool_names
 from netra.bugbounty.scope import ScopeValidator
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -45,6 +48,13 @@ class ToolRouter:
         payload = await self._query_structured(prompt)
         try:
             safe = validate(payload, validator)
+            if safe["tool"] not in allow:
+                logger.warning(
+                    "LLM chose tool %r outside allowlist %s; rejecting choice",
+                    safe["tool"],
+                    allow,
+                )
+                raise ValueError(f"tool not in allowlist: {safe['tool']}")
             return ToolChoice(
                 tool=safe["tool"],
                 target=safe["target"],
@@ -57,6 +67,8 @@ class ToolRouter:
             fallback_tool = str(step.get("suggested_tool") or "nuclei")
             if fallback_tool not in {"subfinder", "httpx", "nuclei", "ffuf"}:
                 fallback_tool = "nuclei"
+            if fallback_tool not in allow:
+                raise ValueError(f"fallback tool not in allowlist: {fallback_tool}") from None
             fallback_target = str(step.get("target") or "")
             safe = validate(
                 {"tool": fallback_tool, "target": fallback_target, "flags": {}}, validator

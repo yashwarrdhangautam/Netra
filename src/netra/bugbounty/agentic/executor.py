@@ -13,7 +13,7 @@ from netra.bugbounty.agentic.planner import PlannedStep, TestPlan
 from netra.bugbounty.agentic.router import ToolRouter
 from netra.bugbounty.agentic.token_budget import count_tokens
 from netra.bugbounty.agentic.tool_registry import SafetyClass, get_tool_spec
-from netra.bugbounty.scope import ScopeValidator
+from netra.bugbounty.scope import ScopeValidator, ScopeViolation
 from netra.db.models.bb_agentic_step import BBAgenticStep
 from netra.db.models.bb_hunt_budget import BBHuntBudget
 from netra.db.models.bb_hunt_plan import BBHuntPlan
@@ -62,12 +62,29 @@ class AgenticExecutor:
                     "created_findings": created_findings,
                     "cancelled": True,
                 }
-            choice = await self.router.next_tool(
-                plan=plan.to_dict(),
-                observations=observations,
-                validator=validator,
-                available_tools=[step.suggested_tool],
-            )
+            try:
+                choice = await self.router.next_tool(
+                    plan=plan.to_dict(),
+                    observations=observations,
+                    validator=validator,
+                    available_tools=[step.suggested_tool],
+                )
+            except ScopeViolation as exc:
+                self.db.add(
+                    BBAgenticStep(
+                        scan_id=scan.id,
+                        plan_id=persisted_plan.id,
+                        step_n=index,
+                        status="blocked",
+                        tool_chosen=step.suggested_tool,
+                        llm_prompt=f"step:{step.vuln_class}",
+                        observations_in={"count": len(observations)},
+                        decision_rationale=f"Target out of scope: {exc.decision.reason}",
+                        metadata_={"target": step.target, "vuln_class": step.vuln_class},
+                    )
+                )
+                await self.db.commit()
+                continue
             budget.record_tokens(
                 count_tokens(str(plan.to_dict()))
                 + count_tokens(str(observations))
@@ -90,6 +107,13 @@ class AgenticExecutor:
 
             if dry_run:
                 step_row.status = "skipped"
+                continue
+
+            scope_reason = self._scope_block_reason(validator, choice.target)
+            if scope_reason is not None:
+                step_row.status = "blocked"
+                step_row.decision_rationale = f"Target out of scope: {scope_reason}"
+                await self.db.commit()
                 continue
 
             if not self._program_allows_step(program, step, choice.tool):
@@ -172,6 +196,15 @@ class AgenticExecutor:
         raise ValueError(
             f"Unsupported tool choice for executor: {choice.tool} ({spec.name if spec else 'unknown'})"
         )
+
+    @staticmethod
+    def _scope_block_reason(validator: ScopeValidator, target: str) -> str | None:
+        """Return the denial reason when the target is out of scope, else None."""
+        try:
+            validator.require(target)
+        except ScopeViolation as exc:
+            return exc.decision.reason
+        return None
 
     def _program_allows_step(self, program: BBProgram, step: PlannedStep, tool_name: str) -> bool:
         spec = get_tool_spec(tool_name)

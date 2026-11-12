@@ -182,7 +182,8 @@ async def _find_similar_pgvector(
             top_k=top_k,
             filters=filters,
         )
-        hits.extend(rows)
+        # Mirror the Python fallback: non-positive similarity is never a hit.
+        hits.extend(hit for hit in rows if hit.score > 0)
     hits.sort(key=lambda item: item.score, reverse=True)
     return hits[:top_k]
 

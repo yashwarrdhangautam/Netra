@@ -412,20 +412,14 @@ async def test_execute_choice_rejects_unsupported_tools(tool) -> None:
         await executor._execute_choice(_choice(tool))  # noqa: SLF001
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "SAFETY: AgenticExecutor.run_plan accepts a validator but never calls it; scope relies "
-        "solely on ToolRouter/sanitiser (executor.py:42, executor.py:103)"
-    ),
-)
 async def test_run_plan_scope_is_enforced_by_executor_not_only_router(monkeypatch) -> None:
     """Intended: an out-of-scope target never reaches a tool, even if the router returns it."""
     calls = _record_tool(monkeypatch, "HttpxTool", "httpx")
     _patch_finding_service(monkeypatch)
+    db = _db()
     router = FakeRouter([_choice("httpx", target="evil.example.com")])
 
-    await AgenticExecutor(_db(), router=router).run_plan(
+    result = await AgenticExecutor(db, router=router).run_plan(
         scan=_scan(),
         program=_program(),
         plan=_plan(_step("httpx")),
@@ -434,6 +428,10 @@ async def test_run_plan_scope_is_enforced_by_executor_not_only_router(monkeypatc
     )
 
     assert calls == []
+    assert result["observations"] == []
+    step_row = db.add.call_args_list[2].args[0]
+    assert step_row.status == "blocked"
+    assert "out of scope" in step_row.decision_rationale
 
 
 async def test_execute_choice_nuclei_rejects_flags_that_override_defaults(monkeypatch) -> None:
@@ -1081,13 +1079,6 @@ def test_default_retriever_with_graph_composes_both(monkeypatch, tmp_path: Path)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "SAFETY: ToolRouter.next_tool ignores available_tools on the LLM path, so the executor's "
-        "single-tool allowlist is bypassed (router.py:37, router.py:46-47)"
-    ),
-)
 async def test_router_llm_choice_is_limited_to_available_tools() -> None:
     """Intended: the LLM may only pick from available_tools, as the prompt states."""
     router = ToolRouter(
@@ -1112,20 +1103,15 @@ async def test_sanitiser_rejects_non_mapping_flags() -> None:
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "SAFETY: sanitiser forwards arbitrary LLM-chosen flag keys into tool **kwargs, "
-        "e.g. ffuf wordlist paths (sanitiser.py:18, sanitiser.py:33)"
-    ),
-)
-async def test_sanitiser_rejects_unknown_flag_keys() -> None:
-    with pytest.raises(SanitiserError):
-        validate(
-            {
-                "tool": "ffuf",
-                "target": "https://api.shopify.com/FUZZ",
-                "flags": {"wordlist": "/etc/passwd"},
-            },
-            _validator(),
-        )
+async def test_sanitiser_drops_path_flag_outside_approved_wordlists() -> None:
+    # Regression for the safety fix: a wordlist path outside the approved directory is
+    # dropped before it reaches the tool, instead of being forwarded into **kwargs.
+    result = validate(
+        {
+            "tool": "ffuf",
+            "target": "https://api.shopify.com/FUZZ",
+            "flags": {"wordlist": "/etc/passwd"},
+        },
+        _validator(),
+    )
+    assert "wordlist" not in result["flags"]

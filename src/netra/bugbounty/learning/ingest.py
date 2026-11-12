@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,6 +22,12 @@ from netra.db.models import (
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _advisory_identity_hash(source: str | None, title: str | None, published_at: str | None) -> str:
+    """Stable identity for advisories that carry no source URL, CVE or GHSA id."""
+    material = "\x1f".join([source or "", title or "", published_at or ""])
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 async def log_ingest(
@@ -165,20 +172,32 @@ async def upsert_advisory(
     summary: str,
     metadata: dict[str, Any] | None = None,
     ingested_at: datetime | None = None,
+    source: str | None = None,
+    title: str | None = None,
+    published_at: str | None = None,
 ) -> tuple[BBCorpusAdvisory, bool]:
     stmt = select(BBCorpusAdvisory)
+    identity_hash: str | None = None
     if source_url:
         stmt = stmt.where(BBCorpusAdvisory.source_url == source_url)
     elif cve_id:
         stmt = stmt.where(BBCorpusAdvisory.cve_id == cve_id)
-    else:
+    elif ghsa_id:
         stmt = stmt.where(BBCorpusAdvisory.ghsa_id == ghsa_id)
+    else:
+        # No URL or advisory id: identity is a hash stored in the metadata_ JSON column
+        # (no dedicated column exists), so only rows with the same hash can match.
+        identity_hash = _advisory_identity_hash(source, title, published_at)
+        stmt = stmt.where(BBCorpusAdvisory.metadata_["identity_hash"].as_string() == identity_hash)
     result = await session.execute(stmt)
     row = result.scalar_one_or_none()
     redacted_summary, _hits = redact_text(summary[:2048])
     embedding, embedding_model_version = await embed_with_version(
         " ".join(filter(None, [cve_id or "", ghsa_id or "", redacted_summary]))
     )
+    stored_metadata: dict[str, Any] = dict(metadata or {})
+    if identity_hash is not None:
+        stored_metadata["identity_hash"] = identity_hash
     payload = {
         "cve_id": cve_id,
         "ghsa_id": ghsa_id,
@@ -187,7 +206,7 @@ async def upsert_advisory(
         "affected_packages": list(affected_packages or []),
         "summary": redacted_summary,
         "source_url": source_url,
-        "metadata_": metadata or {},
+        "metadata_": stored_metadata,
         "embedding": embedding,
         "embedding_model_version": embedding_model_version,
         "ingested_at": ingested_at or _now(),
