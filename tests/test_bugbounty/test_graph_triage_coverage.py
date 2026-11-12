@@ -44,7 +44,9 @@ from netra.db.models.bb_dedup_signature import BBDedupSignature
 
 
 class _FakeProc:
-    def __init__(self, pid: int = 4242, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b""):
+    def __init__(
+        self, pid: int = 4242, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b""
+    ):
         self.pid = pid
         self.returncode = returncode
         self._out = stdout
@@ -66,7 +68,9 @@ def test_check_available_returns_binary_path(monkeypatch: pytest.MonkeyPatch) ->
 
 
 @pytest.mark.asyncio
-async def test_run_graphify_passes_args_and_registers_pid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_run_graphify_passes_args_and_registers_pid(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(graph_indexer.shutil, "which", lambda name: "graphify-bin")
     captured: dict = {}
 
@@ -119,7 +123,9 @@ async def test_run_graphify_unregisters_even_when_communicate_fails(
 
 
 @pytest.mark.asyncio
-async def test_run_graphify_never_spawns_when_binary_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_run_graphify_never_spawns_when_binary_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(graph_indexer.shutil, "which", lambda name: None)
     spawn = AsyncMock()
     monkeypatch.setattr(graph_indexer.asyncio, "create_subprocess_exec", spawn)
@@ -135,7 +141,9 @@ async def test_index_codebase_rejects_unsupported_format(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_index_codebase_success_parses_graph_counts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_index_codebase_success_parses_graph_counts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     src = tmp_path / "src"
     src.mkdir()
     (src / "a.py").write_text("print(1)")
@@ -178,7 +186,9 @@ async def test_index_codebase_uses_backend_env_and_edges_fallback_key(
     async def fake_run(args, cwd=None):
         seen_args.extend(args)
         (out / "graphify-out").mkdir(parents=True, exist_ok=True)
-        (out / "graphify-out" / "graph.json").write_text(json.dumps({"nodes": [], "edges": [{}, {}, {}]}))
+        (out / "graphify-out" / "graph.json").write_text(
+            json.dumps({"nodes": [], "edges": [{}, {}, {}]})
+        )
         return 0, "", ""
 
     monkeypatch.setattr(graph_indexer, "_run_graphify", fake_run)
@@ -192,7 +202,9 @@ async def test_index_codebase_uses_backend_env_and_edges_fallback_key(
 
 
 @pytest.mark.asyncio
-async def test_index_codebase_tolerates_corrupt_graph_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_index_codebase_tolerates_corrupt_graph_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     src = tmp_path / "src"
     src.mkdir()
     (src / "a.py").write_text("x")
@@ -231,7 +243,9 @@ async def test_index_codebase_nonzero_exit_reports_failure_and_truncates_stderr(
 
 
 @pytest.mark.asyncio
-async def test_index_codebase_skips_extract_when_cache_is_fresh(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_index_codebase_skips_extract_when_cache_is_fresh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     src = tmp_path / "src"
     src.mkdir()
     (src / "a.py").write_text("x")
@@ -509,9 +523,33 @@ def test_find_graph_similar_matches_same_and_neighbouring_paths(tmp_path: Path) 
     path = _write_export(
         tmp_path / "s.json",
         [
-            {"id": "r1", "attrs": {"program_id": "p1", "vuln_class": "xss", "asset_path": "/shop/cart", "title": "same"}},
-            {"id": "r2", "attrs": {"program_id": "p1", "vuln_class": "xss", "asset_path": "/shop/checkout", "title": "neighbour"}},
-            {"id": "r3", "attrs": {"program_id": "p1", "vuln_class": "xss", "asset_path": "/shop/a/deep", "title": "too deep"}},
+            {
+                "id": "r1",
+                "attrs": {
+                    "program_id": "p1",
+                    "vuln_class": "xss",
+                    "asset_path": "/shop/cart",
+                    "title": "same",
+                },
+            },
+            {
+                "id": "r2",
+                "attrs": {
+                    "program_id": "p1",
+                    "vuln_class": "xss",
+                    "asset_path": "/shop/checkout",
+                    "title": "neighbour",
+                },
+            },
+            {
+                "id": "r3",
+                "attrs": {
+                    "program_id": "p1",
+                    "vuln_class": "xss",
+                    "asset_path": "/shop/a/deep",
+                    "title": "too deep",
+                },
+            },
         ],
     )
 
@@ -527,9 +565,18 @@ def test_find_graph_similar_filters_by_program_and_vuln_class(tmp_path: Path) ->
     path = _write_export(
         tmp_path / "s.json",
         [
-            {"id": "other-program", "attrs": {"program_id": "p2", "vuln_class": "xss", "asset_path": "/a/b"}},
-            {"id": "other-class", "attrs": {"program_id": "p1", "vuln_class": "sqli", "asset_path": "/a/b"}},
-            {"id": "match", "attrs": {"program_id": "p1", "vuln_class": "XSS", "asset_path": "/a/b"}},
+            {
+                "id": "other-program",
+                "attrs": {"program_id": "p2", "vuln_class": "xss", "asset_path": "/a/b"},
+            },
+            {
+                "id": "other-class",
+                "attrs": {"program_id": "p1", "vuln_class": "sqli", "asset_path": "/a/b"},
+            },
+            {
+                "id": "match",
+                "attrs": {"program_id": "p1", "vuln_class": "XSS", "asset_path": "/a/b"},
+            },
         ],
     )
 
@@ -587,7 +634,9 @@ def test_find_graph_similar_ignores_records_without_asset_path(tmp_path: Path) -
 
 
 @pytest.mark.parametrize("query_asset", ["", "   ", None])
-def test_find_graph_similar_empty_query_asset_produces_no_neighbours(tmp_path: Path, query_asset) -> None:
+def test_find_graph_similar_empty_query_asset_produces_no_neighbours(
+    tmp_path: Path, query_asset
+) -> None:
     path = _write_export(
         tmp_path / "s.json",
         [{"id": "top", "attrs": {"program_id": "p1", "vuln_class": "xss", "asset_path": "/login"}}],
@@ -712,7 +761,9 @@ def test_parse_response_rejects_each_dimension_outside_1_to_10(field: str, bad: 
 def test_parse_response_accepts_range_boundaries() -> None:
     score = parse_response('{"impact": 1, "novelty": 10, "payout": 1}')
     assert score.composite == pytest.approx(0.5 + 3.0 + 0.2)
-    assert parse_response('{"impact": 10, "novelty": 10, "payout": 10}').composite == pytest.approx(10.0)
+    assert parse_response('{"impact": 10, "novelty": 10, "payout": 10}').composite == pytest.approx(
+        10.0
+    )
 
 
 def test_prompt_template_formats_with_all_placeholders() -> None:

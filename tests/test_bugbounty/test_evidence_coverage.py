@@ -125,8 +125,11 @@ class TestStoreEvidence:
     async def test_aws_key_is_stored_as_redaction_marker(self, evidence_root, fernet_env, session):
         content = f"Response header: X-Key={AWS_FAKE_KEY}\n".encode()
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="resp.txt", content=content,
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="resp.txt",
+            content=content,
         )
         plain = read_evidence_blob(stored.evidence)
         assert AWS_FAKE_KEY.encode() not in plain
@@ -138,8 +141,11 @@ class TestStoreEvidence:
     ):
         content = f"key={AWS_FAKE_KEY} contact={EMAIL_FAKE}".encode()
         await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="dump.txt", content=content,
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="dump.txt",
+            content=content,
         )
         files = _all_files(evidence_root)
         assert len(files) == 1
@@ -153,8 +159,11 @@ class TestStoreEvidence:
     ):
         content = f"A={AWS_FAKE_KEY}\nB={EMAIL_FAKE}\n".encode()
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="pair.txt", content=content,
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="pair.txt",
+            content=content,
         )
         on_disk = Path(stored.evidence.storage_path).read_bytes()
         assert AWS_FAKE_KEY.encode() not in on_disk
@@ -165,8 +174,11 @@ class TestStoreEvidence:
     async def test_redaction_count_and_rows_recorded(self, evidence_root, fernet_env, session):
         content = f"{AWS_FAKE_KEY} and {EMAIL_FAKE}".encode()
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="x.txt", content=content,
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="x.txt",
+            content=content,
         )
         assert stored.evidence.redaction_count == 2
         rows = _added(session, BBEvidenceRedaction)
@@ -178,8 +190,11 @@ class TestStoreEvidence:
     ):
         content = f"k={AWS_FAKE_KEY}".encode()
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="x.txt", content=content,
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="x.txt",
+            content=content,
         )
         redacted = b"k=[REDACTED:aws_access_key:0]"
         assert stored.evidence.sha256 == hashlib.sha256(redacted).hexdigest()
@@ -189,8 +204,11 @@ class TestStoreEvidence:
     async def test_clean_content_has_zero_redactions(self, evidence_root, fernet_env, session):
         content = b"plain incident notes, nothing sensitive"
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="clean.txt", content=content,
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="clean.txt",
+            content=content,
         )
         assert stored.hits == []
         assert stored.evidence.redaction_count == 0
@@ -202,8 +220,11 @@ class TestStoreEvidence:
     ):
         program_id, finding_id = uuid.uuid4(), uuid.uuid4()
         stored = await store_evidence(
-            session, finding_id=finding_id, program_id=program_id,
-            filename="x.txt", content=b"abc",
+            session,
+            finding_id=finding_id,
+            program_id=program_id,
+            filename="x.txt",
+            content=b"abc",
         )
         path = Path(stored.evidence.storage_path)
         assert path.parent == evidence_root / str(program_id) / str(finding_id)
@@ -212,8 +233,11 @@ class TestStoreEvidence:
 
     async def test_filename_is_reduced_to_basename(self, evidence_root, fernet_env, session):
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="../../etc/passwd.txt", content=b"abc",
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="../../etc/passwd.txt",
+            content=b"abc",
         )
         assert stored.evidence.filename == "passwd.txt"
 
@@ -221,16 +245,22 @@ class TestStoreEvidence:
         self, evidence_root, fernet_env, session
     ):
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="", content=b"abc",
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="",
+            content=b"abc",
         )
         assert stored.evidence.filename == "evidence.txt"
         assert stored.evidence.mime_type == "text/plain"
 
     async def test_metadata_defaults_to_empty_dict(self, evidence_root, fernet_env, session):
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="x.txt", content=b"abc",
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="x.txt",
+            content=b"abc",
         )
         assert stored.evidence.metadata_ == {}
 
@@ -239,8 +269,11 @@ class TestStoreEvidence:
     ):
         content = b"\xff\xfe " + AWS_FAKE_KEY.encode() + b" \xc3\x28"
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="bin.dat", content=content,
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="bin.dat",
+            content=content,
         )
         plain = read_evidence_blob(stored.evidence)
         assert AWS_FAKE_KEY.encode() not in plain
@@ -252,9 +285,14 @@ class TestReadEvidenceBlob:
         path = tmp_path / "raw.bin"
         path.write_bytes(b"raw bytes")
         row = BBEvidence(
-            id=uuid.uuid4(), finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="raw.bin", mime_type="application/octet-stream",
-            storage_path=str(path), sha256="0" * 64, encrypted=False,
+            id=uuid.uuid4(),
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="raw.bin",
+            mime_type="application/octet-stream",
+            storage_path=str(path),
+            sha256="0" * 64,
+            encrypted=False,
         )
         assert read_evidence_blob(row) == b"raw bytes"
 
@@ -274,8 +312,11 @@ class TestUnredactedFieldsReachDatabase:
     ):
         # Regression for the safety fix: pipeline.py redacts the filename before the DB row.
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename=f"{AWS_FAKE_KEY}.txt", content=b"abc",
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename=f"{AWS_FAKE_KEY}.txt",
+            content=b"abc",
         )
         assert AWS_FAKE_KEY not in stored.evidence.filename
         assert "[REDACTED:" in stored.evidence.filename
@@ -285,8 +326,11 @@ class TestUnredactedFieldsReachDatabase:
     ):
         # Regression for the safety fix: caller metadata is redacted before it is persisted.
         stored = await store_evidence(
-            session, finding_id=uuid.uuid4(), program_id=uuid.uuid4(),
-            filename="x.txt", content=b"abc",
+            session,
+            finding_id=uuid.uuid4(),
+            program_id=uuid.uuid4(),
+            filename="x.txt",
+            content=b"abc",
             metadata={"note": f"key was {AWS_FAKE_KEY}"},
         )
         assert AWS_FAKE_KEY not in str(stored.evidence.metadata_)

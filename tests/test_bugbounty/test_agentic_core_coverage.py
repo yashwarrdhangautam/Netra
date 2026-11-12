@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from netra.bugbounty.agentic import knowledge as knowledge_mod
 from netra.bugbounty.agentic import priors as priors_mod
 from netra.bugbounty.agentic import token_budget
 from netra.bugbounty.agentic.budget import HuntBudget
@@ -28,7 +29,6 @@ from netra.bugbounty.agentic.knowledge import (
     RetrievalHit,
     default_retriever,
 )
-from netra.bugbounty.agentic import knowledge as knowledge_mod
 from netra.bugbounty.agentic.observation import Observation, observation_from_tool_result
 from netra.bugbounty.agentic.planner import PlannedStep, Planner
 from netra.bugbounty.agentic.planner import TestPlan as AgenticPlan
@@ -236,9 +236,7 @@ async def test_run_plan_marks_step_exhausted_when_no_findings(monkeypatch) -> No
 
 
 async def test_run_plan_skips_persisting_finding_when_service_returns_none(monkeypatch) -> None:
-    _record_tool(
-        monkeypatch, "HttpxTool", "httpx", findings=[{"severity": "low", "title": "x"}]
-    )
+    _record_tool(monkeypatch, "HttpxTool", "httpx", findings=[{"severity": "low", "title": "x"}])
     service = _patch_finding_service(monkeypatch, created=False)
 
     result = await AgenticExecutor(_db(), router=FakeRouter([_choice("httpx")])).run_plan(
@@ -354,9 +352,7 @@ async def test_is_cancelled_treats_missing_scan_as_cancelled() -> None:
 
 
 async def test_is_cancelled_false_for_running_scan() -> None:
-    assert (
-        await AgenticExecutor(_db(), router=FakeRouter([]))._is_cancelled(_scan().id) is False
-    )
+    assert await AgenticExecutor(_db(), router=FakeRouter([]))._is_cancelled(_scan().id) is False
 
 
 async def test_program_allows_step_rules(monkeypatch) -> None:
@@ -631,9 +627,7 @@ def test_observation_risk_tools_share_risk_findings_shape(tool) -> None:
 
 @pytest.fixture
 def no_priors(monkeypatch):
-    monkeypatch.setattr(
-        "netra.bugbounty.agentic.planner.load_priors", lambda: {"tech_priors": {}}
-    )
+    monkeypatch.setattr("netra.bugbounty.agentic.planner.load_priors", lambda: {"tech_priors": {}})
 
 
 async def test_planner_no_tech_fallback_uses_scope_seed_when_target_missing(no_priors) -> None:

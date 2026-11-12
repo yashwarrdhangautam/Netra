@@ -28,7 +28,6 @@ from netra.db.models.bb_program import BBProgram
 from netra.db.models.finding import Finding
 from netra.db.models.scan import Scan, ScanStatus
 
-
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
@@ -157,9 +156,7 @@ class TestAddProgram:
         assert "prog-9" in out_console.getvalue()
         assert session.commits == 0
 
-    def test_private_platform_creates_program_without_scope(
-        self, runner, monkeypatch, out_console
-    ):
+    def test_private_platform_creates_program_without_scope(self, runner, monkeypatch, out_console):
         session = FakeSession()
         _install_session(monkeypatch, session)
         _patch_get_program(monkeypatch, None)
@@ -208,7 +205,8 @@ class TestAddProgram:
         _patch_get_program(monkeypatch, None)
         rules = [SimpleNamespace(rule_type="in", pattern="*.shopify.com")] * 2
         monkeypatch.setattr(
-            "netra.integrations.hackerone.HackerOneClient", _make_h1_client(configured=True, rules=rules)
+            "netra.integrations.hackerone.HackerOneClient",
+            _make_h1_client(configured=True, rules=rules),
         )
         monkeypatch.setattr(
             "netra.integrations.hackerone.to_program_input",
@@ -237,7 +235,9 @@ class TestAddProgram:
 
         monkeypatch.setattr("netra.bugbounty.programs.create_program", _create)
         monkeypatch.setattr("netra.bugbounty.programs.replace_scope_rules", _replace)
-        monkeypatch.setattr("netra.bugbounty.learning.sources.hackerone.bootstrap_program", _bootstrap)
+        monkeypatch.setattr(
+            "netra.bugbounty.learning.sources.hackerone.bootstrap_program", _bootstrap
+        )
 
         result = _invoke(runner, ["add-program", "--platform", "hackerone", "--handle", "shopify"])
         assert result.exit_code == 0, result.output
@@ -442,9 +442,7 @@ class TestCorpusForget:
         monkeypatch.setattr("netra.bugbounty.learning.ingest.forget_corpus_entries", _forget)
         monkeypatch.setattr("netra.bugbounty.learning.ingest.log_ingest", _log)
 
-        result = _invoke(
-            runner, ["corpus", "forget", "--author", "bob", "--confirm", "FORGET"]
-        )
+        result = _invoke(runner, ["corpus", "forget", "--author", "bob", "--confirm", "FORGET"])
         assert result.exit_code == 0, result.output
         assert calls["forget"] == ("bob", None)
         assert calls["log"]["source_name"] == "corpus_forget"
@@ -780,7 +778,9 @@ class TestCancelHunt:
         _install_session(monkeypatch, session)
 
         fake_app = SimpleNamespace(control=Mock())
-        monkeypatch.setattr(importlib.import_module("netra.worker.celery_app"), "celery_app", fake_app)
+        monkeypatch.setattr(
+            importlib.import_module("netra.worker.celery_app"), "celery_app", fake_app
+        )
         killed = []
         monkeypatch.setattr(
             "netra.scanner.tools.process_control.kill_registered_processes",
@@ -789,28 +789,28 @@ class TestCancelHunt:
 
         result = _invoke(runner, ["cancel-hunt", "scan-4"])
         assert result.exit_code == 0, result.output
-        fake_app.control.revoke.assert_called_once_with(
-            "task-9", terminate=True, signal="SIGKILL"
-        )
+        fake_app.control.revoke.assert_called_once_with("task-9", terminate=True, signal="SIGKILL")
         assert killed == ["task-9"]
         assert scan.status == ScanStatus.CANCELLED
         assert session.commits == 1
         assert "cancel requested" in out_console.getvalue()
 
-    def test_without_task_id_skips_revoke_but_still_cancels(
-        self, runner, monkeypatch, out_console
-    ):
+    def test_without_task_id_skips_revoke_but_still_cancels(self, runner, monkeypatch, out_console):
         scan = SimpleNamespace(status=ScanStatus.PENDING, config={"celery_task_id": "  "})
         session = FakeSession(by_model={Scan: scan})
         _install_session(monkeypatch, session)
 
         fake_app = SimpleNamespace(control=Mock())
-        monkeypatch.setattr(importlib.import_module("netra.worker.celery_app"), "celery_app", fake_app)
+        monkeypatch.setattr(
+            importlib.import_module("netra.worker.celery_app"), "celery_app", fake_app
+        )
 
         def _no_kill(_task_id):
             raise AssertionError("no processes should be killed without a task id")
 
-        monkeypatch.setattr("netra.scanner.tools.process_control.kill_registered_processes", _no_kill)
+        monkeypatch.setattr(
+            "netra.scanner.tools.process_control.kill_registered_processes", _no_kill
+        )
 
         result = _invoke(runner, ["cancel-hunt", "scan-5"])
         assert result.exit_code == 0, result.output
@@ -828,9 +828,7 @@ class TestProgramApprove:
     def test_unknown_program_exits_1(self, runner, monkeypatch, out_console):
         _install_session(monkeypatch, FakeSession())
         _patch_get_program(monkeypatch, None)
-        result = _invoke(
-            runner, ["program-approve", "--program", "ghost", "--vuln-classes", "xss"]
-        )
+        result = _invoke(runner, ["program-approve", "--program", "ghost", "--vuln-classes", "xss"])
         assert result.exit_code == 1
         assert "program not found" in out_console.getvalue()
 
@@ -920,11 +918,12 @@ def verify_env(monkeypatch):
     monkeypatch.setattr("netra.bugbounty.verifiers.runner.run_replay", _replay)
     monkeypatch.setattr("netra.bugbounty.agentic.poc_builder.PocBuilder", _FakePoc)
     monkeypatch.setattr("netra.bugbounty.programs.get_active_scope_rules", _rules)
-    monkeypatch.setattr("netra.bugbounty.scope.ScopeValidator.from_db_rules", classmethod(lambda cls, rules: object()))
-
-    return SimpleNamespace(
-        program=program, finding=finding, evidence=evidence, state=state
+    monkeypatch.setattr(
+        "netra.bugbounty.scope.ScopeValidator.from_db_rules",
+        classmethod(lambda cls, rules: object()),
     )
+
+    return SimpleNamespace(program=program, finding=finding, evidence=evidence, state=state)
 
 
 class TestVerify:
@@ -986,9 +985,7 @@ class TestVerify:
 
     def test_unallowlisted_verifier_exits_2(self, runner, monkeypatch, out_console, verify_env):
         self._session(monkeypatch, verify_env)
-        monkeypatch.setattr(
-            "netra.bugbounty.verifiers.loader.find_verifier", lambda _v, _c: None
-        )
+        monkeypatch.setattr("netra.bugbounty.verifiers.loader.find_verifier", lambda _v, _c: None)
         result = _invoke(
             runner,
             ["verify", "--finding-id", str(verify_env.finding.id), "--verifier-id", "evil"],
@@ -1073,9 +1070,7 @@ class TestVerify:
         assert session.commits == 1
         assert _FakePoc.calls[0][2] == "xss"
 
-    def test_failed_replay_prints_error_message(
-        self, runner, monkeypatch, out_console, verify_env
-    ):
+    def test_failed_replay_prints_error_message(self, runner, monkeypatch, out_console, verify_env):
         session = self._session(monkeypatch, verify_env)
         verify_env.state["replay_result"] = {"error": "connection reset"}
         result = _invoke(
@@ -1089,9 +1084,7 @@ class TestVerify:
         assert session.added[0].status == "failed"
         assert session.added[0].error_message == "connection reset"
 
-    def test_replay_requires_typed_confirmation(
-        self, runner, monkeypatch, out_console, verify_env
-    ):
+    def test_replay_requires_typed_confirmation(self, runner, monkeypatch, out_console, verify_env):
         self._session(monkeypatch, verify_env)
         verify_env.state["replay_result"] = {"status": "completed", "status_code": 200}
         result = _invoke(runner, ["verify", "--finding-id", str(verify_env.finding.id)])
@@ -1280,10 +1273,16 @@ class TestScopeBranches:
         async def _rules(_s, _pid):
             return [
                 SimpleNamespace(
-                    rule_type="in", asset_type="wildcard", pattern="*.shopify.com", severity_cap=None
+                    rule_type="in",
+                    asset_type="wildcard",
+                    pattern="*.shopify.com",
+                    severity_cap=None,
                 ),
                 SimpleNamespace(
-                    rule_type="out", asset_type="domain", pattern="blog.shopify.com", severity_cap="low"
+                    rule_type="out",
+                    asset_type="domain",
+                    pattern="blog.shopify.com",
+                    severity_cap="low",
                 ),
             ]
 
@@ -1313,9 +1312,7 @@ class TestScopeBranches:
 
         monkeypatch.setattr("netra.bugbounty.programs.get_active_scope_rules", _rules)
 
-        result = _invoke(
-            runner, ["scope", "--program", "shopify", "--check", "api.shopify.com"]
-        )
+        result = _invoke(runner, ["scope", "--program", "shopify", "--check", "api.shopify.com"])
         assert result.exit_code == 0, result.output
         assert "in scope" in out_console.getvalue()
 

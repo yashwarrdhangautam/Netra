@@ -48,6 +48,6 @@ def test_gateway_model_never_sees_real_values():
 
 def test_sanitize_output_retokenizes_leaks():
     gw = PrivacyGateway()
-    first = gw.to_model("target 172.16.0.9")  # assigns IP_001
+    gw.to_model("target 172.16.0.9")  # assigns IP_001
     again = gw.sanitize_output("\x1b[31m172.16.0.9\x1b[0m responded 200")
     assert "172.16.0.9" not in again and "IP_001" in again

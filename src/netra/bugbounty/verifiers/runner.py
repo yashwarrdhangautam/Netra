@@ -49,7 +49,10 @@ async def run_replay(
     Caller-supplied specs that are not on the allowlist are refused here, not only in routes.
     """
     if not vuln_class or find_verifier(spec.id, vuln_class) is None:
-        return {"status": "blocked", "error": f"Verifier {spec.id} is not allowlisted for this finding"}
+        return {
+            "status": "blocked",
+            "error": f"Verifier {spec.id} is not allowlisted for this finding",
+        }
     request = parse_captured_request(evidence)
     method = request["method"]
     url = request["url"]

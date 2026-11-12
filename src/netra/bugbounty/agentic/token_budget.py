@@ -65,6 +65,6 @@ def count_tokens(text: str, model: str = "") -> int:
     if enc is not None:
         try:
             return len(enc.encode(text))
-        except Exception:  # noqa: BLE001 - defensive; heuristic fallback
+        except Exception:  # noqa: BLE001, S110 - tokenizer failure falls back to the heuristic below
             pass
     return max(1, (len(text) + _CHARS_PER_TOKEN - 1) // _CHARS_PER_TOKEN)

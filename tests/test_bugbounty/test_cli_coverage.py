@@ -25,7 +25,6 @@ from netra.bugbounty import cli as bb_cli
 from netra.bugbounty.graph_indexer import IndexResult
 from netra.db.models.bb_submission import SubmissionStatus
 
-
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
@@ -381,8 +380,9 @@ class TestTriage:
     def test_dedup_column_reports_duplicate_and_similar(self, runner, monkeypatch, out_console):
         finding = _finding("dup bug", 7.0)
         # Compute the fingerprint the CLI will compute so the fake can match it.
-        from netra.bugbounty.triage.deduper import fingerprint
         from urllib.parse import urlparse
+
+        from netra.bugbounty.triage.deduper import fingerprint
 
         url = finding.url
         fp = fingerprint("xss", urlparse(url).path or url, "q").hash()
@@ -549,9 +549,7 @@ class TestSubmissionStatus:
         assert result.exit_code == 1
         assert "submission not found" in out_console.getvalue()
 
-    def test_unknown_status_string_exits_2_with_valid_list(
-        self, runner, monkeypatch, out_console
-    ):
+    def test_unknown_status_string_exits_2_with_valid_list(self, runner, monkeypatch, out_console):
         sub = _submission(SubmissionStatus.DRAFT)
         session = FakeSession(objects={"sub-1": sub})
         _install_session(monkeypatch, session)
@@ -603,9 +601,7 @@ class TestSubmissionVerdict:
         assert history[0]["attrs"]["vuln_class"] == "xss"
         assert history[0]["attrs"]["status"] == expected.value
 
-    def test_verdict_merges_into_existing_history(
-        self, runner, monkeypatch, out_console, tmp_path
-    ):
+    def test_verdict_merges_into_existing_history(self, runner, monkeypatch, out_console, tmp_path):
         monkeypatch.chdir(tmp_path)
         history_file = tmp_path / "data/graphify/submissions.json"
         history_file.parent.mkdir(parents=True)
@@ -749,9 +745,7 @@ class TestDraft:
         assert "drafted" in out and "sub-9" in out
         assert "md:" in out and "pdf:" in out
 
-    def test_draft_defaults_to_md_and_docx_in_home_reports(
-        self, runner, monkeypatch, out_console
-    ):
+    def test_draft_defaults_to_md_and_docx_in_home_reports(self, runner, monkeypatch, out_console):
         self._setup(monkeypatch, SimpleNamespace(id="f-1"))
         result = _invoke(runner, ["draft", "--finding-id", "f-1"])
         assert result.exit_code == 0, result.output

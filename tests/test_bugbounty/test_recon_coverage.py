@@ -26,7 +26,6 @@ from netra.bugbounty.scope import (
 )
 from netra.scanner.tools.base import ToolResult
 
-
 # ── Guards and helpers ──────────────────────────────────────────────────────────
 
 
@@ -450,7 +449,16 @@ async def test_out_of_scope_seed_is_never_sent_to_sources(monkeypatch) -> None:
 
 @pytest.mark.parametrize(
     ("status", "expected"),
-    [(200, True), (204, True), (301, True), (399, True), (400, False), (404, False), (500, False), (None, False)],
+    [
+        (200, True),
+        (204, True),
+        (301, True),
+        (399, True),
+        (400, False),
+        (404, False),
+        (500, False),
+        (None, False),
+    ],
 )
 async def test_httpx_alive_status_window(monkeypatch, status, expected) -> None:
     recorder = _Recorder()
@@ -462,14 +470,19 @@ async def test_httpx_alive_status_window(monkeypatch, status, expected) -> None:
         _ok("httpx", [{"url": "https://a.example.com", "status_code": status}]),
     )
 
-    assert await active.httpx_alive("https://a.example.com", validator=_example_validator()) is expected
+    assert (
+        await active.httpx_alive("https://a.example.com", validator=_example_validator())
+        is expected
+    )
 
 
 async def test_httpx_alive_passes_head_and_no_redirect_flags(monkeypatch) -> None:
     recorder = _Recorder()
     _stub_tool(monkeypatch, active, "HttpxTool", recorder, _ok("httpx", []))
 
-    assert await active.httpx_alive("https://a.example.com", validator=_example_validator()) is False
+    assert (
+        await active.httpx_alive("https://a.example.com", validator=_example_validator()) is False
+    )
     target, kwargs = recorder.calls[0]
     assert target == "https://a.example.com"
     assert kwargs == {"follow_redirects": False, "tech_detect": True, "head": True}
@@ -478,7 +491,9 @@ async def test_httpx_alive_passes_head_and_no_redirect_flags(monkeypatch) -> Non
 async def test_httpx_alive_tool_failure_returns_false(monkeypatch) -> None:
     recorder = _Recorder()
     _stub_tool(monkeypatch, active, "HttpxTool", recorder, _fail("httpx", "timeout"))
-    assert await active.httpx_alive("https://a.example.com", validator=_example_validator()) is False
+    assert (
+        await active.httpx_alive("https://a.example.com", validator=_example_validator()) is False
+    )
 
 
 async def test_ffuf_paths_normalises_dedupes_and_sorts(monkeypatch) -> None:
@@ -492,7 +507,9 @@ async def test_ffuf_paths_normalises_dedupes_and_sorts(monkeypatch) -> None:
     ]
     _stub_tool(monkeypatch, active, "FfufTool", recorder, _ok("ffuf", findings))
 
-    paths = await active.ffuf_paths("https://a.example.com/", wordlist="dirs.txt", rate_limit=10, validator=_example_validator())
+    paths = await active.ffuf_paths(
+        "https://a.example.com/", wordlist="dirs.txt", rate_limit=10, validator=_example_validator()
+    )
 
     assert paths == ["/", "/admin", "/api/v1"]
     target, kwargs = recorder.calls[0]
@@ -524,7 +541,9 @@ async def test_nuclei_safe_normalises_both_key_styles(monkeypatch) -> None:
     ]
     _stub_tool(monkeypatch, active, "NucleiTool", recorder, _ok("nuclei", findings))
 
-    out = await active.nuclei_safe("https://a.example.com", severity_cap="high", validator=_example_validator())
+    out = await active.nuclei_safe(
+        "https://a.example.com", severity_cap="high", validator=_example_validator()
+    )
 
     assert out[0] == {
         "template_id": "tpl-a",

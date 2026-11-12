@@ -61,7 +61,9 @@ def _filter_flags(tool_name: str, flags: dict[str, Any]) -> dict[str, Any]:
     kept: dict[str, Any] = {}
     for name, value in flags.items():
         if not isinstance(name, str) or name not in allowed:
-            logger.warning("sanitiser dropped flag %r for tool %s: not allowlisted", name, tool_name)
+            logger.warning(
+                "sanitiser dropped flag %r for tool %s: not allowlisted", name, tool_name
+            )
             continue
         if name in path_flags:
             resolved = _approved_path(value)

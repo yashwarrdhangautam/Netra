@@ -87,6 +87,8 @@ frontend/dist/
 frontend/test-results/
 tools/bin/
 wordlists/
+# The approved ffuf wordlist folder ships with the code; keep it tracked.
+!src/netra/bugbounty/agentic/wordlists/
 
 # Logs
 *.log

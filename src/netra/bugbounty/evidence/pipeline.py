@@ -1,4 +1,5 @@
 """Evidence ingest pipeline: sniff, redact, encrypt, store."""
+
 from __future__ import annotations
 
 import hashlib
@@ -106,4 +107,3 @@ def read_evidence_blob(evidence: BBEvidence) -> bytes:
     """Read and decrypt an evidence blob from disk."""
     blob = Path(evidence.storage_path).read_bytes()
     return decrypt(blob) if evidence.encrypted else blob
-

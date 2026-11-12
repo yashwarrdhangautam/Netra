@@ -228,7 +228,9 @@ def test_verifiers_must_be_a_list(tmp_path):
 
 def test_string_methods_are_one_method(tmp_path):
     """A bare string is a single method, not a sequence of characters."""
-    path = _write_yaml(tmp_path, {"verifiers": [{"id": "s", "vuln_class": "xss", "methods": "get"}]})
+    path = _write_yaml(
+        tmp_path, {"verifiers": [{"id": "s", "vuln_class": "xss", "methods": "get"}]}
+    )
     (spec,) = load_verifiers(path)
     assert spec.methods == ("GET",)
 
@@ -378,7 +380,9 @@ def test_parse_json_scalar_is_treated_as_raw_text(tmp_path):
 
 
 def test_parse_json_array_is_treated_as_raw_text(tmp_path):
-    ev = _evidence(tmp_path, '[{"url": "https://app.test/a"}]', metadata={"target": "https://app.test/t"})
+    ev = _evidence(
+        tmp_path, '[{"url": "https://app.test/a"}]', metadata={"target": "https://app.test/t"}
+    )
     parsed = runner.parse_captured_request(ev)
     assert parsed["url"] == "https://app.test/t"
 
@@ -415,9 +419,7 @@ async def test_replay_completes_and_reports_diff(tmp_path, fake_httpx):
 
     (client,) = fake_httpx.created
     assert client.kwargs["follow_redirects"] is False  # redirects never followed
-    assert client.requests == [
-        ("GET", "https://app.test/api/1", {"Authorization": "redacted"})
-    ]
+    assert client.requests == [("GET", "https://app.test/api/1", {"Authorization": "redacted"})]
 
 
 async def test_head_replay_sends_no_body_comparison(tmp_path, fake_httpx):
@@ -510,9 +512,7 @@ async def test_status_unchanged_when_original_missing(tmp_path, fake_httpx):
 # ── SAFETY FINDING: runner does not enforce the allowlist itself ───────────────
 
 
-async def test_safety_runner_runs_unallowlisted_spec_for_mismatched_class(
-    tmp_path, fake_httpx
-):
+async def test_safety_runner_runs_unallowlisted_spec_for_mismatched_class(tmp_path, fake_httpx):
     """Regression for the safety fix: run_replay() refuses a spec that is not on the
     allowlist for the finding's vuln_class, even when scope and method checks pass."""
     ev = _evidence(tmp_path, json.dumps({"method": "GET", "url": "https://app.test/x"}))

@@ -17,10 +17,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from netra.bugbounty.learning import embeddings as emb
-from netra.bugbounty.learning import ingest as ingest_mod
 from netra.bugbounty.learning import pgvector as pgv
-from netra.bugbounty.learning import search as search_mod
 from netra.bugbounty.learning.embeddings import (
     EMBEDDING_DIM,
     current_embedding_model_version,
@@ -363,7 +360,9 @@ async def test_find_similar_applies_report_filters(db_session, monkeypatch) -> N
 
 
 @pytest.mark.asyncio
-async def test_find_similar_writeup_and_advisory_vuln_class_filters(db_session, monkeypatch) -> None:
+async def test_find_similar_writeup_and_advisory_vuln_class_filters(
+    db_session, monkeypatch
+) -> None:
     _patch_search_embed(monkeypatch, [0.0, 1.0, 0.0])
     now = datetime.now(UTC)
     db_session.add(
@@ -418,7 +417,9 @@ async def test_find_similar_writeup_and_advisory_vuln_class_filters(db_session, 
 
 
 @pytest.mark.asyncio
-async def test_find_similar_skips_unknown_kinds_and_unembedded_rows(db_session, monkeypatch) -> None:
+async def test_find_similar_skips_unknown_kinds_and_unembedded_rows(
+    db_session, monkeypatch
+) -> None:
     _patch_search_embed(monkeypatch, [1.0, 0.0, 0.0])
     db_session.add(
         _writeup(
@@ -488,7 +489,9 @@ async def test_find_similar_keeps_rows_with_unset_model_version(db_session, monk
 
 
 @pytest.mark.asyncio
-async def test_build_corpus_context_uses_kind_when_source_url_missing(db_session, monkeypatch) -> None:
+async def test_build_corpus_context_uses_kind_when_source_url_missing(
+    db_session, monkeypatch
+) -> None:
     _patch_search_embed(monkeypatch, [1.0, 0.0, 0.0])
     db_session.add(
         _advisory(
@@ -650,7 +653,10 @@ async def test_find_similar_pgvector_returns_none_without_postgres_bind() -> Non
 async def test_find_similar_pgvector_direct_respects_top_k() -> None:
     session = _FakePgSession(
         {
-            "bb_corpus_reports": [_pg_report_row(score=0.3), _pg_report_row(score=0.8, title="best")],
+            "bb_corpus_reports": [
+                _pg_report_row(score=0.3),
+                _pg_report_row(score=0.8, title="best"),
+            ],
         }
     )
 
@@ -1054,15 +1060,21 @@ async def test_reembed_corpus_refreshes_active_rows_only(db_session, monkeypatch
 
     monkeypatch.setattr("netra.bugbounty.learning.ingest.sync_embedding_vector", fake_sync)
 
-    db_session.add(_report(source_url="https://example.com/re-report", title="R", body_summary="rb"))
+    db_session.add(
+        _report(source_url="https://example.com/re-report", title="R", body_summary="rb")
+    )
     db_session.add(
         _report(
             source_url="https://example.com/re-report-deleted",
             deleted_at=datetime.now(UTC),
         )
     )
-    db_session.add(_writeup(source_url="https://example.com/re-writeup", title="W", vuln_class=None))
-    db_session.add(_advisory(source_url="https://example.com/re-adv", cve_id="CVE-2026-4444", summary="as"))
+    db_session.add(
+        _writeup(source_url="https://example.com/re-writeup", title="W", vuln_class=None)
+    )
+    db_session.add(
+        _advisory(source_url="https://example.com/re-adv", cve_id="CVE-2026-4444", summary="as")
+    )
     await db_session.commit()
 
     refreshed = await reembed_corpus(db_session)
@@ -1078,7 +1090,9 @@ async def test_reembed_corpus_refreshes_active_rows_only(db_session, monkeypatch
     }
     report = (
         await db_session.execute(
-            select(BBCorpusReport).where(BBCorpusReport.source_url == "https://example.com/re-report")
+            select(BBCorpusReport).where(
+                BBCorpusReport.source_url == "https://example.com/re-report"
+            )
         )
     ).scalar_one()
     assert report.embedding == [0.5, 0.5]
@@ -1150,7 +1164,9 @@ async def test_sync_embedding_vector_is_noop_on_other_dialects() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _fake_ollama(monkeypatch, *, payload: Any = None, status: int = 200, raises: bool = False) -> None:
+def _fake_ollama(
+    monkeypatch, *, payload: Any = None, status: int = 200, raises: bool = False
+) -> None:
     async def fake_post(self, url, **kwargs):  # noqa: ANN001, ANN003
         if raises:
             raise httpx.ConnectError("ollama is down")

@@ -1,4 +1,5 @@
 """Evidence encryption helpers."""
+
 from __future__ import annotations
 
 import base64
@@ -8,7 +9,6 @@ import os
 from cryptography.fernet import Fernet
 
 from netra.core.config import settings
-
 
 DEFAULT_JWT_SECRET = "CHANGE-ME-IN-PRODUCTION"
 
@@ -38,4 +38,3 @@ def encrypt(data: bytes) -> bytes:
 def decrypt(data: bytes) -> bytes:
     """Decrypt evidence bytes."""
     return Fernet(_fernet_key()).decrypt(data)
-

@@ -114,7 +114,9 @@ def test_static_check_method_override_header_bypass_regression() -> None:
 
 
 def test_static_check_flags_tab_separated_delete() -> None:
-    assert is_safe_poc(_fence("http", "DELETE\t/users/1 HTTP/1.1\nHost: api.example.com\n")) is False
+    assert (
+        is_safe_poc(_fence("http", "DELETE\t/users/1 HTTP/1.1\nHost: api.example.com\n")) is False
+    )
 
 
 def test_static_check_tab_separated_delete_regression_with_allow_post() -> None:
@@ -165,7 +167,10 @@ def test_static_check_rejects_bash_writes_and_deletes() -> None:
 
 def test_static_check_rejects_python_file_writes_and_http_writes() -> None:
     assert is_safe_poc("```python\nopen('/tmp/x', 'w').write('x')\n```") is False
-    assert is_safe_poc("```python\nimport requests\nrequests.post('https://a.example.com/')\n```") is False
+    assert (
+        is_safe_poc("```python\nimport requests\nrequests.post('https://a.example.com/')\n```")
+        is False
+    )
 
 
 # ── poc_builder ───────────────────────────────────────────────────────────────

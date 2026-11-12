@@ -648,9 +648,7 @@ def test_out_of_scope_rule_wins_over_broader_in_scope_rule():
 
 
 def test_url_rule_port_and_path_boundaries():
-    validator = ScopeValidator(
-        [ScopeRule(RuleType.IN, AssetType.URL, "api.example.com:8443/v1")]
-    )
+    validator = ScopeValidator([ScopeRule(RuleType.IN, AssetType.URL, "api.example.com:8443/v1")])
 
     assert validator.check("https://api.example.com:8443/v1/orders").allowed is True
     assert validator.check("https://api.example.com:9443/v1/orders").allowed is False

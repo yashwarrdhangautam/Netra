@@ -134,9 +134,7 @@ async def run_active_recon(
 
             if enable_nuclei:
                 result.nuclei_findings.extend(
-                    await nuclei_safe(
-                        host, severity_cap=decision.severity_cap, validator=validator
-                    )
+                    await nuclei_safe(host, severity_cap=decision.severity_cap, validator=validator)
                 )
 
         except Exception as exc:

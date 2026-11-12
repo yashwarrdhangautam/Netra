@@ -17,7 +17,9 @@ from urllib.parse import urlsplit
 _FENCE_RE = re.compile(r"^```[ \t]*([A-Za-z]*)[ \t]*\n(.*?)^```[ \t]*$", re.DOTALL | re.MULTILINE)
 _ALLOWED_LANGS = frozenset({"http", "bash", "python"})
 
-_KNOWN_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"})
+_KNOWN_METHODS = frozenset(
+    {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"}
+)
 _READ_METHODS = frozenset({"GET", "HEAD"})
 
 # Method-override headers and override-style body parameters, checked over the whole text.
@@ -50,9 +52,20 @@ _SHELL_META = frozenset("`$<>|&;()\\{}")
 _PY_ALLOWED_MODULES = frozenset({"json", "base64", "urllib.parse", "requests", "httpx", "time"})
 _PY_HTTP_CALLS = frozenset({"requests.get", "requests.head", "httpx.get", "httpx.head"})
 _PY_SAFE_CALLS = _PY_HTTP_CALLS | frozenset(
-    {"print", "len", "str", "int", "json.dumps", "base64.b64encode", "urllib.parse.quote", "urllib.parse.urlencode"}
+    {
+        "print",
+        "len",
+        "str",
+        "int",
+        "json.dumps",
+        "base64.b64encode",
+        "urllib.parse.quote",
+        "urllib.parse.urlencode",
+    }
 )
-_PY_HTTP_KWARGS = frozenset({"headers", "params", "timeout", "allow_redirects", "verify", "follow_redirects"})
+_PY_HTTP_KWARGS = frozenset(
+    {"headers", "params", "timeout", "allow_redirects", "verify", "follow_redirects"}
+)
 
 
 def is_safe_poc(
@@ -116,7 +129,11 @@ def _is_request_line(parts: list[str]) -> bool:
     if len(parts) < 2 or not parts[0].isalpha():
         return False
     target = parts[1]
-    return target.startswith("/") or target == "*" or target.lower().startswith(("http://", "https://"))
+    return (
+        target.startswith("/")
+        or target == "*"
+        or target.lower().startswith(("http://", "https://"))
+    )
 
 
 def _check_http(body: str, allowed_methods: frozenset[str], scope: set[str] | None) -> bool:
@@ -129,7 +146,14 @@ def _check_http(body: str, allowed_methods: frozenset[str], scope: set[str] | No
             if parts[0] not in allowed_methods:
                 return False
             target = parts[1]
-            requests.append({"target": target, "host": _url_host(target) if target.lower().startswith(("http://", "https://")) else None})
+            requests.append(
+                {
+                    "target": target,
+                    "host": _url_host(target)
+                    if target.lower().startswith(("http://", "https://"))
+                    else None,
+                }
+            )
             continue
         if parts[0].upper() in _KNOWN_METHODS:
             # A known method on a line that is not a valid, allowed request line.
@@ -238,7 +262,9 @@ def _check_python(body: str, scope: set[str] | None) -> bool:
             if resolved not in _PY_SAFE_CALLS:
                 return False
             if resolved in _PY_HTTP_CALLS:
-                if len(node.args) != 1 or any(kw.arg is None or kw.arg not in _PY_HTTP_KWARGS for kw in node.keywords):
+                if len(node.args) != 1 or any(
+                    kw.arg is None or kw.arg not in _PY_HTTP_KWARGS for kw in node.keywords
+                ):
                     return False
                 arg = node.args[0]
                 if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):

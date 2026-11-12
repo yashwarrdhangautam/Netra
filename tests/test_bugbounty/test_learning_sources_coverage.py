@@ -22,7 +22,6 @@ from netra.bugbounty.learning.sources import rss as rss_source
 from netra.core.config import settings as app_settings
 from netra.integrations.hackerone import H1HacktivityItem
 
-
 # ── shared helpers ───────────────────────────────────────────────────────────────
 
 
@@ -180,7 +179,7 @@ async def test_h1_ingest_counts_added_and_updated(monkeypatch, fake_h1) -> None:
     second = upsert.await_args_list[1].kwargs
     assert second["ingested_at"] <= datetime.now(UTC)
     assert second["ingested_at"].tzinfo is not None
-    log.await_args.kwargs["items_added"] == 1
+    assert log.await_args.kwargs["items_added"] == 1
     assert log.await_args.kwargs["items_updated"] == 1
     session.commit.assert_awaited_once()
 
@@ -243,7 +242,9 @@ async def test_h1_bootstrap_filters_program_case_insensitively(monkeypatch, fake
 async def test_h1_bootstrap_counts_updates(monkeypatch, fake_h1) -> None:
     fake_h1.items = [_h1_item(program_handle="shopify")]
     monkeypatch.setattr(h1_source, "upsert_report", AsyncMock(return_value=(MagicMock(), False)))
-    result = await h1_source.bootstrap_program(_mock_session(), handle="shopify", client_cls=fake_h1)
+    result = await h1_source.bootstrap_program(
+        _mock_session(), handle="shopify", client_cls=fake_h1
+    )
     assert result == {"added": 0, "updated": 1}
 
 
@@ -416,7 +417,9 @@ def test_nvd_prefers_v31_then_v30_then_v2_metrics() -> None:
     )
     assert (v31["severity"], v31["cvss_vector"]) == ("HIGH", "V31")
 
-    v30 = item_with({"cvssMetricV30": [{"cvssData": {"baseSeverity": "MEDIUM", "vectorString": "V30"}}]})
+    v30 = item_with(
+        {"cvssMetricV30": [{"cvssData": {"baseSeverity": "MEDIUM", "vectorString": "V30"}}]}
+    )
     assert (v30["severity"], v30["cvss_vector"]) == ("MEDIUM", "V30")
 
     v2 = item_with({"cvssMetricV2": [{"cvssData": {"baseSeverity": "LOW", "vectorString": "V2"}}]})
@@ -695,7 +698,9 @@ async def test_fetcher_before_request_checks_robots_and_rate_limit(monkeypatch) 
 
     monkeypatch.setattr(fetcher_mod.asyncio, "sleep", fake_sleep)
     host = "https://rate-limit-host.test/"
-    fetcher_mod.LearningFetcher._host_last_request["rate-limit-host.test"] = fetcher_mod.time.monotonic()
+    fetcher_mod.LearningFetcher._host_last_request["rate-limit-host.test"] = (
+        fetcher_mod.time.monotonic()
+    )
 
     fetcher = LearningFetcher(obey_robots=False, default_rps=2.0)
     await fetcher.before_request(host + "a")
@@ -711,9 +716,13 @@ async def test_fetcher_rate_limit_skipped_when_rps_disabled(monkeypatch) -> None
         sleeps.append(seconds)
 
     monkeypatch.setattr(fetcher_mod.asyncio, "sleep", fake_sleep)
-    fetcher_mod.LearningFetcher._host_last_request["no-throttle.test"] = fetcher_mod.time.monotonic()
+    fetcher_mod.LearningFetcher._host_last_request["no-throttle.test"] = (
+        fetcher_mod.time.monotonic()
+    )
 
-    await LearningFetcher(obey_robots=False, default_rps=0).before_request("https://no-throttle.test/")
+    await LearningFetcher(obey_robots=False, default_rps=0).before_request(
+        "https://no-throttle.test/"
+    )
     assert sleeps == []
 
 
@@ -724,11 +733,15 @@ async def test_fetcher_retries_after_429_and_honours_retry_after(monkeypatch) ->
         sleeps.append(seconds)
 
     monkeypatch.setattr(fetcher_mod.asyncio, "sleep", fake_sleep)
-    responses = iter([httpx.Response(429, headers={"Retry-After": "3"}), httpx.Response(200, text="done")])
+    responses = iter(
+        [httpx.Response(429, headers={"Retry-After": "3"}), httpx.Response(200, text="done")]
+    )
     client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: next(responses)))
     try:
         fetcher = LearningFetcher(client=client, obey_robots=False, default_rps=0, max_retries=2)
-        assert await fetcher.get_text("https://retry-ok.test/feed", headers={"X-Extra": "1"}) == "done"
+        assert (
+            await fetcher.get_text("https://retry-ok.test/feed", headers={"X-Extra": "1"}) == "done"
+        )
     finally:
         await client.aclose()
     assert 3.0 in sleeps
@@ -845,7 +858,9 @@ async def test_fetcher_after_response_zero_delay_does_not_sleep(monkeypatch) -> 
 
     monkeypatch.setattr(fetcher_mod.asyncio, "sleep", fake_sleep)
     fetcher = LearningFetcher(obey_robots=False, default_rps=0)
-    await fetcher.after_response("https://x.test", httpx.Response(429, headers={"Retry-After": "0"}))
+    await fetcher.after_response(
+        "https://x.test", httpx.Response(429, headers={"Retry-After": "0"})
+    )
     assert sleeps == []
 
 
