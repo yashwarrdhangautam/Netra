@@ -480,6 +480,18 @@ async def require_access(
     return user
 
 
+async def require_writer(
+    user: Annotated[User, Depends(get_current_active_user)],
+) -> User:
+    """Allow analysts and admins. Viewers and clients cannot read sensitive drafts."""
+    if user.role not in WRITER_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This role cannot read submission drafts.",
+        )
+    return user
+
+
 async def require_admin(
     user: Annotated[User, Depends(get_current_active_user)],
 ) -> User:

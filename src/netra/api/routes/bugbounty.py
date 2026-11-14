@@ -7,7 +7,7 @@ import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.api.deps import get_db_session
-from netra.api.routes.auth import require_admin
+from netra.api.routes.auth import require_admin, require_writer
 from netra.bugbounty.programs import (
     ProgramInput,
     ScopeRuleInput,
@@ -37,6 +37,7 @@ from netra.db.models.finding import Finding, FindingStatus
 from netra.db.models.scan import Scan, ScanProfile, ScanStatus
 from netra.db.models.scan_phase import PhaseStatus, ScanPhase
 from netra.db.models.target import Target, TargetType
+from netra.db.models.user import User
 from netra.schemas.bugbounty import (
     BBCounters,
     BBProgramCreate,
@@ -1005,6 +1006,7 @@ async def render_submission(
 @router.get("/submissions/{submission_id}/artifact")
 async def download_submission_artifact(
     submission_id: uuid.UUID,
+    current_user: Annotated[User, Depends(require_writer)],
     artifact_format: str = Query(alias="format", pattern="^(md|docx|pdf)$"),
     db: AsyncSession = Depends(get_db_session),
 ) -> FileResponse:

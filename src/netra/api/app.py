@@ -34,6 +34,9 @@ from netra.core.logging import setup_logging
 from netra.core.rate_limiter import setup_rate_limiting
 
 
+DEFAULT_JWT_SECRET = "CHANGE-ME-IN-PRODUCTION"  # noqa: S105 - the built-in placeholder
+
+
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown.
 
@@ -56,13 +59,24 @@ def create_app() -> FastAPI:
 
     Returns:
         Configured FastAPI application instance
+
+    Raises:
+        RuntimeError: outside development, when the JWT secret is still the built-in default
     """
+    if settings.environment != "development" and settings.jwt_secret_key == DEFAULT_JWT_SECRET:
+        raise RuntimeError(
+            "NETRA_JWT_SECRET_KEY must be set to a unique value outside development. "
+            "Generate one with: openssl rand -base64 48"
+        )
+    # The interactive API docs and the schema describe every route. Serve them in development only.
+    docs_enabled = settings.environment == "development"
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
         description="AI-augmented unified cybersecurity platform with SSRF protection and rate limiting",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
         lifespan=lifespan,
     )
 
