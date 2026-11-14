@@ -33,7 +33,6 @@ from netra.core.config import settings
 from netra.core.logging import setup_logging
 from netra.core.rate_limiter import setup_rate_limiting
 
-
 DEFAULT_JWT_SECRET = "CHANGE-ME-IN-PRODUCTION"  # noqa: S105 - the built-in placeholder
 
 
