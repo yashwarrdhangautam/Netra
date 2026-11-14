@@ -776,6 +776,103 @@ def pentest_report(scan_id: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
+# INTEL TOOLS (no traffic to targets)
+# ══════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def scanner_tools_status() -> dict[str, Any]:
+    """List which scanner binaries are installed on this host and which required ones are missing.
+
+    Returns:
+        Dict with per-tool install state and the list of missing required tools
+    """
+    from netra.scanner.tools.inventory import tool_inventory
+
+    rows = tool_inventory()
+    missing = [r["binary"] for r in rows if not r["installed"] and not r["optional"]]
+    return {"tools": rows, "missing_required": missing, "missing_count": len(missing)}
+
+
+@mcp.tool()
+async def cve_priority(cve_ids: list[str]) -> dict[str, Any]:
+    """Rank CVE identifiers by exploitation: CISA KEV status first, then FIRST EPSS likelihood.
+
+    Args:
+        cve_ids: CVE identifiers such as CVE-2021-44228 (up to 50)
+
+    Returns:
+        Dict with one row per valid CVE, exploited first
+    """
+    from netra.intel.cve_intel import CveIntelClient, rank_key
+
+    results = await CveIntelClient().lookup(cve_ids[:50])
+    ordered = sorted(results, key=rank_key)
+    return {
+        "items": [
+            {
+                "cve": r.cve,
+                "known_exploited": r.known_exploited,
+                "epss": r.epss,
+                "priority": r.priority,
+            }
+            for r in ordered
+        ],
+        "count": len(ordered),
+    }
+
+
+@mcp.tool()
+async def protection_checklist(
+    headers: dict[str, str], status_code: int | None = None
+) -> dict[str, Any]:
+    """Given the response headers from one normal request, return detected protections and the
+    checks to try next. Sends no traffic.
+
+    Args:
+        headers: Response headers as name -> value
+        status_code: HTTP status of that response, if known
+
+    Returns:
+        Dict with protection ids and the ordered checklist
+    """
+    from netra.intel.bypass_checklist import checklist_for, detect_protections
+
+    found = detect_protections(headers, status_code)
+    return {
+        "protections": found,
+        "checklist": [
+            {"protection": c.protection, "label": c.label, "check": c.check}
+            for c in checklist_for(found)
+        ],
+    }
+
+
+@mcp.tool()
+async def payload_search(
+    query: str = "", topic: str | None = None, limit: int = 25
+) -> dict[str, Any]:
+    """Search the pinned PayloadsAllTheThings library. Each result names its source file and commit.
+
+    Args:
+        query: Free text to match in the payload or its section
+        topic: Optional topic folder name, such as "SQL Injection"
+        limit: Maximum results (1 to 100)
+
+    Returns:
+        Dict with matching passages, or an error if the library is not synced on this host
+    """
+    from netra.core.config import settings
+    from netra.intel.payloads import checkout_dir, load_payloads, search
+
+    root = checkout_dir(settings.tools_dir)
+    if not root.is_dir():
+        return {"error": "payload library not synced on this host", "items": [], "count": 0}
+    hits = search(load_payloads(root), query=query, topic=topic, limit=max(1, min(limit, 100)))
+    return {"items": [p.as_dict() for p in hits], "count": len(hits)}
+
+
 # ENTRY POINT
 # ══════════════════════════════════════════════════════════
 
