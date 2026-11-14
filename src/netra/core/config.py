@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     corpus_source_chaos: bool = True
     corpus_source_repo_heads: bool = True
     corpus_source_bugcrowd: bool = True
+    # Threat-intel and platform tokens (optional). Set in .env as NETRA_<NAME>.
+    intigriti_token: str | None = None
+    chaos_api_key: str | None = None
     # Bug bounty module (NETRA-BB). Set NETRA_BB_ENABLED=false to run the core scanner only.
     bb_enabled: bool = True
 

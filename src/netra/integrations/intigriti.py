@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from netra.bugbounty.programs import ProgramInput, ScopeRuleInput
+from netra.core.config import settings
 from netra.db.models.bb_program import BBPlatform
 from netra.db.models.bb_scope_rule import ScopeAssetType, ScopeRuleType
 
@@ -18,7 +19,7 @@ class IntigritiClient:
     BASE_URL = "https://api.intigriti.com/core"
 
     def __init__(self, token: str | None = None, timeout: float = 30.0) -> None:
-        self.token = token or os.getenv("INTIGRITI_TOKEN", "")
+        self.token = token or settings.intigriti_token or os.getenv("INTIGRITI_TOKEN", "")
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
 
