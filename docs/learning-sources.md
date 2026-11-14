@@ -9,7 +9,7 @@ Each source is recorded with what it gives NETRA, how it is used, and what is st
 | nuclei-templates (MIT) | Pinned to a commit, checked before each scan | Built; sync on the worker host | `src/netra/scanner/tools/template_pin.py` |
 | PayloadsAllTheThings (MIT) | Pinned checkout, parsed into passages with source and commit | Built; sync on the worker host | `src/netra/intel/payloads.py` |
 | Protection checks (from httpx response headers) | Ordered checks per protection, no extra traffic | Built and wired into the httpx tool | `src/netra/intel/bypass_checklist.py` |
-| ProjectDiscovery Chaos | Subdomains from the Chaos API when a key is set | Client built and mock-tested; not run live (no key) | `src/netra/intel/chaos.py` |
+| ProjectDiscovery Chaos | Skipped. Subdomain discovery now needs an enterprise plan, so the free key returns 401. Subdomains come from subfinder and amass, both open source. | Client kept but unused; no key stored | `src/netra/intel/chaos.py` |
 | HackerOne disclosed reports | Existing harvester and corpus | Already built | `src/netra/bugbounty/learning/sources/hackerone.py` |
 | Bugcrowd disclosures | Metadata-only feed, reference only | Built as a reference feed | `src/netra/bugbounty/learning/sources/bugcrowd.py` |
 | Intigriti | No public disclosure feed exists; the harvester is a stub by design. Curate write-ups by hand, the way Claude-BugHunter does. Write-ups are cited by URL, never copied. | Decision made, no scraper | this file |
@@ -26,6 +26,6 @@ URL.
 
 - Scope sync for Bugcrowd and Intigriti: needs a token for each platform and the confirmed API
   endpoints. No code is written until both are available.
-- Chaos: needs `NETRA_CHAOS_API_KEY` before the live call can be verified.
+- Chaos: skipped. Revisit only if an enterprise plan is approved.
 - The pinned checkouts (nuclei-templates, PayloadsAllTheThings) must be synced on each worker host
   before the scanner and the payload endpoint can use them.
