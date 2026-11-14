@@ -50,7 +50,7 @@ Paste the output into `.env` after `NETRA_JWT_SECRET_KEY=`. The stack refuses to
 ```bash
 docker compose up -d --build
 docker compose ps
-curl -s http://localhost:8000/health
+curl -s http://localhost:8000/api/v1/health
 ```
 
 If port 8000 is taken on Kali (some local tools use it), change the host port of the `api` service in `docker-compose.yml`.

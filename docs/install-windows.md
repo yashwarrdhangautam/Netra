@@ -57,7 +57,7 @@ docker compose ps
 Wait until the `api` service is healthy. Check it:
 
 ```powershell
-curl.exe http://localhost:8000/health
+curl.exe http://localhost:8000/api/v1/health
 ```
 
 If port 8000 is already in use, change the host port of the `api` service in `docker-compose.yml`.
