@@ -1,0 +1,20 @@
+{
+  "description": "Labelled response-header cases for the protection detector. Each case lists the protections a human reviewer expects. Add cases here when the detector misses or over-reports.",
+  "cases": [
+    {"name": "cloudflare edge", "headers": {"CF-Ray": "8a1b2c-LHR", "Server": "cloudflare"}, "status": 200, "expected": ["waf"]},
+    {"name": "akamai transformed", "headers": {"X-Akamai-Transformed": "9 - 0 pmb=mRUM", "Server": "AkamaiGHost"}, "status": 200, "expected": ["waf"]},
+    {"name": "modsecurity banner", "headers": {"Server": "Apache mod_security"}, "status": 200, "expected": ["waf"]},
+    {"name": "csp enforced", "headers": {"Content-Security-Policy": "default-src 'self'"}, "status": 200, "expected": ["csp"]},
+    {"name": "csp report only", "headers": {"Content-Security-Policy-Report-Only": "script-src 'none'"}, "status": 200, "expected": ["csp"]},
+    {"name": "cors wildcard", "headers": {"Access-Control-Allow-Origin": "*"}, "status": 200, "expected": ["cors"]},
+    {"name": "no cors", "headers": {"Content-Type": "text/html"}, "status": 200, "expected": []},
+    {"name": "rate limited 429", "headers": {}, "status": 429, "expected": ["rate_limit"]},
+    {"name": "retry after", "headers": {"Retry-After": "60"}, "status": 503, "expected": ["rate_limit"]},
+    {"name": "ratelimit headers", "headers": {"X-RateLimit-Limit": "100"}, "status": 200, "expected": ["rate_limit"]},
+    {"name": "x-frame deny", "headers": {"X-Frame-Options": "DENY"}, "status": 200, "expected": ["frame_protection"]},
+    {"name": "frame-ancestors in csp", "headers": {"Content-Security-Policy": "frame-ancestors 'none'"}, "status": 200, "expected": ["csp", "frame_protection"]},
+    {"name": "httpx underscore names", "headers": {"content_security_policy": "default-src 'self'", "x_frame_options": "SAMEORIGIN"}, "status": 200, "expected": ["csp", "frame_protection"]},
+    {"name": "plain nginx", "headers": {"Server": "nginx/1.25", "Content-Type": "text/html"}, "status": 200, "expected": []},
+    {"name": "waf plus csp", "headers": {"CF-Ray": "abc", "Content-Security-Policy": "script-src 'self'"}, "status": 200, "expected": ["waf", "csp"]}
+  ]
+}

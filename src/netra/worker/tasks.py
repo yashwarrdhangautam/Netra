@@ -243,6 +243,14 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
         scan.checkpoint_data = {
             **(scan.checkpoint_data or {}),
             "live_hosts": live_hosts,
+            # Host rows (tech, status, protections) feed the recon manifest and arsenal map.
+            "http_hosts": [
+                {
+                    k: f.get(k)
+                    for k in ("url", "hostname", "status_code", "title", "tech", "protections")
+                }
+                for f in http_result.findings[:500]
+            ],
         }
         await db.commit()
 
