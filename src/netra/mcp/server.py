@@ -685,7 +685,7 @@ async def llm_security_scan(
 # ══════════════════════════════════════════════════════════
 async def wpscan_check(
     url: str,
-    enumerate: str = "vp,vt,u",
+    enumerate: str = "vp,vt,u",  # noqa: A002 - public tool argument, matches WPScan
     api_token: str = "",
 ) -> dict[str, Any]:
     """WordPress-specific vulnerability scanning.

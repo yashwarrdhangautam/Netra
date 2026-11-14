@@ -18,24 +18,32 @@ from netra.db.models.scan import Scan, ScanStatus
 from netra.db.models.scan_phase import PhaseStatus, PhaseType, ScanPhase
 from netra.scanner.profiles import get_profile_config
 from netra.scanner.tools.amass import AmassTool
+from netra.scanner.tools.assetfinder import AssetfinderTool
 from netra.scanner.tools.base import ToolResult
 from netra.scanner.tools.checkov import CheckovTool
 from netra.scanner.tools.dalfox import DalfoxTool
 from netra.scanner.tools.dependency_scan import PipAuditTool
+from netra.scanner.tools.dnsx import DnsxTool
 from netra.scanner.tools.ffuf import FfufTool
+from netra.scanner.tools.gau import GauTool
 from netra.scanner.tools.gitleaks import GitleaksTool
 from netra.scanner.tools.httpx import HttpxTool
+from netra.scanner.tools.katana import KatanaTool
 from netra.scanner.tools.llm_security import LLMSecurityTool
+from netra.scanner.tools.naabu import NaabuTool
 from netra.scanner.tools.nikto import NiktoTool
 from netra.scanner.tools.nmap import NmapTool
 from netra.scanner.tools.nuclei import NucleiTool
 from netra.scanner.tools.prowler import ProwlerTool
+from netra.scanner.tools.recontool import RecontoolTool
 
 # Phase 2 tools
 from netra.scanner.tools.semgrep import SemgrepTool
 from netra.scanner.tools.sqlmap import SqlmapTool
 from netra.scanner.tools.subfinder import SubfinderTool
+from netra.scanner.tools.subzy import SubzyTool
 from netra.scanner.tools.trivy import TrivyTool
+from netra.scanner.tools.wpscan import WpscanTool
 
 logger = structlog.get_logger()
 
@@ -58,7 +66,16 @@ class ScanOrchestrator:
             await self._execute_bugbounty_scan(scan)
             return
 
-        profile = get_profile_config(scan.profile)
+        # Copy: get_profile_config returns the shared PROFILES entry. It must not change per scan.
+        profile = dict(get_profile_config(scan.profile))
+        # The scan's own config may lower these limits. It may not raise them above the profile.
+        overrides = scan.config or {}
+        for key in ("rate_limit", "threads", "timeout_minutes"):
+            if key in overrides and isinstance(overrides[key], int):
+                profile[key] = min(int(overrides[key]), int(profile.get(key, overrides[key])))
+        for key in ("test_sqli", "test_xss", "test_dirs", "use_nikto", "use_amass"):
+            if key in overrides and isinstance(overrides[key], bool):
+                profile[key] = overrides[key] and bool(profile.get(key))
 
         # Update scan status
         scan.status = ScanStatus.RUNNING
@@ -158,8 +175,48 @@ class ScanOrchestrator:
                     if hostname := f.get("hostname") or f.get("url", ""):
                         all_subdomains.add(hostname)
 
+            # assetfinder: certificate-transparency subdomains (skipped cleanly if not installed)
+            if profile.get("use_assetfinder", True):
+                assetfinder = AssetfinderTool(work_dir=self._phase_dir(phase))
+                result = await assetfinder.run(target)
+                await self._save_findings(scan, result)
+                for f in result.findings:
+                    if hostname := f.get("hostname"):
+                        all_subdomains.add(hostname)
+
+            # Recontool: passive recon chain (off unless the profile opts in). Active phases run
+            # only when the profile sets recontool_active, and that must be an explicit choice.
+            if profile.get("use_recontool", False):
+                recontool = RecontoolTool(work_dir=self._phase_dir(phase))
+                result = await recontool.run(
+                    target,
+                    profile="passive" if not profile.get("recontool_active") else "stealth",
+                    authorize_active=bool(profile.get("recontool_active", False)),
+                )
+                if result.success:
+                    await self._save_findings(
+                        scan,
+                        ToolResult(
+                            tool_name=result.tool_name,
+                            success=True,
+                            target=result.target,
+                            findings=[f for f in result.findings if f.get("kind") == "finding"],
+                        ),
+                    )
+                    for f in result.findings:
+                        if f.get("kind") == "asset" and f.get("type") in ("domain", "subdomain"):
+                            all_subdomains.add(f["value"])
+                else:
+                    logger.warning("recontool skipped", error=result.error)
+
             # Always include the root target
             all_subdomains.add(target)
+
+            # subzy: subdomain takeover checks on everything found so far
+            if profile.get("use_subzy", True):
+                subzy = SubzyTool(work_dir=self._phase_dir(phase))
+                result = await subzy.run(sorted(all_subdomains))
+                await self._save_findings(scan, result)
 
             await self._complete_phase(phase, findings_count=len(all_subdomains))
 
@@ -188,9 +245,19 @@ class ScanOrchestrator:
                 await self._complete_phase(phase, findings_count=0)
                 return []
 
+            # dnsx: keep only hostnames that resolve (skip probing dead names)
+            hosts = subdomains
+            if profile.get("use_dnsx", True):
+                dnsx = DnsxTool(work_dir=self._phase_dir(phase))
+                resolved = await dnsx.run(subdomains)
+                await self._save_findings(scan, resolved)
+                resolved_names = [f["hostname"] for f in resolved.findings if f.get("hostname")]
+                if resolved_names:
+                    hosts = resolved_names
+
             httpx_tool = HttpxTool(work_dir=self._phase_dir(phase))
             result = await httpx_tool.run(
-                target=",".join(subdomains[: profile.get("max_targets", 50)]),
+                target=",".join(hosts[: profile.get("max_targets", 50)]),
                 follow_redirects=True,
                 tech_detect=True,
             )
@@ -201,6 +268,25 @@ class ScanOrchestrator:
                 for f in result.findings
                 if f.get("status_code", 0) in range(200, 500)
             ]
+
+            # gau + katana: historical and crawled endpoints for the live hosts
+            endpoints: set[str] = set()
+            target_root = scan.target.value
+            if profile.get("use_gau", True):
+                gau = GauTool(work_dir=self._phase_dir(phase))
+                result = await gau.run(target_root)
+                await self._save_findings(scan, result)
+                endpoints.update(f["url"] for f in result.findings if f.get("url"))
+            if profile.get("use_katana", True):
+                for live in live_hosts[: profile.get("max_crawl_hosts", 5)]:
+                    katana = KatanaTool(work_dir=self._phase_dir(phase))
+                    result = await katana.run(live)
+                    await self._save_findings(scan, result)
+                    endpoints.update(f["url"] for f in result.findings if f.get("url"))
+            scan.checkpoint_data = {
+                **(scan.checkpoint_data or {}),
+                "endpoints": sorted(endpoints)[:5000],
+            }
 
             await self._complete_phase(phase, findings_count=len(live_hosts))
 
@@ -225,6 +311,11 @@ class ScanOrchestrator:
         try:
             nmap = NmapTool(work_dir=self._phase_dir(phase))
             for target in targets[: profile.get("max_targets", 50)]:
+                if profile.get("use_naabu", True):
+                    naabu = NaabuTool(work_dir=self._phase_dir(phase))
+                    fast = await naabu.run(target)
+                    await self._save_findings(scan, fast)
+                    total_findings += len(fast.findings)
                 result = await nmap.run(
                     target=target,
                     ports=profile.get("port_range", "top-1000"),
@@ -260,6 +351,19 @@ class ScanOrchestrator:
                 nikto = NiktoTool(work_dir=self._phase_dir(phase))
                 for target in targets[:10]:  # Nikto is slow, limit targets
                     result = await nikto.run(target=target)
+                    await self._save_findings(scan, result)
+                    total_findings += len(result.findings)
+
+            # wpscan is opt-in: it is noisy and only useful against WordPress sites
+            if profile.get("use_wpscan", False):
+                from netra.core.config import settings as app_settings
+
+                for target in targets[: profile.get("max_wp_targets", 5)]:
+                    wpscan = WpscanTool(work_dir=self._phase_dir(phase))
+                    result = await wpscan.run(
+                        url=target if "://" in target else f"https://{target}",
+                        api_token=app_settings.wpscan_api_token or None,
+                    )
                     await self._save_findings(scan, result)
                     total_findings += len(result.findings)
 

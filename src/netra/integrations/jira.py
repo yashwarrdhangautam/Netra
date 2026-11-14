@@ -63,7 +63,7 @@ class JiraClient:
                 except SSRFProtectionError:
                     raise ValueError(
                         f"Jira base URL points to internal/private address: {base_url}"
-                    )
+                    ) from None
             self.base_url = base_url
         else:
             self.base_url = ""

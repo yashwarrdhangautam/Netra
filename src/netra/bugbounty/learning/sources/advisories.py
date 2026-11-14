@@ -120,6 +120,8 @@ async def ingest_advisories(
                 metadata=item["metadata"],
                 ingested_at=started,
             )
+            if _row is None:
+                continue  # forgotten (right-to-be-forgotten blocklist): not counted
             if created:
                 added += 1
             else:

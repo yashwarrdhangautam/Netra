@@ -1,4 +1,5 @@
 """Gitleaks wrapper."""
+
 from __future__ import annotations
 
 import tempfile
@@ -31,4 +32,3 @@ class GitleaksTool(CliTool):
             path = Path(tmp) / "blob.txt"
             path.write_text(text, encoding="utf-8")
             return await self.run(str(tmp), scan_history=False)
-

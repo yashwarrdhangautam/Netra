@@ -30,17 +30,23 @@ class Settings(BaseSettings):
     db_echo: bool = False
     db_pool_size: int = 5
     db_max_overflow: int = 10
+    # Celery workers call asyncio.run() several times per task. A pooled asyncpg connection
+    # is bound to the loop that created it, so workers open a connection per checkout instead.
+    db_null_pool: bool = False
 
     # ── API ──
-    api_host: str = "0.0.0.0"
+    api_host: str = "0.0.0.0"  # noqa: S104 - the API runs in a container and binds all interfaces
     api_port: int = 8000
     api_cors_origins: list[str] = Field(default=["http://localhost:5173"])
     api_rate_limit: str = "100/minute"
 
     # ── Auth ──
-    jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"
+    # Compose refuses to start without NETRA_JWT_SECRET_KEY; this default is for local runs.
+    jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"  # noqa: S105
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
+    # Self sign-up creates viewer accounts. Off by default; admins create users in the GUI.
+    allow_self_signup: bool = False
 
     # ── AI ──
     anthropic_api_key: str = ""
@@ -76,6 +82,7 @@ class Settings(BaseSettings):
     tools_dir: Path = Path.home() / ".netra" / "tools"
     wordlists_dir: Path = Path.home() / ".netra" / "wordlists"
     shodan_api_key: str = ""
+    wpscan_api_token: str = ""
 
     # ── Reports ──
     reports_dir: Path = Path.home() / ".netra" / "reports"
@@ -85,6 +92,11 @@ class Settings(BaseSettings):
     corpus_source_writeups: bool = True
     corpus_obey_robots: bool = True
     corpus_default_rps: float = 1.0
+    corpus_source_chaos: bool = True
+    corpus_source_repo_heads: bool = True
+    corpus_source_bugcrowd: bool = True
+    # Bug bounty module (NETRA-BB). Set NETRA_BB_ENABLED=false to run the core scanner only.
+    bb_enabled: bool = True
 
 
 settings = Settings()

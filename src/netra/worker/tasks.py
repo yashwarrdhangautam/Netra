@@ -9,6 +9,7 @@ import structlog
 from celery import chain
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from netra.db.models.scan import Scan, ScanStatus
 from netra.db.models.scan_phase import PhaseStatus, PhaseType, ScanPhase
@@ -38,6 +39,45 @@ def _get_db_session() -> AsyncSession:
     return async_session_factory()
 
 
+def _record_run(runs: list[dict], tool: str, target: str, result: Any) -> None:
+    """Keep the outcome of one tool run so the phase can judge it instead of ignoring it."""
+    runs.append(
+        {
+            "tool": tool,
+            "target": str(target)[:200],
+            "success": bool(result.success),
+            "error": result.error,
+        }
+    )
+
+
+def _phase_verdict(runs: list[dict]) -> dict:
+    """Phase outcome from its tool runs.
+
+    The phase fails only when every run it attempted failed. Partial failures are kept as
+    warnings on the phase row, so they are visible instead of silently dropped.
+    """
+    failures = [
+        f"{r['tool']} {r['target']}: {r['error'] or 'failed'}"[:300]
+        for r in runs
+        if not r["success"]
+    ]
+    if runs and len(failures) == len(runs):
+        return {"status": "failed", "error": "all tool runs failed: " + "; ".join(failures[:3])}
+    if failures:
+        return {"status": "completed", "warnings": failures}
+    return {"status": "completed"}
+
+
+def _phase_note(result: dict) -> str | None:
+    """Text stored on the phase row: the error for a failed phase, or the warnings."""
+    if result.get("status") == "failed":
+        return str(result.get("error", "Unknown error"))[:2000]
+    if result.get("warnings"):
+        return "; ".join(result["warnings"])[:2000]
+    return None
+
+
 def _phase_dir(scan_id: uuid.UUID, phase_type: str) -> Path:
     """Get working directory for a phase."""
     d = Path.home() / ".netra" / "scans" / str(scan_id)[:8] / phase_type
@@ -63,28 +103,29 @@ def scope_resolution(self, scan_id: str) -> dict:
         Task result with target information
     """
     scan_uuid = uuid.UUID(scan_id)
-    db = _get_db_session()
 
     try:
         import asyncio
 
-        result = asyncio.run(_execute_scope_resolution(db, scan_uuid))
+        result = asyncio.run(_in_session(_execute_scope_resolution, scan_uuid))
 
         # Update phase status
-        asyncio.run(_update_phase_status(db, scan_uuid, PhaseType.RECON_SUBDOMAINS, result))
+        asyncio.run(_in_session(_update_phase_status, scan_uuid, PhaseType.SCOPE, result))
 
         return result
     except Exception as e:
         logger.error("scope_resolution_failed", scan_id=scan_id, error=str(e))
         return {"scan_id": scan_id, "phase": "scope", "status": "failed", "error": str(e)}
     finally:
-        asyncio.run(db.close())
+        pass
 
 
 async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dict:
     """Execute scope resolution phase."""
 
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    result = await db.execute(
+        select(Scan).options(selectinload(Scan.target)).where(Scan.id == scan_id)
+    )
     scan = result.scalar_one_or_none()
 
     if not scan:
@@ -96,7 +137,9 @@ async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dic
     try:
         # Subfinder
         subfinder = SubfinderTool(work_dir=_phase_dir(scan_id, "subdomains"))
+        runs: list[dict] = []
         sub_result = await subfinder.run(target)
+        _record_run(runs, "subfinder", target, sub_result)
         for f in sub_result.findings:
             if hostname := f.get("hostname") or f.get("url", ""):
                 all_subdomains.add(hostname)
@@ -105,6 +148,7 @@ async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dic
         if scan.profile in ["deep", "comprehensive"]:
             amass = AmassTool(work_dir=_phase_dir(scan_id, "amass"))
             amass_result = await amass.run(target)
+            _record_run(runs, "amass", target, amass_result)
             for f in amass_result.findings:
                 if hostname := f.get("hostname") or f.get("url", ""):
                     all_subdomains.add(hostname)
@@ -125,6 +169,7 @@ async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dic
             "status": "completed",
             "subdomains": list(all_subdomains),
             "count": len(all_subdomains),
+            **_phase_verdict(runs),
         }
 
     except Exception as e:
@@ -144,24 +189,25 @@ def recon(self, previous_result: dict, scan_id: str) -> dict:
         Task result with live hosts
     """
     scan_uuid = uuid.UUID(scan_id)
-    db = _get_db_session()
 
     try:
         import asyncio
 
-        result = asyncio.run(_execute_recon(db, scan_uuid, previous_result))
-        asyncio.run(_update_phase_status(db, scan_uuid, PhaseType.RECON_DISCOVERY, result))
+        result = asyncio.run(_in_session(_execute_recon, scan_uuid, previous_result))
+        asyncio.run(_in_session(_update_phase_status, scan_uuid, PhaseType.RECON_DISCOVERY, result))
         return result
     except Exception as e:
         logger.error("recon_failed", scan_id=scan_id, error=str(e))
         return {"scan_id": scan_id, "phase": "recon", "status": "failed", "error": str(e)}
     finally:
-        asyncio.run(db.close())
+        pass
 
 
 async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: dict) -> dict:
     """Execute reconnaissance phase."""
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    result = await db.execute(
+        select(Scan).options(selectinload(Scan.target)).where(Scan.id == scan_id)
+    )
     scan = result.scalar_one_or_none()
 
     if not scan:
@@ -179,11 +225,13 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
             return {"status": "completed", "live_hosts": [], "count": 0}
 
         httpx_tool = HttpxTool(work_dir=_phase_dir(scan_id, "discovery"))
+        runs: list[dict] = []
         http_result = await httpx_tool.run(
             target=",".join(subdomains[:50]),
             follow_redirects=True,
             tech_detect=True,
         )
+        _record_run(runs, "httpx", ",".join(subdomains[:50]), http_result)
 
         live_hosts = [
             f.get("url", "")
@@ -204,6 +252,7 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
             "status": "completed",
             "live_hosts": live_hosts,
             "count": len(live_hosts),
+            **_phase_verdict(runs),
         }
 
     except Exception as e:
@@ -223,24 +272,25 @@ def vuln_scan(self, previous_result: dict, scan_id: str) -> dict:
         Task result with vulnerability findings
     """
     scan_uuid = uuid.UUID(scan_id)
-    db = _get_db_session()
 
     try:
         import asyncio
 
-        result = asyncio.run(_execute_vuln_scan(db, scan_uuid, previous_result))
-        asyncio.run(_update_phase_status(db, scan_uuid, PhaseType.VULN_SCAN, result))
+        result = asyncio.run(_in_session(_execute_vuln_scan, scan_uuid, previous_result))
+        asyncio.run(_in_session(_update_phase_status, scan_uuid, PhaseType.VULN_SCAN, result))
         return result
     except Exception as e:
         logger.error("vuln_scan_failed", scan_id=scan_id, error=str(e))
         return {"scan_id": scan_id, "phase": "vuln_scan", "status": "failed", "error": str(e)}
     finally:
-        asyncio.run(db.close())
+        pass
 
 
 async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_result: dict) -> dict:
     """Execute vulnerability scanning phase."""
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    result = await db.execute(
+        select(Scan).options(selectinload(Scan.target)).where(Scan.id == scan_id)
+    )
     scan = result.scalar_one_or_none()
 
     if not scan:
@@ -257,14 +307,24 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
 
         service = FindingService(db)
 
-        # Nuclei
+        # Nuclei: limits come from the scan profile, and the scan's own config can lower them.
+        from netra.scanner.profiles import get_profile_config
+
+        profile = get_profile_config(str(scan.profile))
+        overrides = scan.config or {}
+        profile_rate = int(profile.get("rate_limit", 150))
+        nuclei_rate = min(int(overrides.get("rate_limit", profile_rate)), profile_rate)
+        nuclei_severity = str(profile.get("severity_filter", "critical,high,medium"))
+
+        runs: list[dict] = []
         nuclei = NucleiTool(work_dir=_phase_dir(scan_id, "nuclei"))
         for target in live_hosts[:50]:
             nuclei_result = await nuclei.run(
                 target=target,
-                severity="critical,high,medium",
-                rate_limit=150,
+                severity=nuclei_severity,
+                rate_limit=nuclei_rate,
             )
+            _record_run(runs, "nuclei", target, nuclei_result)
             for f_data in nuclei_result.findings:
                 await service.create_finding_from_tool(
                     scan_id=scan_id,
@@ -275,8 +335,10 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
 
         # Nikto for web misconfigs
         nikto = NiktoTool(work_dir=_phase_dir(scan_id, "nikto"))
-        for target in live_hosts[:10]:
+        nikto_enabled = bool(profile.get("use_nikto")) and bool(overrides.get("use_nikto", True))
+        for target in live_hosts[:10] if nikto_enabled else []:
             nikto_result = await nikto.run(target=target)
+            _record_run(runs, "nikto", target, nikto_result)
             for f_data in nikto_result.findings:
                 await service.create_finding_from_tool(
                     scan_id=scan_id,
@@ -290,6 +352,7 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
             "phase": "vuln_scan",
             "status": "completed",
             "findings_count": total_findings,
+            **_phase_verdict(runs),
         }
 
     except Exception as e:
@@ -309,24 +372,25 @@ def active_test(self, previous_result: dict, scan_id: str) -> dict:
         Task result with penetration testing findings
     """
     scan_uuid = uuid.UUID(scan_id)
-    db = _get_db_session()
 
     try:
         import asyncio
 
-        result = asyncio.run(_execute_active_test(db, scan_uuid, previous_result))
-        asyncio.run(_update_phase_status(db, scan_uuid, PhaseType.PENTEST, result))
+        result = asyncio.run(_in_session(_execute_active_test, scan_uuid, previous_result))
+        asyncio.run(_in_session(_update_phase_status, scan_uuid, PhaseType.PENTEST, result))
         return result
     except Exception as e:
         logger.error("active_test_failed", scan_id=scan_id, error=str(e))
         return {"scan_id": scan_id, "phase": "active_test", "status": "failed", "error": str(e)}
     finally:
-        asyncio.run(db.close())
+        pass
 
 
 async def _execute_active_test(db: AsyncSession, scan_id: uuid.UUID, previous_result: dict) -> dict:
     """Execute active penetration testing phase."""
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    result = await db.execute(
+        select(Scan).options(selectinload(Scan.target)).where(Scan.id == scan_id)
+    )
     scan = result.scalar_one_or_none()
 
     if not scan:
@@ -336,7 +400,16 @@ async def _execute_active_test(db: AsyncSession, scan_id: uuid.UUID, previous_re
     if not live_hosts:
         live_hosts = (scan.checkpoint_data or {}).get("live_hosts", [])
 
+    from netra.scanner.profiles import get_profile_config
+
     total_findings = 0
+    # Intrusive tests run only when the profile enables them. The scan config can turn one off.
+    profile = get_profile_config(str(scan.profile))
+    overrides = scan.config or {}
+    allow = {
+        key: bool(profile.get(key)) and bool(overrides.get(key, True))
+        for key in ("test_sqli", "test_xss", "test_dirs")
+    }
 
     try:
         from netra.db.models.finding import Finding
@@ -353,10 +426,12 @@ async def _execute_active_test(db: AsyncSession, scan_id: uuid.UUID, previous_re
         )
         injectable_urls = [row[0] for row in inject_result.fetchall() if row[0]][:20]
 
+        runs: list[dict] = []
         # SQLi testing
         sqlmap = SqlmapTool(work_dir=_phase_dir(scan_id, "sqlmap"))
-        for url in injectable_urls:
+        for url in injectable_urls if allow["test_sqli"] else []:
             sqlmap_result = await sqlmap.run(target=url, safe_mode=True, level=1, risk=1)
+            _record_run(runs, "sqlmap", url, sqlmap_result)
             for f_data in sqlmap_result.findings:
                 await service.create_finding_from_tool(
                     scan_id=scan_id,
@@ -367,8 +442,9 @@ async def _execute_active_test(db: AsyncSession, scan_id: uuid.UUID, previous_re
 
         # XSS testing
         dalfox = DalfoxTool(work_dir=_phase_dir(scan_id, "dalfox"))
-        for url in injectable_urls:
+        for url in injectable_urls if allow["test_xss"] else []:
             dalfox_result = await dalfox.run(target=url)
+            _record_run(runs, "dalfox", url, dalfox_result)
             for f_data in dalfox_result.findings:
                 await service.create_finding_from_tool(
                     scan_id=scan_id,
@@ -379,8 +455,9 @@ async def _execute_active_test(db: AsyncSession, scan_id: uuid.UUID, previous_re
 
         # Directory fuzzing
         ffuf = FfufTool(work_dir=_phase_dir(scan_id, "ffuf"))
-        for target in live_hosts[:10]:
+        for target in live_hosts[:10] if allow["test_dirs"] else []:
             ffuf_result = await ffuf.run(target=f"{target}/FUZZ", wordlist="common.txt")
+            _record_run(runs, "ffuf", target, ffuf_result)
             for f_data in ffuf_result.findings:
                 await service.create_finding_from_tool(
                     scan_id=scan_id,
@@ -394,6 +471,7 @@ async def _execute_active_test(db: AsyncSession, scan_id: uuid.UUID, previous_re
             "phase": "active_test",
             "status": "completed",
             "findings_count": total_findings,
+            **_phase_verdict(runs),
         }
 
     except Exception as e:
@@ -413,19 +491,18 @@ def ai_analysis(self, previous_result: dict, scan_id: str) -> dict:
         Task result with AI-enriched findings
     """
     scan_uuid = uuid.UUID(scan_id)
-    db = _get_db_session()
 
     try:
         import asyncio
 
-        result = asyncio.run(_execute_ai_analysis(db, scan_uuid, previous_result))
-        asyncio.run(_update_phase_status(db, scan_uuid, PhaseType.AI_ANALYSIS, result))
+        result = asyncio.run(_in_session(_execute_ai_analysis, scan_uuid, previous_result))
+        asyncio.run(_in_session(_update_phase_status, scan_uuid, PhaseType.AI_ANALYSIS, result))
         return result
     except Exception as e:
         logger.error("ai_analysis_failed", scan_id=scan_id, error=str(e))
         return {"scan_id": scan_id, "phase": "ai_analysis", "status": "failed", "error": str(e)}
     finally:
-        asyncio.run(db.close())
+        pass
 
 
 async def _execute_ai_analysis(db: AsyncSession, scan_id: uuid.UUID, previous_result: dict) -> dict:
@@ -433,7 +510,9 @@ async def _execute_ai_analysis(db: AsyncSession, scan_id: uuid.UUID, previous_re
     from netra.ai.brain import AIBrain
     from netra.db.models.finding import Finding
 
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    result = await db.execute(
+        select(Scan).options(selectinload(Scan.target)).where(Scan.id == scan_id)
+    )
     scan = result.scalar_one_or_none()
 
     if not scan:
@@ -485,62 +564,97 @@ def reporting(self, previous_result: dict, scan_id: str) -> dict:
         Task result with report information
     """
     scan_uuid = uuid.UUID(scan_id)
-    db = _get_db_session()
 
     try:
         import asyncio
 
-        result = asyncio.run(_execute_reporting(db, scan_uuid, previous_result))
-        asyncio.run(_update_phase_status(db, scan_uuid, PhaseType.REPORTING, result))
+        result = asyncio.run(_in_session(_execute_reporting, scan_uuid, previous_result))
+        asyncio.run(_in_session(_update_phase_status, scan_uuid, PhaseType.REPORTING, result))
+        # The phase tasks report failure in their return value instead of raising, so the
+        # chain keeps going. Use the previous phase's status to decide the final state.
+        upstream_failed = (
+            isinstance(previous_result, dict) and previous_result.get("status") == "failed"
+        )
+        problems = asyncio.run(_in_session(_phase_problems, scan_uuid))
+        if upstream_failed or problems:
+            error = problems or str(previous_result.get("error") or "upstream phase failed")
+            asyncio.run(
+                _update_scan_row(
+                    scan_uuid,
+                    status=ScanStatus.FAILED,
+                    error_message=error,
+                    completed_at=datetime.now(UTC),
+                )
+            )
+        else:
+            asyncio.run(
+                _update_scan_row(
+                    scan_uuid, status=ScanStatus.COMPLETED, completed_at=datetime.now(UTC)
+                )
+            )
         return result
     except Exception as e:
         logger.error("reporting_failed", scan_id=scan_id, error=str(e))
+        try:
+            asyncio.run(
+                _update_scan_row(
+                    scan_uuid,
+                    status=ScanStatus.FAILED,
+                    error_message=f"reporting: {e}"[:2000],
+                    completed_at=datetime.now(UTC),
+                )
+            )
+        except Exception as update_exc:
+            logger.error("scan_status_update_failed", scan_id=scan_id, error=str(update_exc))
         return {"scan_id": scan_id, "phase": "reporting", "status": "failed", "error": str(e)}
     finally:
-        asyncio.run(db.close())
+        pass
 
 
 async def _execute_reporting(db: AsyncSession, scan_id: uuid.UUID, previous_result: dict) -> dict:
     """Execute report generation phase."""
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    result = await db.execute(
+        select(Scan).options(selectinload(Scan.target)).where(Scan.id == scan_id)
+    )
     scan = result.scalar_one_or_none()
 
     if not scan:
         return {"status": "failed", "error": "Scan not found"}
 
-    try:
-        # Generate default reports
-        from netra.reports.report_generator import ReportGenerator
+    # Reports are generated on demand from the Reports page (POST /reports/{scan_id}/generate).
+    # This phase used to call netra.reports.report_generator, which does not exist, so it
+    # now records that no report was generated here instead of failing the scan.
+    return {
+        "scan_id": str(scan_id),
+        "phase": "reporting",
+        "status": "completed",
+        "reports_generated": [],
+        "note": "auto-report generation not wired; generate from the Reports page",
+    }
 
-        generator = ReportGenerator(db)
-        reports_generated = []
 
-        # Generate executive summary
-        exec_report = await generator.generate_report(
-            scan_id=scan_id,
-            report_type="executive_pdf",
-        )
-        if exec_report:
-            reports_generated.append(str(exec_report.id))
+# A phase that never wrote a completed row counts as failed. This covers a phase whose
+# status write itself raised, which used to leave no row and so pass unnoticed.
+REQUIRED_PHASES = (
+    PhaseType.SCOPE,
+    PhaseType.RECON_DISCOVERY,
+    PhaseType.VULN_SCAN,
+    PhaseType.PENTEST,
+    PhaseType.AI_ANALYSIS,
+)
 
-        # Generate technical report
-        tech_report = await generator.generate_report(
-            scan_id=scan_id,
-            report_type="technical_docx",
-        )
-        if tech_report:
-            reports_generated.append(str(tech_report.id))
 
-        return {
-            "scan_id": str(scan_id),
-            "phase": "reporting",
-            "status": "completed",
-            "reports_generated": reports_generated,
-        }
-
-    except Exception as e:
-        logger.error("reporting_failed", scan_id=str(scan_id), error=str(e))
-        return {"status": "failed", "error": str(e)}
+async def _phase_problems(db: AsyncSession, scan_id: uuid.UUID) -> str | None:
+    """Required phases that did not complete, or None when all of them did."""
+    result = await db.execute(select(ScanPhase).where(ScanPhase.scan_id == scan_id))
+    status_by_type = {str(p.phase_type): str(p.status) for p in result.scalars().all()}
+    ok = {str(PhaseStatus.COMPLETED), str(PhaseStatus.SKIPPED)}
+    problems = []
+    for phase in REQUIRED_PHASES:
+        status = status_by_type.get(str(phase))
+        if status not in ok:
+            problems.append(f"{phase}={status or 'missing'}")
+    return f"phases not completed: {', '.join(problems)}" if problems else None
 
 
 async def _update_phase_status(
@@ -569,6 +683,7 @@ async def _update_phase_status(
             completed_at=datetime.now(UTC),
             findings_count=result.get("findings_count", result.get("count", 0)),
         )
+        phase.error_message = _phase_note(result)
         db.add(phase)
     else:
         phase.status = (
@@ -576,8 +691,7 @@ async def _update_phase_status(
         )
         phase.completed_at = datetime.now(UTC)
         phase.findings_count = result.get("findings_count", result.get("count", 0))
-        if result.get("status") == "failed":
-            phase.error_message = result.get("error", "Unknown error")
+        phase.error_message = _phase_note(result)
 
     await db.commit()
 
@@ -601,6 +715,24 @@ def create_scan_pipeline(scan_id: str) -> chain:
     )
 
 
+async def _in_session(fn: Any, *args: Any) -> Any:
+    """Run one async helper with its own session, so nothing crosses an event loop."""
+    async with _get_db_session() as session:
+        return await fn(session, *args)
+
+
+async def _update_scan_row(scan_uuid: uuid.UUID, **fields: Any) -> None:
+    """Update one scan row in a fresh session, so no session outlives its event loop."""
+    async with _get_db_session() as session:
+        result = await session.execute(select(Scan).where(Scan.id == scan_uuid))
+        scan = result.scalar_one_or_none()
+        if scan is None:
+            return
+        for name, value in fields.items():
+            setattr(scan, name, value)
+        await session.commit()
+
+
 @celery_app.task(bind=True, name="netra.run_scan", acks_late=True)
 def run_scan(self, scan_id: str) -> dict:
     """Main entry point for running a scan via Celery.
@@ -615,62 +747,43 @@ def run_scan(self, scan_id: str) -> dict:
         Final scan result summary
     """
     scan_uuid = uuid.UUID(scan_id)
-    db = _get_db_session()
     task_id = _task_request_id(self)
     task_token = set_current_task_id(task_id)
 
     try:
         import asyncio
 
-        # Update scan status
-        async def update_status():
-            result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
-            scan = result.scalar_one_or_none()
-            if scan:
-                scan.status = ScanStatus.RUNNING
-                scan.started_at = datetime.now(UTC)
-                await db.commit()
-
-        asyncio.run(update_status())
+        # Each status write opens its own session. A session must not be reused across
+        # asyncio.run() calls, because asyncpg binds connections to the loop that created them.
+        asyncio.run(
+            _update_scan_row(scan_uuid, status=ScanStatus.RUNNING, started_at=datetime.now(UTC))
+        )
 
         # Execute the pipeline
+        # Queue the phase chain. The last phase (reporting) sets COMPLETED or FAILED, so the
+        # scan is not marked finished here, before any phase has run.
         pipeline = create_scan_pipeline(scan_id)
-        result = pipeline()
-
-        # Mark scan complete
-        async def complete_scan():
-            result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
-            scan = result.scalar_one_or_none()
-            if scan:
-                scan.status = ScanStatus.COMPLETED
-                scan.completed_at = datetime.now(UTC)
-                await db.commit()
-
-        asyncio.run(complete_scan())
+        queued = pipeline.apply_async()
 
         return {
             "scan_id": scan_id,
-            "status": "completed",
-            "pipeline_result": result,
+            "status": "enqueued",
+            "pipeline_task_id": str(queued.id),
         }
 
     except Exception as e:
         logger.error("scan_failed", scan_id=scan_id, error=str(e))
-
-        async def fail_scan():
-            result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
-            scan = result.scalar_one_or_none()
-            if scan:
-                scan.status = ScanStatus.FAILED
-                scan.error_message = str(e)
-                scan.completed_at = datetime.now(UTC)
-                await db.commit()
-
-        asyncio.run(fail_scan())
-
-        return {"scan_id": scan_id, "status": "failed", "error": str(e)}
+        error_text = str(e)
+        asyncio.run(
+            _update_scan_row(
+                scan_uuid,
+                status=ScanStatus.FAILED,
+                error_message=error_text,
+                completed_at=datetime.now(UTC),
+            )
+        )
+        return {"scan_id": scan_id, "status": "failed", "error": error_text}
     finally:
-        asyncio.run(db.close())
         if task_id:
             clear_task_registry(task_id)
         reset_current_task_id(task_token)
@@ -680,14 +793,13 @@ def run_scan(self, scan_id: str) -> dict:
 def run_bugbounty_scan(self, scan_id: str) -> dict:
     """Run a NETRA-BB scan through the orchestrator."""
     scan_uuid = uuid.UUID(scan_id)
-    db = _get_db_session()
     task_id = _task_request_id(self)
     task_token = set_current_task_id(task_id)
 
     try:
         import asyncio
 
-        async def execute():
+        async def execute(db: AsyncSession):
             from netra.db.models.finding import Finding
             from netra.scanner.orchestrator import ScanOrchestrator
 
@@ -729,25 +841,25 @@ def run_bugbounty_scan(self, scan_id: str) -> dict:
             await db.commit()
             return {"scan_id": scan_id, "status": str(scan.status), "findings": len(findings)}
 
-        return asyncio.run(execute())
+        return asyncio.run(_in_session(execute))
     except Exception as e:
         logger.error("bb_scan_failed", scan_id=scan_id, error=str(e))
+        error_text = str(e)
         if task_id:
             kill_registered_processes(task_id)
 
-        async def fail_scan():
+        async def fail_scan(db: AsyncSession):
             result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
             scan = result.scalar_one_or_none()
             if scan:
                 scan.status = ScanStatus.FAILED
-                scan.error_message = str(e)
+                scan.error_message = error_text
                 scan.completed_at = datetime.now(UTC)
                 await db.commit()
 
-        asyncio.run(fail_scan())
-        return {"scan_id": scan_id, "status": "failed", "error": str(e)}
+        asyncio.run(_in_session(fail_scan))
+        return {"scan_id": scan_id, "status": "failed", "error": error_text}
     finally:
-        asyncio.run(db.close())
         if task_id:
             clear_task_registry(task_id)
         reset_current_task_id(task_token)
@@ -756,105 +868,120 @@ def run_bugbounty_scan(self, scan_id: str) -> dict:
 @celery_app.task(bind=True, name="netra.export_bugbounty_submissions")
 def export_bugbounty_submissions(self) -> dict:
     """Export submissions to Graphify JSON."""
-    db = _get_db_session()
-    try:
-        import asyncio
+    import asyncio
 
-        async def run():
-            from netra.bugbounty.graph_indexer import export_submissions_json
-            from netra.db.models.bb_submission import BBSubmission
+    async def run(db: AsyncSession) -> dict:
+        from netra.bugbounty.graph_indexer import export_submissions_json
+        from netra.db.models.bb_submission import BBSubmission
 
-            result = await db.execute(select(BBSubmission))
-            rows = result.scalars().all()
-            records = [
-                {
-                    "id": s.id,
-                    "title": s.title,
-                    "severity": s.severity,
-                    "status": s.status,
-                    "program_id": s.program_id,
-                    "finding_id": s.finding_id,
-                    "vuln_class": (s.metadata_ or {}).get("vuln_class"),
-                    "asset_path": (s.metadata_ or {}).get("asset_path"),
-                }
-                for s in rows
-            ]
-            path = export_submissions_json(records, Path("data/graphify/submissions.json"))
-            return {"status": "completed", "count": len(records), "path": str(path)}
+        result = await db.execute(select(BBSubmission))
+        rows = result.scalars().all()
+        records = [
+            {
+                "id": s.id,
+                "title": s.title,
+                "severity": s.severity,
+                "status": s.status,
+                "program_id": s.program_id,
+                "finding_id": s.finding_id,
+                "vuln_class": (s.metadata_ or {}).get("vuln_class"),
+                "asset_path": (s.metadata_ or {}).get("asset_path"),
+            }
+            for s in rows
+        ]
+        path = export_submissions_json(records, Path("data/graphify/submissions.json"))
+        return {"status": "completed", "count": len(records), "path": str(path)}
 
-        return asyncio.run(run())
-    finally:
-        asyncio.run(db.close())
+    return asyncio.run(_in_session(run))
 
 
 @celery_app.task(bind=True, name="netra.ingest_hacktivity_daily", max_retries=3)
 def ingest_hacktivity_daily(self) -> dict:
     """Ingest newly disclosed HackerOne hacktivity into the local corpus."""
-    db = _get_db_session()
-    try:
-        import asyncio
+    import asyncio
 
-        async def run():
+    try:
+
+        async def run(db: AsyncSession) -> dict:
             from netra.bugbounty.learning.sources.hackerone import ingest_hacktivity
 
             return await ingest_hacktivity(db, since_days=1)
 
-        result = asyncio.run(run())
+        result = asyncio.run(_in_session(run))
         return {"status": "completed", **result}
     except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
-    finally:
-        asyncio.run(db.close())
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1)) from exc
 
 
 @celery_app.task(bind=True, name="netra.ingest_advisories_daily", max_retries=3)
 def ingest_advisories_daily(self) -> dict:
     """Ingest GHSA and NVD advisories into the local corpus."""
-    db = _get_db_session()
-    try:
-        import asyncio
+    import asyncio
 
-        async def run():
+    try:
+
+        async def run(db: AsyncSession) -> dict:
             from netra.bugbounty.learning.sources.advisories import ingest_advisories
 
             return await ingest_advisories(db)
 
-        result = asyncio.run(run())
+        result = asyncio.run(_in_session(run))
         return {"status": "completed", **result}
     except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
-    finally:
-        asyncio.run(db.close())
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1)) from exc
 
 
 @celery_app.task(bind=True, name="netra.ingest_public_writeups", max_retries=3)
 def ingest_public_writeups(self) -> dict:
     """Ingest public RSS writeups into the local corpus."""
-    db = _get_db_session()
-    try:
-        import asyncio
+    import asyncio
 
-        async def run():
+    try:
+
+        async def run(db: AsyncSession) -> dict:
             from netra.bugbounty.learning.sources.rss import ingest_public_writeups
 
             return await ingest_public_writeups(db)
 
-        result = asyncio.run(run())
+        result = asyncio.run(_in_session(run))
         return {"status": "completed", **result}
     except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
-    finally:
-        asyncio.run(db.close())
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1)) from exc
+
+
+@celery_app.task(bind=True, name="netra.ingest_public_signatures", max_retries=3)
+def ingest_public_signatures(self) -> dict:
+    """Refresh the chaos index, the nuclei-templates and Wappalyzer heads, and Bugcrowd."""
+    import asyncio
+
+    try:
+
+        async def run(db: AsyncSession) -> dict:
+            from netra.bugbounty.learning.sources.bugcrowd import ingest_bugcrowd_disclosures
+            from netra.bugbounty.learning.sources.signatures import (
+                ingest_chaos_index,
+                ingest_repo_heads,
+            )
+
+            chaos = await ingest_chaos_index(db)
+            heads = await ingest_repo_heads(db)
+            bugcrowd = await ingest_bugcrowd_disclosures(db)
+            return {"chaos": chaos, "repo_heads": heads, "bugcrowd": bugcrowd}
+
+        result = asyncio.run(_in_session(run))
+        return {"status": "completed", **result}
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1)) from exc
 
 
 @celery_app.task(bind=True, name="netra.resync_all_active_programs", max_retries=3)
 def resync_all_active_programs(self) -> dict:
     """Nightly scope resync for active H1 programs."""
-    db = _get_db_session()
-    try:
-        import asyncio
+    import asyncio
 
-        async def run():
+    try:
+
+        async def run(db: AsyncSession) -> dict:
             from netra.bugbounty.programs import replace_scope_rules
             from netra.db.models.bb_program import BBPlatform, BBProgram
             from netra.integrations.hackerone import HackerOneClient
@@ -875,8 +1002,14 @@ def resync_all_active_programs(self) -> dict:
             await db.commit()
             return {"status": "completed", "programs": len(programs), "changed": changed}
 
-        return asyncio.run(run())
+        return asyncio.run(_in_session(run))
     except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
-    finally:
-        asyncio.run(db.close())
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1)) from exc
+
+
+@celery_app.task(name="netra.scanner_tool_inventory")
+def scanner_tool_inventory() -> list[dict]:
+    """Report which scanner binaries exist in the worker image (the image that runs scans)."""
+    from netra.scanner.tools.inventory import tool_inventory
+
+    return tool_inventory()

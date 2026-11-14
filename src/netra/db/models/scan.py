@@ -3,12 +3,20 @@
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON as JSONB
 from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from netra.db.models._types import JSONB
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.finding import Finding
+    from netra.db.models.report import Report
+    from netra.db.models.scan_phase import ScanPhase
+    from netra.db.models.target import Target
+    from netra.db.models.user import User
 
 
 class ScanStatus(StrEnum):

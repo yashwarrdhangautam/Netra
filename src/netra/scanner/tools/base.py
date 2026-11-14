@@ -1,4 +1,5 @@
 """Common subprocess-backed scanner tool helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,11 +8,12 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from netra.scanner.tools.process_control import register_process, unregister_process
+
 
 @dataclass
 class ToolResult:
@@ -20,8 +22,8 @@ class ToolResult:
     tool_name: str
     success: bool
     target: str = ""
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     findings: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     raw_output: str = ""
@@ -49,14 +51,19 @@ class CliTool:
             return found
 
         repo_root = Path(__file__).resolve().parents[4]
-        candidate = repo_root / "tools" / "bin" / (
-            f"{self.binary}.exe" if not self.binary.endswith(".exe") else self.binary
+        candidate = (
+            repo_root
+            / "tools"
+            / "bin"
+            / (f"{self.binary}.exe" if not self.binary.endswith(".exe") else self.binary)
         )
         if candidate.exists():
             return str(candidate)
         return None
 
-    async def _exec(self, args: list[str], stdin: str | None = None, timeout: int = 300) -> ToolResult:
+    async def _exec(
+        self, args: list[str], stdin: str | None = None, timeout: int = 300
+    ) -> ToolResult:
         if not self.is_installed():
             return ToolResult(
                 tool_name=self.tool_name,

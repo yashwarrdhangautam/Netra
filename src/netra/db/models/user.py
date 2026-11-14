@@ -4,10 +4,10 @@ from datetime import UTC
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON as JSONB
 from sqlalchemy import Boolean, DateTime, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from netra.db.models._types import JSONB
 from netra.db.models.base import Base
 
 if TYPE_CHECKING:
@@ -54,9 +54,9 @@ class User(Base):
     organization: Mapped[str | None] = mapped_column(String(255))
 
     # Security
-    last_login_at: Mapped[DateTime | None] = mapped_column(DateTime)
+    last_login_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True))
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
-    locked_until: Mapped[DateTime | None] = mapped_column(DateTime)
+    locked_until: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True))
 
     # MFA / 2FA
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

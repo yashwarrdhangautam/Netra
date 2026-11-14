@@ -5,21 +5,26 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from netra.core.config import settings
+from netra.core.secretbox import decrypt_value
 from netra.core.security import (
     create_access_token,
     create_refresh_token,
     decode_access_token,
     decode_refresh_token,
     token_blacklist,
+    verify_api_key,
+    verify_backup_code,
+    verify_mfa_code,
     verify_password,
 )
-from netra.db.models.user import User
+from netra.db.models.user import User, UserRole
 from netra.db.session import get_db
 
 logger = structlog.get_logger()
@@ -28,6 +33,34 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # HTTP Bearer token security
 http_bearer = HTTPBearer(auto_error=False)
+
+# Personal API keys look like ntr_<hex> and are stored hashed on the user row.
+API_KEY_PREFIX = "ntr_"
+
+
+def _consume_backup_code(user: User, code: str) -> bool:
+    """Accept a one-time backup code and remove it so it cannot be reused."""
+    hashes = list(user.backup_codes_hash or [])
+    for stored in hashes:
+        if verify_backup_code(code, stored):
+            user.backup_codes_hash = [h for h in hashes if h != stored]
+            return True
+    return False
+
+
+async def _user_for_api_key(api_key: str, db: AsyncSession) -> User:
+    """Resolve a personal API key to its active user, or raise 401."""
+    result = await db.execute(select(User).where(User.api_key_hash.is_not(None)))
+    for candidate in result.scalars().all():
+        if candidate.api_key_hash and verify_api_key(api_key, candidate.api_key_hash):
+            if not candidate.is_active:
+                break
+            return candidate
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid API key",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
@@ -38,6 +71,7 @@ class LoginRequest(BaseModel):
 
     email: EmailStr
     password: str = Field(..., min_length=1)
+    mfa_code: str | None = Field(default=None, max_length=32)
 
 
 class LoginResponse(BaseModel):
@@ -45,7 +79,7 @@ class LoginResponse(BaseModel):
 
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105 - OAuth token type label
     expires_in: int
     user_id: str
     email: str
@@ -62,7 +96,7 @@ class RefreshTokenResponse(BaseModel):
     """Refresh token response schema."""
 
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105 - OAuth token type label
     expires_in: int
 
 
@@ -173,6 +207,10 @@ async def get_current_user(
 
     token = credentials.credentials
 
+    # API keys (nk_...) are checked against the stored hash of each user's key.
+    if token.startswith(API_KEY_PREFIX):
+        return await _user_for_api_key(token, db)
+
     # Check blacklist
     if await token_blacklist.is_blacklisted(token):
         raise HTTPException(
@@ -225,7 +263,7 @@ async def get_current_active_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
         )
-    return user
+    return current_user
 
 
 async def get_current_admin_user(
@@ -309,6 +347,24 @@ async def login(
             detail="Invalid credentials",
         )
 
+    # Second factor: TOTP code, or a single-use backup code.
+    if user.requires_mfa():
+        if not request.mfa_code:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="mfa_required",
+            )
+        code = request.mfa_code.strip()
+        mfa_plain = decrypt_value(user.mfa_secret) if user.mfa_secret else None
+        if not (mfa_plain and verify_mfa_code(mfa_plain, code)):
+            used = _consume_backup_code(user, code)
+            if not used:
+                await db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid MFA code",
+                )
+
     # Reset failed login attempts on successful login
     user.failed_login_attempts = 0
     user.locked_until = None
@@ -386,3 +442,48 @@ async def refresh_token(
         access_token=new_access_token,
         expires_in=settings.jwt_expire_minutes * 60,
     )
+
+
+@router.get("/me")
+async def read_current_user(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> dict[str, object]:
+    """Return the signed-in user's profile for the GUI."""
+    return {
+        "id": str(current_user.id),
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "role": str(current_user.role),
+        "is_active": bool(current_user.is_active),
+        "is_verified": bool(current_user.is_verified),
+    }
+
+
+# ── Role checks (PRD 5.3.2) ───────────────────────────────────────────────────
+# Defined here, next to get_current_active_user, so route modules can import them
+# without a circular import. netra.api.rbac re-exports these names.
+
+WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+WRITER_ROLES = frozenset({UserRole.ADMIN, UserRole.ANALYST})
+
+
+async def require_access(
+    request: Request,
+    user: Annotated[User, Depends(get_current_active_user)],
+) -> User:
+    """Allow reads for any active user. Writes need the analyst or admin role."""
+    if request.method in WRITE_METHODS and user.role not in WRITER_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This role is read-only. Ask an analyst or admin to make changes.",
+        )
+    return user
+
+
+async def require_admin(
+    user: Annotated[User, Depends(get_current_active_user)],
+) -> User:
+    """Allow only admins."""
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
+    return user

@@ -1,4 +1,5 @@
 """ProjectDiscovery httpx wrapper."""
+
 from __future__ import annotations
 
 from netra.scanner.tools.base import CliTool, ToolResult, parse_json_lines
@@ -38,4 +39,3 @@ class HttpxTool(CliTool):
             for row in rows
         ]
         return result
-

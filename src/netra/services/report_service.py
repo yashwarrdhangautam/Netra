@@ -53,7 +53,7 @@ async def generate_executive_report(
             TableStyle,
         )
     except ImportError:
-        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab") from None
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -187,9 +187,10 @@ async def generate_technical_report(
     try:
         from docx import Document
         from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.shared import Inches, Pt, RGBColor
     except ImportError:
-        raise ImportError("python-docx not installed. Install with: pip install python-docx")
+        raise ImportError(
+            "python-docx not installed. Install with: pip install python-docx"
+        ) from None
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -324,7 +325,7 @@ async def generate_pentest_report(
     """
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4, letter
+        from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
@@ -336,7 +337,7 @@ async def generate_pentest_report(
             TableStyle,
         )
     except ImportError:
-        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab") from None
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -899,7 +900,7 @@ async def generate_excel_report(
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     except ImportError:
-        raise ImportError("openpyxl not installed. Install with: pip install openpyxl")
+        raise ImportError("openpyxl not installed. Install with: pip install openpyxl") from None
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -1167,7 +1168,7 @@ async def generate_delta_report(
             TableStyle,
         )
     except ImportError:
-        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab") from None
 
     if output_path is None:
         scan_id = scan_b_data.get("id", "unknown")
@@ -1312,7 +1313,6 @@ async def generate_compliance_report(
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            PageBreak,
             Paragraph,
             SimpleDocTemplate,
             Spacer,
@@ -1320,7 +1320,7 @@ async def generate_compliance_report(
             TableStyle,
         )
     except ImportError:
-        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab") from None
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")
@@ -1397,7 +1397,7 @@ async def generate_full_report(
             TableStyle,
         )
     except ImportError:
-        raise ImportError("ReportLab not installed. Install with: pip install reportlab")
+        raise ImportError("ReportLab not installed. Install with: pip install reportlab") from None
 
     if output_path is None:
         scan_id = scan_data.get("id", "unknown")

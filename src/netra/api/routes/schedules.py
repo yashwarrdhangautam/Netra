@@ -6,6 +6,7 @@ from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,8 +25,6 @@ router = APIRouter(prefix="/schedules", tags=["Schedules"])
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CronScheduleCreate(BaseModel):
@@ -145,7 +144,7 @@ async def create_cron_schedule(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post("/interval", response_model=ScheduleResponse, status_code=status.HTTP_201_CREATED)
@@ -180,7 +179,7 @@ async def create_interval_schedule(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post("/once", response_model=ScheduleResponse, status_code=status.HTTP_201_CREATED)
@@ -215,7 +214,7 @@ async def create_one_time_schedule(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.get("", response_model=list[ScheduleResponse])

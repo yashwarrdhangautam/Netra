@@ -8,6 +8,7 @@ from typing import Any
 import bcrypt
 import jwt
 import pyotp
+import structlog
 
 from netra.core.config import settings
 
@@ -488,7 +489,5 @@ def get_session_fingerprint(user_agent: str, ip_address: str) -> str:
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
-
-import structlog
 
 logger = structlog.get_logger()

@@ -21,23 +21,28 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Fresh Postgres databases already get these columns from 001_initial_schema,
+    # so only add the ones that are missing. Re-adding them fails the whole chain.
+    existing = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("scan_phases")}
     with op.batch_alter_table("scan_phases") as batch:
-        batch.add_column(
-            sa.Column(
-                "created_at",
-                sa.DateTime(timezone=True),
-                server_default=sa.func.now(),
-                nullable=False,
+        if "created_at" not in existing:
+            batch.add_column(
+                sa.Column(
+                    "created_at",
+                    sa.DateTime(timezone=True),
+                    server_default=sa.func.now(),
+                    nullable=False,
+                )
             )
-        )
-        batch.add_column(
-            sa.Column(
-                "updated_at",
-                sa.DateTime(timezone=True),
-                server_default=sa.func.now(),
-                nullable=False,
+        if "updated_at" not in existing:
+            batch.add_column(
+                sa.Column(
+                    "updated_at",
+                    sa.DateTime(timezone=True),
+                    server_default=sa.func.now(),
+                    nullable=False,
+                )
             )
-        )
 
 
 def downgrade() -> None:

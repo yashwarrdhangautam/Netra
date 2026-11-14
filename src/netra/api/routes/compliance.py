@@ -17,6 +17,14 @@ from netra.schemas.compliance import (
 router = APIRouter()
 
 
+@router.get("/frameworks", response_model=list[dict])
+async def list_frameworks(db: AsyncSession = Depends(get_db_session)) -> list[dict]:
+    """Frameworks the GUI can score against, with their control counts."""
+    from netra.services.compliance_service import ComplianceService
+
+    return ComplianceService(db).get_available_frameworks()
+
+
 @router.post("/map", response_model=dict)
 async def map_findings_to_compliance(
     payload: ComplianceMapRequest,

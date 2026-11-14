@@ -270,7 +270,7 @@ def main() -> None:
         from netra.api.app import create_app
 
         app = create_app()
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        uvicorn.run(app, host="0.0.0.0", port=8000)  # noqa: S104 - container entry point
     else:
         console.print(f"[yellow]{args.command} — not yet implemented[/yellow]")
 

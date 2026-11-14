@@ -1,4 +1,5 @@
 """ffuf wrapper."""
+
 from __future__ import annotations
 
 from netra.scanner.tools.base import CliTool, ToolResult
@@ -9,7 +10,9 @@ class FfufTool(CliTool):
     tool_name = "ffuf"
     install_instructions = "Install ffuf and put it on PATH."
 
-    async def run(self, target: str, wordlist: str = "common.txt", rate_limit: int | None = None, **kwargs) -> ToolResult:
+    async def run(
+        self, target: str, wordlist: str = "common.txt", rate_limit: int | None = None, **kwargs
+    ) -> ToolResult:
         args = ["-u", target, "-w", wordlist, "-of", "json", "-s"]
         if rate_limit:
             args += ["-rate", str(rate_limit)]
@@ -31,4 +34,3 @@ class FfufTool(CliTool):
             for row in rows
         ]
         return result
-

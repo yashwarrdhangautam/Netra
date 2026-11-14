@@ -956,7 +956,7 @@ class TestVerify:
             monkeypatch,
             verify_env,
             evidence_rows=[],
-            by_model={BBEvidenceModel(): verify_env.evidence},
+            by_model={bb_evidence_model(): verify_env.evidence},
         )
         result = _invoke(
             runner,
@@ -1207,7 +1207,7 @@ class TestAuditSinceWindow:
         assert expected - timedelta(minutes=1) <= cutoff <= expected + timedelta(minutes=1)
 
 
-def BBEvidenceModel():
+def bb_evidence_model():
     from netra.db.models.bb_evidence import BBEvidence
 
     return BBEvidence

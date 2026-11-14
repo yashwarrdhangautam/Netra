@@ -1,4 +1,5 @@
 """Nuclei wrapper."""
+
 from __future__ import annotations
 
 from netra.scanner.tools.base import CliTool, ToolResult, parse_json_lines
@@ -18,7 +19,17 @@ class NucleiTool(CliTool):
         tags: str | None = None,
         **kwargs,
     ) -> ToolResult:
-        args = ["-u", target, "-jsonl", "-silent", "-no-color", "-severity", severity, "-rate-limit", str(rate_limit)]
+        args = [
+            "-u",
+            target,
+            "-jsonl",
+            "-silent",
+            "-no-color",
+            "-severity",
+            severity,
+            "-rate-limit",
+            str(rate_limit),
+        ]
         if tags:
             args += ["-tags", tags]
         elif templates and templates != "default":
@@ -27,7 +38,8 @@ class NucleiTool(CliTool):
         rows = parse_json_lines(result.raw_output)
         result.findings = [
             {
-                "title": row.get("info", {}).get("name") or row.get("template-id", "Nuclei finding"),
+                "title": row.get("info", {}).get("name")
+                or row.get("template-id", "Nuclei finding"),
                 "template_id": row.get("template-id"),
                 "matched_at": row.get("matched-at"),
                 "url": row.get("matched-at"),
@@ -38,4 +50,3 @@ class NucleiTool(CliTool):
             for row in rows
         ]
         return result
-

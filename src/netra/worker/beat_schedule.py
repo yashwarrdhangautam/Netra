@@ -19,6 +19,10 @@ BB_BEAT_SCHEDULE = {
         "task": "netra.ingest_public_writeups",
         "schedule": crontab(minute=15),
     },
+    "bb-ingest-public-signatures-daily": {
+        "task": "netra.ingest_public_signatures",
+        "schedule": crontab(hour=4, minute=0),
+    },
     "bb-export-submissions-graphify": {
         "task": "netra.export_bugbounty_submissions",
         "schedule": crontab(hour=3, minute=0),

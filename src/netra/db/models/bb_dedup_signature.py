@@ -2,10 +2,10 @@
 
 import uuid
 
-from sqlalchemy import JSON as JSONB
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from netra.db.models._types import JSONB
 from netra.db.models.base import Base
 
 

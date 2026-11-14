@@ -2,11 +2,15 @@
 
 import uuid
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.bb_program import BBProgram
 
 
 class ScopeRuleType(StrEnum):

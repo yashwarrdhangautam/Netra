@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sqlalchemy import text
@@ -21,12 +22,15 @@ async def sync_embedding_vector(
     embedding: list[float],
 ) -> None:
     """Best-effort sync into a pgvector column when running on PostgreSQL."""
+    if not re.fullmatch(r"[a-z_][a-z0-9_]*", table_name):
+        raise ValueError(f"invalid table name: {table_name!r}")
     bind = session.get_bind()
     if bind is None or bind.dialect.name != "postgresql":
         return
     await session.execute(
         text(
-            f"UPDATE {table_name} SET embedding_vector = CAST(:embedding AS vector) WHERE id = :row_id"
+            f"UPDATE {table_name} "  # noqa: S608 - table name validated above
+            "SET embedding_vector = CAST(:embedding AS vector) WHERE id = :row_id"
         ),
         {"embedding": pgvector_literal(embedding), "row_id": row_id},
     )

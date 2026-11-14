@@ -33,7 +33,7 @@ async def start_agent(
         raise HTTPException(
             status_code=500,
             detail="Failed to create agent session. Please check server logs.",
-        )
+        ) from e
 
 
 @router.get("/{session_id}/status")

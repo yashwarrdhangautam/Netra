@@ -1,22 +1,31 @@
 """Finding routes for managing security findings."""
 
 import uuid
+from datetime import UTC, datetime
 from json import dumps as json_dumps
+from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.api.deps import CurrentUser, get_db_session
+from netra.api.routes.auth import get_current_active_user
+from netra.api.scope import apply, can_see_scan, finding_filter, is_client
+from netra.core.ssrf_protection import SSRFProtection, SSRFProtectionError
 from netra.db.models.finding import Finding, FindingStatus
+from netra.db.models.user import User
 from netra.schemas.common import PaginatedResponse
 from netra.schemas.finding import (
     FindingBulkUpdate,
+    FindingClientResponse,
     FindingCreate,
     FindingListResponse,
     FindingResponse,
     FindingUpdate,
 )
+from netra.services.audit import record_audit
 
 router = APIRouter()
 
@@ -57,6 +66,15 @@ async def create_finding(
 
     db.add(finding)
     await db.commit()
+    await record_audit(
+        db,
+        actor=current_user,
+        action="finding.create",
+        resource_type="finding",
+        resource_id=str(finding.id),
+        detail={"scan_id": str(payload.scan_id), "severity": str(payload.severity)},
+    )
+    await db.commit()
     await db.refresh(finding)
 
     return FindingResponse.model_validate(finding)
@@ -64,6 +82,7 @@ async def create_finding(
 
 @router.get("/", response_model=PaginatedResponse[FindingListResponse])
 async def list_findings(
+    current_user: Annotated[User, Depends(get_current_active_user)],
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     severity: str | None = None,
@@ -84,7 +103,7 @@ async def list_findings(
     Returns:
         Paginated list of findings
     """
-    query = select(Finding)
+    query = apply(select(Finding), finding_filter(current_user))
 
     if severity:
         query = query.where(Finding.severity == severity)
@@ -104,7 +123,7 @@ async def list_findings(
     findings = list(result.scalars().all())
 
     # Get total count
-    count_query = select(Finding)
+    count_query = apply(select(Finding), finding_filter(current_user))
     if severity:
         count_query = count_query.where(Finding.severity == severity)
     if status:
@@ -122,11 +141,12 @@ async def list_findings(
     )
 
 
-@router.get("/{finding_id}", response_model=FindingResponse)
+@router.get("/{finding_id}", response_model=FindingResponse | FindingClientResponse)
 async def get_finding(
     finding_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db_session),
-) -> FindingResponse:
+) -> FindingResponse | FindingClientResponse:
     """Get finding details by ID.
 
     Args:
@@ -137,9 +157,11 @@ async def get_finding(
         Finding details
     """
     finding = await db.get(Finding, finding_id)
-    if not finding:
+    if not finding or not await can_see_scan(db, current_user, finding.scan_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
+    if is_client(current_user):
+        return FindingClientResponse.model_validate(finding)
     return FindingResponse.model_validate(finding)
 
 
@@ -147,6 +169,7 @@ async def get_finding(
 async def update_finding(
     finding_id: uuid.UUID,
     payload: FindingUpdate,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> FindingResponse:
     """Update a finding.
@@ -176,6 +199,13 @@ async def update_finding(
     if payload.tags is not None:
         finding.tags = payload.tags
 
+    await record_audit(
+        db,
+        actor=current_user,
+        action="finding.update",
+        resource_type="finding",
+        resource_id=str(finding_id),
+    )
     await db.commit()
     await db.refresh(finding)
 
@@ -185,6 +215,7 @@ async def update_finding(
 @router.delete("/{finding_id}", status_code=204)
 async def delete_finding(
     finding_id: uuid.UUID,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a finding.
@@ -198,12 +229,20 @@ async def delete_finding(
         raise HTTPException(status_code=404, detail="Finding not found")
 
     await db.delete(finding)
+    await record_audit(
+        db,
+        actor=current_user,
+        action="finding.delete",
+        resource_type="finding",
+        resource_id=str(finding_id),
+    )
     await db.commit()
 
 
 @router.post("/bulk-update")
 async def bulk_update_findings(
     payload: FindingBulkUpdate,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Bulk update multiple findings.
@@ -230,6 +269,13 @@ async def bulk_update_findings(
                 finding.tags = payload.tags
             updated_count += 1
 
+    await record_audit(
+        db,
+        actor=current_user,
+        action="finding.bulk_update",
+        resource_type="finding",
+        detail={"updated": updated_count},
+    )
     await db.commit()
 
     return {"updated_count": updated_count}
@@ -238,6 +284,7 @@ async def bulk_update_findings(
 @router.post("/{finding_id}/mark-false-positive", response_model=FindingResponse)
 async def mark_false_positive(
     finding_id: uuid.UUID,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> FindingResponse:
     """Mark a finding as false positive.
@@ -254,42 +301,86 @@ async def mark_false_positive(
         raise HTTPException(status_code=404, detail="Finding not found")
 
     finding.status = FindingStatus.FALSE_POSITIVE
+    await record_audit(
+        db,
+        actor=current_user,
+        action="finding.false_positive",
+        resource_type="finding",
+        resource_id=str(finding_id),
+    )
     await db.commit()
     await db.refresh(finding)
 
     return FindingResponse.model_validate(finding)
 
 
+async def _retest_request(finding: Finding) -> dict:
+    """Make the single request for a retest. Kept separate so tests can replace it."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
+            response = await client.get(finding.url)
+    except httpx.HTTPError as exc:
+        return {"outcome": "unreachable", "reason": type(exc).__name__}
+
+    status_code = response.status_code
+    marker = (finding.evidence or {}).get("match")
+    if not isinstance(marker, str) or not marker:
+        return {
+            "outcome": "inconclusive",
+            "reason": "no stored match string to look for",
+            "status_code": status_code,
+        }
+    if marker in response.text[:200_000]:
+        return {"outcome": "reproduced", "status_code": status_code}
+    return {"outcome": "not_reproduced", "status_code": status_code}
+
+
 @router.post("/{finding_id}/retest")
 async def retest_finding(
     finding_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    """Re-test a finding to verify if it still exists.
+    """Request the finding's URL once and check whether the stored match string is still there.
 
-    Args:
-        finding_id: Finding UUID
-        db: Database session
-
-    Returns:
-        Re-test results
+    The request goes through the SSRF guard and does not follow redirects. The result is kept
+    on the finding under evidence.last_retest. The finding's status is left for an analyst.
     """
     finding = await db.get(Finding, finding_id)
-    if not finding:
+    if not finding or not await can_see_scan(db, current_user, finding.scan_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
-    # For Phase 1, this is a stub - in production, this would
-    # re-run the specific tool that found the finding
-    return {
-        "status": "not_implemented",
-        "message": "Re-test functionality is planned for Phase 2",
-        "finding_id": str(finding_id),
+    if not finding.url:
+        outcome = {"outcome": "unverifiable", "reason": "finding has no URL to re-request"}
+    else:
+        try:
+            allowed, reason = SSRFProtection.validate_url(finding.url)
+        except SSRFProtectionError as exc:  # unresolvable host or private address
+            raise HTTPException(status_code=422, detail=f"URL refused: {exc}") from exc
+        if not allowed:
+            raise HTTPException(status_code=422, detail=f"URL refused by SSRF guard: {reason}")
+        outcome = await _retest_request(finding)
+
+    checked_at = datetime.now(UTC).isoformat()
+    finding.evidence = {
+        **(finding.evidence or {}),
+        "last_retest": {**outcome, "checked_at": checked_at},
     }
+    await record_audit(
+        db,
+        actor=current_user,
+        action="finding.retest",
+        resource_type="finding",
+        resource_id=str(finding_id),
+    )
+    await db.commit()
+    return {"finding_id": str(finding_id), **outcome, "checked_at": checked_at}
 
 
 @router.get("/{finding_id}/curl")
 async def export_finding_curl(
     finding_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Export finding as cURL command.
@@ -302,7 +393,7 @@ async def export_finding_curl(
         cURL command string
     """
     finding = await db.get(Finding, finding_id)
-    if not finding:
+    if not finding or not await can_see_scan(db, current_user, finding.scan_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     # Extract request data from evidence

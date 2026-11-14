@@ -2,12 +2,16 @@
 
 import uuid
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON as JSONB
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from netra.db.models._types import JSONB
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.scan import Scan
 
 
 class ReportType(StrEnum):

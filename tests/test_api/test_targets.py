@@ -16,14 +16,14 @@ async def test_list_targets_empty(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_target_requires_auth(client: AsyncClient) -> None:
+async def test_create_target_requires_auth(anon_client: AsyncClient) -> None:
     """Test that creating a target requires authentication."""
     payload = {
         "name": "Test Target",
         "target_type": "domain",
         "value": "example.com",
     }
-    response = await client.post("/api/v1/targets/", json=payload)
+    response = await anon_client.post("/api/v1/targets/", json=payload)
 
     # Should fail without auth token
     assert response.status_code in [401, 403]

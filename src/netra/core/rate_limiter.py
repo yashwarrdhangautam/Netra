@@ -132,7 +132,7 @@ class RateLimitProfiles:
     AUTH = "5/minute"
     LOGIN = "3/minute"
     REGISTER = "2/minute"
-    PASSWORD_RESET = "2/hour"
+    PASSWORD_RESET = "2/hour"  # noqa: S105 - rate-limit bucket name, not a password
 
     # Scan endpoints (moderate limits)
     SCAN_CREATE = "10/minute"

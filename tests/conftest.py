@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -10,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from netra.api.app import create_app
 from netra.api.deps import get_db_session
+from netra.api.routes.auth import get_current_active_user
 from netra.db.models import Base
+from netra.db.models.user import User, UserRole
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -49,9 +52,40 @@ async def async_db_session(db_session: AsyncSession) -> AsyncSession:
     return db_session
 
 
+def _test_admin() -> User:
+    """Signed-in admin used by the authenticated test client (not persisted)."""
+    return User(
+        id=uuid.UUID("00000000-0000-0000-0000-00000000a0a0"),
+        email="test-admin@example.com",
+        hashed_password="not-used",  # noqa: S106 - never used for login in tests
+        role=UserRole.ADMIN,
+        is_active=True,
+        is_verified=True,
+    )
+
+
 @pytest.fixture
 async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
-    """Create a test HTTP client."""
+    """Authenticated test HTTP client (every data route needs a signed-in user)."""
+    app = create_app()
+
+    async def override_db():
+        yield db_session
+
+    async def override_user():
+        return _test_admin()
+
+    app.dependency_overrides[get_db_session] = override_db
+    app.dependency_overrides[get_current_active_user] = override_user
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+@pytest.fixture
+async def anon_client(db_session) -> AsyncGenerator[AsyncClient, None]:
+    """Unauthenticated test client, used to prove protected routes reject anonymous calls."""
     app = create_app()
 
     async def override_db():

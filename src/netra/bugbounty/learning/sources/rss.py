@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
-from xml.etree import ElementTree as ET
 
 import httpx
+from defusedxml.ElementTree import fromstring
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.bugbounty.learning.fetcher import LearningFetcher
@@ -37,7 +37,7 @@ def _infer_vuln_class(text: str) -> str | None:
 
 
 def _parse_feed(xml_text: str) -> list[dict[str, Any]]:
-    root = ET.fromstring(xml_text)
+    root = fromstring(xml_text)
     items: list[dict[str, Any]] = []
     for item in root.findall(".//item"):
         title = (item.findtext("title") or "").strip()
@@ -109,6 +109,8 @@ async def ingest_public_writeups(
                     metadata={"feed": feed},
                     ingested_at=item["published_at"] or started,
                 )
+                if _row is None:
+                    continue  # forgotten (right-to-be-forgotten blocklist): not counted
                 if created:
                     added += 1
                 else:

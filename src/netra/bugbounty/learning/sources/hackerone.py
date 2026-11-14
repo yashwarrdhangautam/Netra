@@ -80,6 +80,8 @@ async def ingest_hacktivity(
             metadata={"weakness": item.weakness},
             ingested_at=item.disclosed_at or started,
         )
+        if _row is None:
+            continue  # forgotten (right-to-be-forgotten blocklist): not counted
         if created:
             added += 1
         else:
@@ -133,6 +135,8 @@ async def bootstrap_program(
             metadata={"weakness": item.weakness, "bootstrap": True},
             ingested_at=item.disclosed_at or started,
         )
+        if _row is None:
+            continue  # forgotten (right-to-be-forgotten blocklist): not counted
         if created:
             added += 1
         else:

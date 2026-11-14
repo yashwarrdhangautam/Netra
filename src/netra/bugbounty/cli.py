@@ -966,7 +966,7 @@ async def program_approve_cmd(program: str, platform: str, vuln_classes: str) ->
         prog.active_classes_approved = approved
         prog.metadata_ = {
             **(prog.metadata_ or {}),
-            "active_approval_updated_at": datetime.utcnow().isoformat() + "Z",
+            "active_approval_updated_at": datetime.now(UTC).isoformat() + "Z",
         }
         await session.commit()
     console.print(

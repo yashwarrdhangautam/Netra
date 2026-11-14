@@ -17,6 +17,15 @@ import structlog
 logger = structlog.get_logger()
 
 
+def _is_ip_literal(value: str) -> bool:
+    """True only when the string is an IP address literal, not a hostname."""
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
 # Cloud metadata endpoints that should never be scanned
 CLOUD_METADATA_ENDPOINTS = {
     # AWS
@@ -165,9 +174,9 @@ class SSRFProtection:
         except socket.gaierror:
             raise SSRFProtectionError(
                 f"Failed to resolve hostname: {hostname}", "resolution_failed"
-            )
+            ) from None
         except socket.herror:
-            raise SSRFProtectionError(f"DNS error for hostname: {hostname}", "dns_error")
+            raise SSRFProtectionError(f"DNS error for hostname: {hostname}", "dns_error") from None
 
     @staticmethod
     def validate_url(url: str) -> tuple[bool, str]:
@@ -201,15 +210,9 @@ class SSRFProtection:
             if SSRFProtection.is_blocked_hostname(hostname):
                 raise SSRFProtectionError(f"Blocked hostname: {hostname}", "blocked_hostname")
 
-            # Check if hostname is an IP address
-            try:
-                if SSRFProtection.is_private_ip(hostname):
-                    raise SSRFProtectionError(
-                        f"Private/internal IP address: {hostname}", "private_ip"
-                    )
-            except ValueError:
-                # Not an IP, continue with hostname validation
-                pass
+            # Literal IPs are checked here. Hostnames are checked by resolved address below.
+            if _is_ip_literal(hostname) and SSRFProtection.is_private_ip(hostname):
+                raise SSRFProtectionError(f"Private/internal IP address: {hostname}", "private_ip")
 
             # Resolve and validate hostname
             SSRFProtection.resolve_and_validate(hostname)
@@ -228,7 +231,7 @@ class SSRFProtection:
         except SSRFProtectionError:
             raise
         except Exception as e:
-            raise SSRFProtectionError(f"URL validation failed: {str(e)}", "validation_error")
+            raise SSRFProtectionError(f"URL validation failed: {str(e)}", "validation_error") from e
 
     @staticmethod
     def validate_domain(domain: str) -> tuple[bool, str]:
@@ -251,13 +254,9 @@ class SSRFProtection:
         if SSRFProtection.is_blocked_hostname(domain):
             raise SSRFProtectionError(f"Blocked domain: {domain}", "blocked_domain")
 
-        # Check if it's an IP address
-        try:
-            if SSRFProtection.is_private_ip(domain):
-                raise SSRFProtectionError(f"Private/internal IP address: {domain}", "private_ip")
-        except ValueError:
-            # Not an IP, continue with domain validation
-            pass
+        # Literal IPs are checked here. Hostnames are checked by resolved address below.
+        if _is_ip_literal(domain) and SSRFProtection.is_private_ip(domain):
+            raise SSRFProtectionError(f"Private/internal IP address: {domain}", "private_ip")
 
         # Resolve and validate
         SSRFProtection.resolve_and_validate(domain)
@@ -286,7 +285,9 @@ class SSRFProtection:
             return True, ip
 
         except ValueError:
-            raise SSRFProtectionError(f"Invalid IP address format: {ip}", "invalid_ip_format")
+            raise SSRFProtectionError(
+                f"Invalid IP address format: {ip}", "invalid_ip_format"
+            ) from None
 
     @staticmethod
     def validate_ip_range(cidr: str) -> tuple[bool, str]:
@@ -323,7 +324,7 @@ class SSRFProtection:
             return True, cidr
 
         except ValueError:
-            raise SSRFProtectionError(f"Invalid CIDR notation: {cidr}", "invalid_cidr")
+            raise SSRFProtectionError(f"Invalid CIDR notation: {cidr}", "invalid_cidr") from None
 
     @staticmethod
     def validate_target(value: str, target_type: str) -> tuple[bool, str, list[str]]:

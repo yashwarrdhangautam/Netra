@@ -2,12 +2,18 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON as JSONB
 from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from netra.db.models._types import JSONB
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.bb_asset import BBAsset
+    from netra.db.models.bb_scope_rule import BBScopeRule
+    from netra.db.models.bb_submission import BBSubmission
 
 
 class BBPlatform(StrEnum):

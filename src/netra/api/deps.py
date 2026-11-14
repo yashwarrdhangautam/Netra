@@ -1,14 +1,12 @@
 """FastAPI dependency injection utilities."""
 
-import uuid
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
-from netra.core.security import decode_access_token
 from netra.db.models.user import User
 from netra.db.session import get_db
 
@@ -23,54 +21,23 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+_bearer = HTTPBearer(auto_error=False)
+
+
 async def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    authorization: Annotated[str | None, Header()] = None,
 ) -> User:
-    """Get current authenticated user from JWT token.
+    """Authenticate a request. One implementation for every route.
 
-    Args:
-        authorization: Authorization header with Bearer token
-        db: Database session
-
-    Returns:
-        The authenticated user
-
-    Raises:
-        HTTPException: If authentication fails
+    Delegates to the auth module, which also accepts personal API keys (ntr_...) and rejects
+    tokens revoked by logout. Keeping a second copy here let revoked tokens work on scan and
+    finding routes.
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    # Imported here: the auth routes import the API package, which imports this module.
+    from netra.api.routes.auth import get_current_user as verify
 
-    try:
-        # Extract token from "Bearer <token>"
-        if not authorization:
-            raise credentials_exception
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
-            raise credentials_exception
-    except ValueError:
-        raise credentials_exception
-
-    payload = decode_access_token(token)
-    if payload is None:
-        raise credentials_exception
-
-    try:
-        user_id = uuid.UUID(payload.get("sub"))
-    except (ValueError, AttributeError):
-        raise credentials_exception
-
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if user is None or not user.is_active:
-        raise credentials_exception
-
-    return user
+    return await verify(credentials=credentials, db=db)
 
 
 async def get_admin_user(

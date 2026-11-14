@@ -1,4 +1,5 @@
 """Process tracking and cleanup for long-running CLI-backed tools."""
+
 from __future__ import annotations
 
 import contextlib
@@ -9,6 +10,9 @@ import subprocess
 from contextvars import ContextVar, Token
 from pathlib import Path
 
+import structlog
+
+logger = structlog.get_logger()
 
 _CURRENT_TASK_ID: ContextVar[str | None] = ContextVar("netra_current_task_id", default=None)
 
@@ -78,8 +82,8 @@ def kill_process_tree(pid: int) -> None:
     """Terminate a process tree as hard as the platform allows."""
     with contextlib.suppress(Exception):
         if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/PID", str(pid), "/T", "/F"],
+            subprocess.run(  # noqa: S603 - fixed argv, no shell, pid is an int
+                ["taskkill", "/PID", str(pid), "/T", "/F"],  # noqa: S607
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
@@ -96,7 +100,8 @@ def kill_registered_processes(task_id: str) -> list[int]:
         try:
             kill_process_tree(int(pid))
             killed.append(int(pid))
-        except Exception:
+        except Exception as exc:  # the process may already have exited
+            logger.debug("kill_process_failed", pid=pid, error=str(exc))
             continue
     clear_task_registry(task_id)
     return killed

@@ -1,6 +1,7 @@
 """JSON structured logging configuration."""
 
 import logging
+import logging.config
 import sys
 from typing import Any
 
@@ -84,6 +85,8 @@ def setup_logging(log_format: str = "json", log_level: str = "INFO") -> None:
     logging_config["root"]["level"] = log_level
     logging_config["loggers"]["netra"]["level"] = log_level
 
+    # Keep loggers created before setup (module-level structlog loggers) enabled.
+    logging_config["disable_existing_loggers"] = False
     logging.config.dictConfig(logging_config)
 
 

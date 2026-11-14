@@ -26,12 +26,17 @@ def get_engine() -> AsyncEngine:
         )
     else:
         # PostgreSQL async requires asyncpg
-        engine = create_async_engine(
-            url,
-            echo=settings.db_echo,
-            pool_size=settings.db_pool_size,
-            max_overflow=settings.db_max_overflow,
-        )
+        if settings.db_null_pool:
+            from sqlalchemy.pool import NullPool
+
+            engine = create_async_engine(url, echo=settings.db_echo, poolclass=NullPool)
+        else:
+            engine = create_async_engine(
+                url,
+                echo=settings.db_echo,
+                pool_size=settings.db_pool_size,
+                max_overflow=settings.db_max_overflow,
+            )
     return engine
 
 

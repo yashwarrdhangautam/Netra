@@ -14,6 +14,7 @@ from netra.bugbounty.learning.embeddings import embed_with_version
 from netra.bugbounty.learning.pgvector import sync_embedding_vector
 from netra.db.models import (
     BBCorpusAdvisory,
+    BBCorpusBlocklist,
     BBCorpusReport,
     BBCorpusWriteup,
     CorpusIngestLog,
@@ -22,6 +23,32 @@ from netra.db.models import (
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+async def is_blocked(
+    session: AsyncSession,
+    *,
+    author: str | None = None,
+    source_url: str | None = None,
+) -> bool:
+    """True if this author or URL was forgotten (right-to-be-forgotten) and must not be re-ingested."""
+    checks = []
+    if author:
+        checks.append(
+            select(BBCorpusBlocklist.id).where(
+                BBCorpusBlocklist.kind == "author", BBCorpusBlocklist.value == author
+            )
+        )
+    if source_url:
+        checks.append(
+            select(BBCorpusBlocklist.id).where(
+                BBCorpusBlocklist.kind == "url", BBCorpusBlocklist.value == source_url
+            )
+        )
+    for stmt in checks:
+        if (await session.execute(stmt)).first() is not None:
+            return True
+    return False
 
 
 def _advisory_identity_hash(source: str | None, title: str | None, published_at: str | None) -> str:
@@ -68,7 +95,9 @@ async def upsert_report(
     tech_stack: list[str] | None = None,
     metadata: dict[str, Any] | None = None,
     ingested_at: datetime | None = None,
-) -> tuple[BBCorpusReport, bool]:
+) -> tuple[BBCorpusReport | None, bool]:
+    if await is_blocked(session, author=author_handle, source_url=source_url):
+        return None, False
     result = await session.execute(
         select(BBCorpusReport).where(BBCorpusReport.source_url == source_url)
     )
@@ -121,7 +150,9 @@ async def upsert_writeup(
     body_summary: str,
     metadata: dict[str, Any] | None = None,
     ingested_at: datetime | None = None,
-) -> tuple[BBCorpusWriteup, bool]:
+) -> tuple[BBCorpusWriteup | None, bool]:
+    if await is_blocked(session, author=author, source_url=source_url):
+        return None, False
     result = await session.execute(
         select(BBCorpusWriteup).where(BBCorpusWriteup.source_url == source_url)
     )
@@ -175,7 +206,9 @@ async def upsert_advisory(
     source: str | None = None,
     title: str | None = None,
     published_at: str | None = None,
-) -> tuple[BBCorpusAdvisory, bool]:
+) -> tuple[BBCorpusAdvisory | None, bool]:
+    if await is_blocked(session, source_url=source_url):
+        return None, False
     stmt = select(BBCorpusAdvisory)
     identity_hash: str | None = None
     if source_url:
@@ -235,8 +268,13 @@ async def forget_corpus_entries(
     author: str | None = None,
     source_url: str | None = None,
 ) -> dict[str, int]:
-    """Hard-delete matching public corpus entries."""
+    """Hard-delete matching public corpus entries and block re-ingestion of them."""
     deleted: dict[str, int] = {"reports": 0, "writeups": 0, "advisories": 0}
+    # Record the block first so a later ingest run cannot bring the content back.
+    if author and not await is_blocked(session, author=author):
+        session.add(BBCorpusBlocklist(kind="author", value=author))
+    if source_url and not await is_blocked(session, source_url=source_url):
+        session.add(BBCorpusBlocklist(kind="url", value=source_url))
     if author:
         reports_result = await session.execute(
             delete(BBCorpusReport).where(BBCorpusReport.author_handle == author)

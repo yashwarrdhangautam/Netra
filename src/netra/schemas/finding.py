@@ -69,6 +69,29 @@ class FindingResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FindingClientResponse(BaseModel):
+    """Limited view for the client role (PRD 5.3.2).
+
+    Omits internal triage data: AI analysis, raw evidence, assignee and analyst notes.
+    """
+
+    id: uuid.UUID
+    scan_id: uuid.UUID
+    title: str
+    description: str
+    severity: Severity
+    status: FindingStatus
+    cvss_score: float | None
+    cwe_id: str | None
+    cve_ids: list[str] | None
+    url: str | None
+    remediation: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class FindingListResponse(BaseModel):
     """Schema for finding list items."""
 

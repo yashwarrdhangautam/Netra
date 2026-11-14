@@ -55,6 +55,16 @@ def add_error_handlers(app: FastAPI) -> None:
             message=exc.message,
             details=exc.details,
         )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "type": exc.__class__.__name__,
+                    "message": exc.message,
+                    "details": exc.details,
+                }
+            },
+        )
 
 
 def add_bugbounty_audit_middleware(app: FastAPI) -> None:
@@ -146,16 +156,6 @@ def add_bugbounty_audit_middleware(app: FastAPI) -> None:
             except Exception as exc:
                 logger.warning("bb_audit_write_failed", error=str(exc))
         return response
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "error": {
-                    "type": exc.__class__.__name__,
-                    "message": exc.message,
-                    "details": exc.details,
-                }
-            },
-        )
 
     @app.exception_handler(Exception)
     async def global_exception_handler(

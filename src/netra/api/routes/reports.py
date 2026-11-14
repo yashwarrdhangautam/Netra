@@ -1,15 +1,22 @@
 """Report routes for generating security reports."""
 
 import uuid
+from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from netra.api.deps import get_db_session
+from netra.api.routes.auth import get_current_active_user
+from netra.api.scope import apply, can_see_scan, report_filter
 from netra.db.models.finding import Finding
 from netra.db.models.report import Report, ReportStatus, ReportType
 from netra.db.models.scan import Scan
+from netra.db.models.user import User
 from netra.schemas.report import ReportResponse
 
 router = APIRouter()
@@ -49,12 +56,29 @@ async def generate_report(
     # Generate report in background
     import asyncio
 
-    asyncio.create_task(_generate_report_async(db, report, scan))
+    # The request session closes when the response is sent, so the task gets only IDs.
+    asyncio.create_task(_generate_report_async(report.id, scan.id))
 
     return ReportResponse.model_validate(report)
 
 
-async def _generate_report_async(db: AsyncSession, report: Report, scan: Scan) -> None:
+async def _generate_report_async(report_id: uuid.UUID, scan_id: uuid.UUID) -> None:
+    """Run report generation in its own session, after the request has finished."""
+    from netra.db.session import async_session_factory
+
+    async with async_session_factory() as db:
+        report = await db.get(Report, report_id)
+        # Load the target now: the builder reads it, and lazy loads cannot run in async code.
+        result = await db.execute(
+            select(Scan).options(selectinload(Scan.target)).where(Scan.id == scan_id)
+        )
+        scan = result.scalar_one_or_none()
+        if report is None or scan is None:
+            return
+        await _build_report(db, report, scan)
+
+
+async def _build_report(db: AsyncSession, report: Report, scan: Scan) -> None:
     """Generate report asynchronously."""
     try:
         from netra.services.report_service import (
@@ -158,8 +182,44 @@ async def _generate_report_async(db: AsyncSession, report: Report, scan: Scan) -
     await db.commit()
 
 
+@router.get("/", response_model=list[ReportResponse])
+async def list_reports(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[ReportResponse]:
+    """All reports, newest first. The GUI report history uses this."""
+    result = await db.execute(
+        apply(select(Report), report_filter(current_user))
+        .order_by(Report.created_at.desc())
+        .limit(limit)
+    )
+    return [ReportResponse.model_validate(r) for r in result.scalars().all()]
+
+
+@router.get("/{report_id}/download")
+async def download_report(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    report_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> FileResponse:
+    """Download a finished report file."""
+    report = await db.get(Report, report_id)
+    if report and not await can_see_scan(db, current_user, report.scan_id):
+        report = None
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if report.status != ReportStatus.COMPLETED or not report.file_path:
+        raise HTTPException(status_code=409, detail="Report is not ready yet")
+    path = Path(report.file_path)
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="Report file is no longer on disk")
+    return FileResponse(path, filename=path.name)
+
+
 @router.get("/{report_id}", response_model=ReportResponse)
 async def get_report(
+    current_user: Annotated[User, Depends(get_current_active_user)],
     report_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
@@ -173,14 +233,32 @@ async def get_report(
         Report details
     """
     report = await db.get(Report, report_id)
+    if report and not await can_see_scan(db, current_user, report.scan_id):
+        report = None
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
     return ReportResponse.model_validate(report)
 
 
+@router.get("/scan/{scan_id}/sarif")
+async def scan_sarif(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    scan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """SARIF 2.1.0 document for a scan's findings, for CI and code-scanning dashboards."""
+    from netra.reports.sarif import build_sarif
+
+    if not await can_see_scan(db, current_user, scan_id):
+        raise HTTPException(status_code=404, detail="Scan not found")
+    result = await db.execute(select(Finding).where(Finding.scan_id == scan_id))
+    return build_sarif(list(result.scalars().all()))
+
+
 @router.get("/scan/{scan_id}")
 async def list_reports_for_scan(
+    current_user: Annotated[User, Depends(get_current_active_user)],
     scan_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
 ) -> list[ReportResponse]:
@@ -193,6 +271,8 @@ async def list_reports_for_scan(
     Returns:
         List of reports
     """
+    if not await can_see_scan(db, current_user, scan_id):
+        raise HTTPException(status_code=404, detail="Scan not found")
     result = await db.execute(
         select(Report).where(Report.scan_id == scan_id).order_by(Report.created_at.desc())
     )

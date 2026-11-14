@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.api.deps import get_db_session
+from netra.api.routes.auth import require_admin
 from netra.bugbounty.programs import (
     ProgramInput,
     ScopeRuleInput,
@@ -1267,7 +1268,7 @@ async def list_verifiers() -> list[dict[str, Any]]:
     return verifiers_as_dicts()
 
 
-@router.post("/settings/verifiers/reload")
+@router.post("/settings/verifiers/reload", dependencies=[Depends(require_admin)])
 async def reload_verifier_allowlist() -> list[dict[str, Any]]:
     """Reload verifier allowlist from disk."""
     from netra.bugbounty.verifiers.loader import reload_verifiers
@@ -1365,7 +1366,7 @@ async def reindex_graph(payload: dict[str, Any]) -> dict[str, Any]:
     return {"status": "accepted", "kind": kind}
 
 
-@router.post("/kill-switch")
+@router.post("/kill-switch", dependencies=[Depends(require_admin)])
 async def kill_switch(
     payload: dict[str, Any],
     db: AsyncSession = Depends(get_db_session),

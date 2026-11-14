@@ -41,7 +41,7 @@ class TokenResponse(BaseModel):
     """Schema for token response."""
 
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105 - OAuth token type label
     expires_in: int
 
 

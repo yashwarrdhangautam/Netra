@@ -1,10 +1,13 @@
 """Re-export all database models for convenient importing."""
 
+from netra.db.models.app_setting import AppSetting
+from netra.db.models.audit_log import AuditLog
 from netra.db.models.audit_ui_action import AuditUIAction
 from netra.db.models.base import Base
 from netra.db.models.bb_agentic_step import BBAgenticStep
 from netra.db.models.bb_asset import BBAsset
 from netra.db.models.bb_corpus_advisory import BBCorpusAdvisory
+from netra.db.models.bb_corpus_blocklist import BBCorpusBlocklist
 from netra.db.models.bb_corpus_report import BBCorpusReport
 from netra.db.models.bb_corpus_signature import BBCorpusSignature
 from netra.db.models.bb_corpus_trend import BBCorpusTrend
@@ -33,10 +36,13 @@ from netra.db.models.user import User, UserRole
 
 __all__ = [
     "Base",
+    "AppSetting",
+    "AuditLog",
     "AuditUIAction",
     "BBAgenticStep",
     "BBAsset",
     "BBCorpusAdvisory",
+    "BBCorpusBlocklist",
     "BBCorpusReport",
     "BBCorpusSignature",
     "BBCorpusTrend",

@@ -27,6 +27,8 @@ class TargetUpdate(BaseModel):
     scope_includes: list[str] | None = None
     scope_excludes: list[str] | None = None
     metadata_: dict | None = Field(None, alias="metadata")
+    # Assign to a client user, or send null to unassign. Analysts and admins only.
+    client_id: uuid.UUID | None = None
 
 
 class TargetResponse(BaseModel):
@@ -39,6 +41,7 @@ class TargetResponse(BaseModel):
     scope_includes: list[str] | None
     scope_excludes: list[str] | None
     metadata_: dict | None
+    client_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

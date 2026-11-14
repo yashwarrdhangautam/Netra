@@ -13,10 +13,10 @@ from typing import Any
 
 import structlog
 from celery.schedules import crontab
-from sqlalchemy import JSON as JSONB
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from netra.db.models._types import JSONB
 from netra.db.models.base import Base
 from netra.worker.celery_app import celery_app
 

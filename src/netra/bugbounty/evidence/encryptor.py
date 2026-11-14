@@ -10,7 +10,7 @@ from cryptography.fernet import Fernet
 
 from netra.core.config import settings
 
-DEFAULT_JWT_SECRET = "CHANGE-ME-IN-PRODUCTION"
+DEFAULT_JWT_SECRET = "CHANGE-ME-IN-PRODUCTION"  # noqa: S105 - compared to detect the unset default
 
 
 def _fernet_key() -> bytes:

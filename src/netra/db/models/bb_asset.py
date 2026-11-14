@@ -2,12 +2,16 @@
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON as JSONB
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from netra.db.models._types import JSONB
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.bb_program import BBProgram
 
 
 class BBAsset(Base):

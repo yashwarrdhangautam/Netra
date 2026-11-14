@@ -8,4 +8,3 @@ class NmapTool(CliTool):
 
     async def run(self, target: str, **kwargs) -> ToolResult:
         return await self._exec([target])
-

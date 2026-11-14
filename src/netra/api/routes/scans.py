@@ -1,14 +1,18 @@
 """Scan routes for managing security scans."""
 
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.api.deps import CurrentUser, get_db_session
+from netra.api.routes.auth import get_current_active_user
+from netra.api.scope import apply, can_see_scan, scan_filter
 from netra.db.models.scan import Scan, ScanStatus
 from netra.db.models.target import Target
+from netra.db.models.user import User
 from netra.schemas.common import PaginatedResponse
 from netra.schemas.scan import (
     ScanCreate,
@@ -19,6 +23,7 @@ from netra.schemas.scan import (
     ScanResponse,
     ScanUpdate,
 )
+from netra.services.audit import record_audit
 
 router = APIRouter()
 
@@ -53,22 +58,28 @@ async def create_scan(
     db.add(scan)
     await db.commit()
     await db.refresh(scan)
+    await record_audit(
+        db,
+        actor=current_user,
+        action="scan.create",
+        resource_type="scan",
+        resource_id=str(scan.id),
+        detail={"profile": str(payload.profile), "target_id": str(payload.target_id)},
+    )
+    await db.commit()
 
-    # Dispatch scan pipeline (in production, this would be a Celery task)
-    # For Phase 1, we'll start it directly
-    from netra.scanner.orchestrator import ScanOrchestrator
+    # Queue the scan on the Celery worker. The worker runs the phase chain and sets the final
+    # status. Running it inside this request would share a session that closes with the response.
+    from netra.worker.tasks import run_scan
 
-    orchestrator = ScanOrchestrator(db, scan.id)
-    # Run async in background
-    import asyncio
-
-    asyncio.create_task(orchestrator.execute())
+    run_scan.delay(str(scan.id))
 
     return ScanResponse.model_validate(scan)
 
 
 @router.get("/", response_model=PaginatedResponse[ScanListResponse])
 async def list_scans(
+    current_user: Annotated[User, Depends(get_current_active_user)],
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     status: str | None = None,
@@ -87,7 +98,7 @@ async def list_scans(
     Returns:
         Paginated list of scans
     """
-    query = select(Scan)
+    query = apply(select(Scan), scan_filter(current_user))
 
     if status:
         query = query.where(Scan.status == status)
@@ -105,7 +116,7 @@ async def list_scans(
     scans = list(result.scalars().all())
 
     # Get total count
-    count_query = select(Scan)
+    count_query = apply(select(Scan), scan_filter(current_user))
     if status:
         count_query = count_query.where(Scan.status == status)
     if profile:
@@ -124,6 +135,7 @@ async def list_scans(
 @router.get("/{scan_id}", response_model=ScanResponse)
 async def get_scan(
     scan_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db_session),
 ) -> ScanResponse:
     """Get scan details by ID.
@@ -136,7 +148,7 @@ async def get_scan(
         Scan details
     """
     scan = await db.get(Scan, scan_id)
-    if not scan:
+    if not scan or not await can_see_scan(db, current_user, scan_id):
         raise HTTPException(status_code=404, detail="Scan not found")
 
     return ScanResponse.model_validate(scan)
@@ -146,6 +158,7 @@ async def get_scan(
 async def update_scan(
     scan_id: uuid.UUID,
     payload: ScanUpdate,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> ScanResponse:
     """Update scan (pause, resume, cancel).
@@ -167,6 +180,9 @@ async def update_scan(
     if payload.name:
         scan.name = payload.name
 
+    await record_audit(
+        db, actor=current_user, action="scan.update", resource_type="scan", resource_id=str(scan_id)
+    )
     await db.commit()
     await db.refresh(scan)
 
@@ -176,6 +192,7 @@ async def update_scan(
 @router.delete("/{scan_id}", status_code=204)
 async def delete_scan(
     scan_id: uuid.UUID,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a scan and all its data.
@@ -189,12 +206,16 @@ async def delete_scan(
         raise HTTPException(status_code=404, detail="Scan not found")
 
     await db.delete(scan)
+    await record_audit(
+        db, actor=current_user, action="scan.delete", resource_type="scan", resource_id=str(scan_id)
+    )
     await db.commit()
 
 
 @router.get("/{scan_id}/phases")
 async def get_scan_phases(
     scan_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db_session),
 ) -> list[ScanPhaseResponse]:
     """Get all phases for a scan with progress.
@@ -208,6 +229,8 @@ async def get_scan_phases(
     """
     from netra.db.models.scan_phase import ScanPhase
 
+    if not await can_see_scan(db, current_user, scan_id):
+        raise HTTPException(status_code=404, detail="Scan not found")
     result = await db.execute(
         select(ScanPhase).where(ScanPhase.scan_id == scan_id).order_by(ScanPhase.started_at)
     )
@@ -219,6 +242,7 @@ async def get_scan_phases(
 @router.post("/{scan_id}/resume", response_model=ScanResponse)
 async def resume_scan(
     scan_id: uuid.UUID,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> ScanResponse:
     """Resume a paused or failed scan from last checkpoint.
@@ -243,14 +267,15 @@ async def resume_scan(
     scan.status = ScanStatus.RUNNING
     await db.commit()
     await db.refresh(scan)
+    await record_audit(
+        db, actor=current_user, action="scan.resume", resource_type="scan", resource_id=str(scan.id)
+    )
+    await db.commit()
 
-    # Restart orchestrator
-    from netra.scanner.orchestrator import ScanOrchestrator
+    # Re-queue the pipeline on the worker. Without this the scan would sit at RUNNING forever.
+    from netra.worker.tasks import run_scan
 
-    orchestrator = ScanOrchestrator(db, scan.id)
-    import asyncio
-
-    asyncio.create_task(orchestrator.execute())
+    run_scan.delay(str(scan.id))
 
     return ScanResponse.model_validate(scan)
 

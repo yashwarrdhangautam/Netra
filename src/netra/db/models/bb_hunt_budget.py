@@ -1,12 +1,16 @@
 """Bug bounty hunt budget model."""
 
 import uuid
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON as JSONB
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from netra.db.models._types import JSONB
 from netra.db.models.base import Base
+
+if TYPE_CHECKING:
+    from netra.db.models.scan import Scan
 
 
 class BBHuntBudget(Base):
