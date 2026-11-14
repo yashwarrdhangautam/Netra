@@ -113,3 +113,22 @@ curl http://localhost:8000/api/health
 
 - [Quick Start](quickstart.md) — Run your first scan
 - [Configuration](configuration.md) — Detailed configuration options
+
+## First Run: Create the Administrator Account
+
+The GUI requires sign-in. Create the first admin once, after the database migrations have finished:
+
+```bash
+# Docker Compose stack
+docker compose exec -it api python -m netra.cli.create_admin
+
+# Local development (from the repository root)
+uv run python -m netra.cli.create_admin
+```
+
+You are prompted for an email, an optional name, and a password. The password must be at least 12 characters and mix upper- and lower-case letters with at least one digit. Then open the GUI at `http://localhost:5173/login`.
+
+Notes:
+- `NETRA_JWT_SECRET_KEY` must be set in `.env` before the stack starts. Docker Compose refuses to start without it.
+- If port 8000 is already in use on your machine, change the host port of the `api` service in `docker-compose.yml`. The GUI proxies to the API inside the Docker network, so it does not need changing.
+- Scanner binaries such as subfinder, amass, ffuf and nuclei must be installed in the API and worker images before scans and hunts can produce results. See Method 2 above.

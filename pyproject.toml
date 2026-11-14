@@ -47,6 +47,7 @@ bcrypt = "==4.2.0"
 pyotp = "==2.9.0"
 flower = "==2.0.1"
 email-validator = "==2.2.0"
+defusedxml = "==0.7.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
@@ -69,10 +70,21 @@ src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "S", "T20"]
-ignore = ["S101"]
+# S101: asserts are how the tests check things.
+# N818: exception names such as NetraException are part of the public API; renaming them
+#       would churn every import, so the Error-suffix rule is not enforced.
+# E501: ruff-format already wraps code. What is left is long string content (prompts, HTML,
+#       Rich markup, fixtures), which the formatter does not split.
+ignore = ["S101", "N818", "E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+# Tests use fake credentials and temp paths on purpose; importorskip must come before imports.
+"tests/**" = ["S101", "S105", "S106", "S108", "E402"]
+# FastAPI's Depends() in argument defaults is the framework's standard idiom.
+"src/netra/api/routes/**" = ["B008"]
+# The CLI entry points print their output to the terminal.
+"src/netra/cli/**" = ["T201"]
+"src/netra/bugbounty/cli.py" = ["T201"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -140,3 +140,9 @@ __pycache__/
 NETRA_*.docx
 
 NETRA_*.docx
+
+# Local artifacts that must never be committed
+*.bak
+*.db
+uv.lock
+scratchpad/

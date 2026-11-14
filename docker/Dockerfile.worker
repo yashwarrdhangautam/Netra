@@ -1,3 +1,20 @@
+# Scanner binaries are built from source in a Go stage (same tool set as docker/Dockerfile).
+FROM golang:1.23-bookworm AS gotools
+ENV CGO_ENABLED=0 GOTOOLCHAIN=auto
+RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
+    go install github.com/projectdiscovery/httpx/cmd/httpx@latest && \
+    go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
+    go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest && \
+    go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest && \
+    go install github.com/projectdiscovery/katana/cmd/katana@latest && \
+    go install github.com/ffuf/ffuf/v2@latest && \
+    go install github.com/lc/gau/v2/cmd/gau@latest && \
+    go install github.com/tomnomnom/assetfinder@latest && \
+    go install github.com/PentestPad/subzy@latest && \
+    go install github.com/zricethezav/gitleaks/v8@latest && \
+    go install github.com/hahwul/dalfox/v2@latest && \
+    go install github.com/owasp-amass/amass/v4/cmd/amass@master
+
 FROM python:3.12-slim AS builder
 WORKDIR /app
 RUN pip install poetry==2.4.0
@@ -8,9 +25,26 @@ RUN poetry config virtualenvs.create false && \
 FROM python:3.12-slim
 WORKDIR /app
 ENV PYTHONPATH=/app/src
+# Tools the scanner wrappers call by name (see src/netra/scanner/tools/).
+# nikto is not packaged in Debian trixie, so it runs from upstream source.
+# wpscan is not installed (Ruby gem with native deps); its wrapper reports it as missing.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nmap sqlmap dnsutils git curl ca-certificates \
+    perl libnet-ssleay-perl libwww-perl libjson-perl \
+ && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/sullo/nikto /opt/nikto \
+ && ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
+ && chmod +x /opt/nikto/program/nikto.pl
+# Installed in their own venv: these tools pin dependencies that clash with the NETRA
+# pins (pydantic-settings), so they must not share the application environment.
+RUN python -m venv /opt/scanner-tools \
+ && /opt/scanner-tools/bin/pip install --no-cache-dir semgrep checkov pip-audit shodan \
+ && for b in semgrep checkov pip-audit shodan; do ln -s /opt/scanner-tools/bin/$b /usr/local/bin/$b; done
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=gotools /go/bin/ /usr/local/bin/
 COPY src/ ./src/
-RUN useradd -m netra && chown -R netra:netra /app
+COPY verifier_allowlist.yaml ./
+RUN useradd -m netra && mkdir -p /home/netra/.netra /home/netra/netra_output && chown -R netra:netra /app /home/netra
 USER netra
 CMD ["celery", "-A", "netra.worker.celery_app", "worker", "--loglevel=info"]

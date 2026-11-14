@@ -60,6 +60,7 @@ services:
       dockerfile: docker/Dockerfile.worker
     environment:
       - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+      - NETRA_DB_NULL_POOL=true
       - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
       - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
       - NETRA_CELERY_WORKER_CONCURRENCY=4
@@ -102,6 +103,7 @@ services:
     command: celery -A netra.worker.celery_app beat --loglevel=info
     environment:
       - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+      - NETRA_DB_NULL_POOL=true
       - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
       - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
       - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:?NETRA_JWT_SECRET_KEY must be set}
