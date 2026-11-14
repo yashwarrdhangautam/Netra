@@ -15,6 +15,9 @@ export function useWebSocket({
 }: UseWebSocketOptions) {
   const [isConnected, setIsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
+  // Set when the caller turns the socket off or the component unmounts, so a close
+  // does not trigger a reconnect. Without it, a server that closes on completion loops.
+  const stoppedRef = useRef(false)
 
   const connect = useCallback(() => {
     if (!enabled) return
@@ -29,8 +32,9 @@ export function useWebSocket({
     ws.onclose = () => {
       console.log('WebSocket disconnected:', url)
       setIsConnected(false)
-      // Attempt reconnect
-      setTimeout(connect, reconnectInterval)
+      if (!stoppedRef.current) {
+        setTimeout(connect, reconnectInterval)
+      }
     }
 
     ws.onerror = (error) => {
@@ -51,10 +55,12 @@ export function useWebSocket({
 
   useEffect(() => {
     if (enabled) {
+      stoppedRef.current = false
       connect()
     }
 
     return () => {
+      stoppedRef.current = true
       if (wsRef.current) {
         wsRef.current.close()
       }

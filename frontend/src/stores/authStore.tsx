@@ -27,6 +27,8 @@ interface AuthState {
   canCreateScans: () => boolean
 }
 
+// The store hook sits beside the auth provider; fast refresh resets state here, which is acceptable.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({

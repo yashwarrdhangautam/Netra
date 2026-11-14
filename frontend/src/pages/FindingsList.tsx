@@ -35,7 +35,7 @@ export function FindingsList() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data?.data.map((finding: Finding) => (
+                {data?.items.map((finding: Finding) => (
                   <TableRow key={finding.id}>
                     <TableCell>
                       <Badge className={getSeverityColor(finding.severity)}>

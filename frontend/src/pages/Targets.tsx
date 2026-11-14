@@ -1,39 +1,21 @@
-'use client'
-
-import React, { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Globe, Server, Link, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Globe, Server, Link, Pencil, Upload } from 'lucide-react'
 import { targetsApi, type CreateTargetPayload } from '@/api/targets'
+import { targetsExtraApi } from '@/api/platform'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { DataTable } from '@/components/shared/DataTable'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton'
+import { NotificationBanner, type BannerMessage } from '@/components/shared/NotificationBanner'
+import { useAuthStore } from '@/stores/authStore'
 import { cn, formatDate } from '@/utils/formatters'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Target } from '@/types'
 
-interface TargetWithExpanded extends Target {
-  findingCount?: number
-  lastScannedDate?: string | null
-}
-
-interface ExpandedTargetState {
-  [targetId: string]: boolean
-}
-
-interface AddFormState {
-  isOpen: boolean
-  name: string
-  targetType: 'domain' | 'ip' | 'url' | 'ip_range' | 'domain_list'
-  value: string
-}
-
-interface ConfirmDeleteState {
-  targetId: string | null
-  targetName: string
-}
+type TargetType = CreateTargetPayload['target_type']
 
 const TARGET_TYPE_ICONS: Record<string, React.ReactNode> = {
   domain: <Globe className="w-4 h-4" />,
@@ -43,117 +25,129 @@ const TARGET_TYPE_ICONS: Record<string, React.ReactNode> = {
   domain_list: <Globe className="w-4 h-4" />,
 }
 
+const INPUT = cn(
+  'w-full px-3 py-2 rounded-md text-sm transition-colors',
+  'bg-surface-2 text-foreground border border-border',
+  'placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent'
+)
+
+function errorText(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  return typeof detail === 'string' ? detail : fallback
+}
+
+const PLACEHOLDER: Record<TargetType, string> = {
+  domain: 'example.com',
+  ip: '192.168.1.1',
+  url: 'https://example.com/api',
+  ip_range: '192.168.1.0/24',
+  domain_list: 'domains.txt',
+}
+
+interface TargetRow extends Target {
+  group_name?: string | null
+  client_id?: string | null
+}
+
 export function Targets() {
   const queryClient = useQueryClient()
-  const [expandedTargets, setExpandedTargets] = useState<ExpandedTargetState>({})
-  const [addFormState, setAddFormState] = useState<AddFormState>({
-    isOpen: false,
-    name: '',
-    targetType: 'domain',
-    value: '',
-  })
-  const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState>({
-    targetId: null,
-    targetName: '',
-  })
+  const canEdit = useAuthStore((s) => s.canEdit)()
+  const fileInput = useRef<HTMLInputElement>(null)
 
-  // Query: Fetch targets
+  const [groupFilter, setGroupFilter] = useState('')
+  const [message, setMessage] = useState<BannerMessage | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ name: '', targetType: 'domain' as TargetType, value: '', group: '' })
+  const [editing, setEditing] = useState<TargetRow | null>(null)
+  const [editForm, setEditForm] = useState({ name: '', value: '', group: '', client: '' })
+  const clientUsers = useQuery({
+    queryKey: ['target-clients'],
+    queryFn: targetsExtraApi.clients,
+    enabled: editing !== null,
+  })
+  const [confirmDelete, setConfirmDelete] = useState<TargetRow | null>(null)
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['targets'],
-    queryFn: () => targetsApi.list(),
+    queryKey: ['targets', groupFilter],
+    queryFn: () =>
+      targetsApi.list(groupFilter ? ({ group: groupFilter } as Record<string, string>) : undefined),
   })
 
-  // Mutation: Create target
+  const { data: groups = [] } = useQuery({
+    queryKey: ['target-groups'],
+    queryFn: targetsExtraApi.groups,
+  })
+
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['targets'] })
+    await queryClient.invalidateQueries({ queryKey: ['target-groups'] })
+  }
+
   const createMutation = useMutation({
-    mutationFn: (payload: CreateTargetPayload) => targetsApi.create(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] })
-      setAddFormState({
-        isOpen: false,
-        name: '',
-        targetType: 'domain',
-        value: '',
-      })
+    mutationFn: (payload: CreateTargetPayload & { group_name?: string }) =>
+      targetsApi.create(payload),
+    onSuccess: async () => {
+      setAdding(false)
+      setForm({ name: '', targetType: 'domain', value: '', group: '' })
+      setMessage({ type: 'success', text: 'Target added.' })
+      await refresh()
     },
+    onError: (err) => setMessage({ type: 'error', text: errorText(err, 'Could not add the target.') }),
   })
 
-  // Mutation: Delete target
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      targetsExtraApi.update(id, body),
+    onSuccess: async () => {
+      setEditing(null)
+      setMessage({ type: 'success', text: 'Target updated.' })
+      await refresh()
+    },
+    onError: (err) => setMessage({ type: 'error', text: errorText(err, 'Could not update the target.') }),
+  })
+
   const deleteMutation = useMutation({
-    mutationFn: (targetId: string) => targetsApi.delete(targetId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] })
-      setConfirmDelete({ targetId: null, targetName: '' })
+    mutationFn: (id: string) => targetsApi.delete(id),
+    onSuccess: async () => {
+      setConfirmDelete(null)
+      setMessage({ type: 'success', text: 'Target deleted.' })
+      await refresh()
+    },
+    onError: (err) => {
+      setConfirmDelete(null)
+      setMessage({ type: 'error', text: errorText(err, 'Could not delete the target.') })
     },
   })
 
-  // Handlers
-  const handleToggleExpanded = (targetId: string): void => {
-    setExpandedTargets((prev) => ({
-      ...prev,
-      [targetId]: !prev[targetId],
-    }))
-  }
-
-  const handleAddFormSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
-    e.preventDefault()
-    if (!addFormState.name.trim() || !addFormState.value.trim()) {
-      return
-    }
-
-    createMutation.mutate({
-      name: addFormState.name,
-      target_type: addFormState.targetType,
-      value: addFormState.value,
-    })
-  }
-
-  const handleDeleteClick = (targetId: string, targetName: string): void => {
-    setConfirmDelete({ targetId, targetName })
-  }
-
-  const handleConfirmDelete = (): void => {
-    if (confirmDelete.targetId) {
-      deleteMutation.mutate(confirmDelete.targetId)
-    }
-  }
-
-  // Data transformation
-  const transformedData: TargetWithExpanded[] = (data?.items ?? []).map((target) => ({
-    ...target,
-    findingCount: Math.floor(Math.random() * 10), // Placeholder: would come from API
-    lastScannedDate: null, // Placeholder: would come from API
-  }))
-
-  // Column definitions
-  const columns: ColumnDef<TargetWithExpanded>[] = [
-    {
-      id: 'expand',
-      header: '',
-      cell: ({ row }) => (
-        <button
-          className="p-1 hover:bg-surface-2 rounded transition-colors"
-          onClick={() => handleToggleExpanded(row.original.id)}
-          aria-label="Toggle row expansion"
-        >
-          {expandedTargets[row.original.id] ? (
-            <ChevronUp className="w-4 h-4" />
-          ) : (
-            <ChevronDown className="w-4 h-4" />
-          )}
-        </button>
-      ),
-      size: 40,
+  const importMutation = useMutation({
+    mutationFn: (file: File) => targetsApi.importTargets(file),
+    onSuccess: async (result) => {
+      const failed = result.failed ? ` ${result.failed} row(s) were rejected.` : ''
+      setMessage({
+        type: result.imported > 0 ? 'success' : 'error',
+        text: `Imported ${result.imported} target(s).${failed}`,
+      })
+      await refresh()
     },
+    onError: (err) => setMessage({ type: 'error', text: errorText(err, 'The CSV could not be imported.') }),
+    onSettled: () => {
+      if (fileInput.current) fileInput.current.value = ''
+    },
+  })
+
+  const rows: TargetRow[] = ((data?.items ?? []) as TargetRow[]).map((t) => t)
+
+  const columns: ColumnDef<TargetRow>[] = [
     {
       accessorKey: 'name',
       header: 'Name',
-      cell: ({ row }) => <div className="font-medium">{row.getValue('name')}</div>,
+      cell: ({ row }) => <div className="font-medium">{row.original.name}</div>,
     },
     {
       accessorKey: 'target_type',
       header: 'Type',
       cell: ({ row }) => {
-        const type = row.getValue('target_type') as string
+        const type = String(row.original.target_type)
         return (
           <div className="flex items-center gap-2">
             {TARGET_TYPE_ICONS[type] || <Globe className="w-4 h-4" />}
@@ -163,324 +157,287 @@ export function Targets() {
       },
     },
     {
-      id: 'lastScanned',
-      header: 'Last Scanned',
-      cell: ({ row }) => {
-        const lastScannedDate = row.original.lastScannedDate
-        return (
-          <div className="text-sm text-muted-foreground">
-            {lastScannedDate ? formatDate(lastScannedDate) : 'Never'}
-          </div>
-        )
-      },
+      accessorKey: 'value',
+      header: 'Value',
+      cell: ({ row }) => <code className="text-xs">{row.original.value}</code>,
     },
     {
-      id: 'findings',
-      header: 'Findings',
-      cell: ({ row }) => {
-        const count = row.original.findingCount ?? 0
-        return (
-          <div className="text-sm font-medium">
-            {count === 0 ? (
-              <span className="text-muted-foreground">-</span>
-            ) : (
-              <Badge variant={count > 5 ? 'destructive' : 'outline'}>{count}</Badge>
-            )}
-          </div>
-        )
-      },
-    },
-    {
-      id: 'actions',
-      header: '',
+      id: 'group',
+      header: 'Group',
       cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleDeleteClick(row.original.id, row.original.name)}
-            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
+        <span className="text-sm text-muted-foreground">{row.original.group_name || '—'}</span>
       ),
     },
+    {
+      id: 'created',
+      header: 'Created',
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">{formatDate(row.original.created_at)}</span>
+      ),
+    },
+    ...(canEdit
+      ? [
+          {
+            id: 'actions',
+            header: '',
+            cell: ({ row }: { row: { original: TargetRow } }) => (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Edit ${row.original.name}`}
+                  onClick={() => {
+                    setEditing(row.original)
+                    setEditForm({
+                      name: row.original.name,
+                      value: row.original.value,
+                      group: row.original.group_name || '',
+                      client: row.original.client_id || '',
+                    })
+                  }}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Delete ${row.original.name}`}
+                  onClick={() => setConfirmDelete(row.original)}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ),
+          } as ColumnDef<TargetRow>,
+        ]
+      : []),
   ]
 
-  // UI: Loading state
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Targets</h1>
-          <Button disabled>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Target
-          </Button>
-        </div>
+        <h1 className="text-2xl font-bold">Targets</h1>
         <LoadingSkeleton variant="table" />
       </div>
     )
   }
 
-  // UI: Error state
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Targets</h1>
-          <Button onClick={() => window.location.reload()}>Retry</Button>
-        </div>
-        <EmptyState
-          title="Error loading targets"
-          description="Something went wrong while loading your targets. Please try again."
+        <h1 className="text-2xl font-bold">Targets</h1>
+        <NotificationBanner
+          message={{ type: 'error', text: errorText(error, 'Could not load targets.') }}
+          onDismiss={() => undefined}
+          autoHideMs={0}
         />
       </div>
     )
   }
 
-  // UI: Empty state
-  if (!transformedData || transformedData.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Targets</h1>
-          <Button onClick={() => setAddFormState({ ...addFormState, isOpen: true })}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Target
-          </Button>
-        </div>
-        <EmptyState
-          icon={Globe}
-          title="No targets yet"
-          description="Create your first target to begin scanning"
-          action={{
-            label: 'Add Target',
-            onClick: () => setAddFormState({ ...addFormState, isOpen: true }),
-          }}
-        />
-      </div>
-    )
-  }
-
-  // UI: Main page
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Targets</h1>
-        <Button
-          onClick={() => setAddFormState({ ...addFormState, isOpen: true })}
-          disabled={addFormState.isOpen}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Target
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Targets</h1>
+          <p className="text-sm text-muted-foreground">
+            Hosts, domains and ranges you scan. Every target is checked against the SSRF rules when saved.
+          </p>
+        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              aria-label="CSV file"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) importMutation.mutate(file)
+              }}
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileInput.current?.click()}
+              disabled={importMutation.isPending}
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              {importMutation.isPending ? 'Importing…' : 'Import CSV'}
+            </Button>
+            <Button onClick={() => setAdding((v) => !v)} disabled={adding && createMutation.isPending}>
+              <Plus className="w-4 h-4 mr-2" />
+              {adding ? 'Close' : 'Add target'}
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Add Form */}
-      {addFormState.isOpen && (
-        <Card className="border-accent-2">
+      <NotificationBanner message={message} onDismiss={() => setMessage(null)} />
+
+      {adding && canEdit && (
+        <Card>
           <CardHeader>
-            <CardTitle className="text-base">Add New Target</CardTitle>
+            <CardTitle className="text-base">New target</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleAddFormSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {/* Name input */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Target Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., Production API Server"
-                    value={addFormState.name}
-                    onChange={(e) =>
-                      setAddFormState({ ...addFormState, name: e.target.value })
-                    }
-                    className={cn(
-                      'w-full px-3 py-2 rounded-md text-sm transition-colors',
-                      'bg-surface-2 text-foreground border border-border',
-                      'placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent'
-                    )}
-                    disabled={createMutation.isPending}
-                  />
-                </div>
-
-                {/* Type dropdown */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Type</label>
-                  <select
-                    value={addFormState.targetType}
-                    onChange={(e) =>
-                      setAddFormState({
-                        ...addFormState,
-                        targetType: e.target.value as CreateTargetPayload['target_type'],
-                      })
-                    }
-                    className={cn(
-                      'w-full px-3 py-2 rounded-md text-sm transition-colors',
-                      'bg-surface-2 text-foreground border border-border',
-                      'focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent'
-                    )}
-                    disabled={createMutation.isPending}
-                  >
-                    <option value="domain">Domain</option>
-                    <option value="ip">IP Address</option>
-                    <option value="url">URL</option>
-                    <option value="ip_range">IP Range</option>
-                    <option value="domain_list">Domain List</option>
-                  </select>
-                </div>
-
-                {/* Value input */}
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium">Value</label>
-                  <input
-                    type="text"
-                    placeholder={
-                      addFormState.targetType === 'domain'
-                        ? 'example.com'
-                        : addFormState.targetType === 'ip'
-                          ? '192.168.1.1'
-                          : addFormState.targetType === 'url'
-                            ? 'https://example.com/api'
-                            : addFormState.targetType === 'ip_range'
-                              ? '192.168.1.0/24'
-                              : 'domains.txt'
-                    }
-                    value={addFormState.value}
-                    onChange={(e) =>
-                      setAddFormState({ ...addFormState, value: e.target.value })
-                    }
-                    className={cn(
-                      'w-full px-3 py-2 rounded-md text-sm transition-colors',
-                      'bg-surface-2 text-foreground border border-border',
-                      'placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent'
-                    )}
-                    disabled={createMutation.isPending}
-                  />
-                </div>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex gap-2 justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    setAddFormState({
-                      isOpen: false,
-                      name: '',
-                      targetType: 'domain',
-                      value: '',
-                    })
-                  }
-                  disabled={createMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={
-                    !addFormState.name.trim() ||
-                    !addFormState.value.trim() ||
-                    createMutation.isPending
-                  }
-                >
-                  {createMutation.isPending ? 'Adding...' : 'Add Target'}
+            <form
+              className="grid grid-cols-1 gap-4 md:grid-cols-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                createMutation.mutate({
+                  name: form.name,
+                  target_type: form.targetType,
+                  value: form.value,
+                  group_name: form.group || undefined,
+                } as CreateTargetPayload & { group_name?: string })
+              }}
+            >
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Name</span>
+                <input className={INPUT} required value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Type</span>
+                <select className={INPUT} value={form.targetType}
+                  onChange={(e) => setForm({ ...form, targetType: e.target.value as TargetType })}>
+                  <option value="domain">Domain</option>
+                  <option value="ip">IP address</option>
+                  <option value="url">URL</option>
+                  <option value="ip_range">IP range</option>
+                  <option value="domain_list">Domain list</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm md:col-span-2">
+                <span className="font-medium">Value</span>
+                <input className={INPUT} required placeholder={PLACEHOLDER[form.targetType]}
+                  value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Group (optional)</span>
+                <input className={INPUT} list="target-groups" value={form.group}
+                  onChange={(e) => setForm({ ...form, group: e.target.value })} />
+              </label>
+              <div className="flex items-end justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setAdding(false)}>Cancel</Button>
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? 'Adding…' : 'Add target'}
                 </Button>
               </div>
-
-              {createMutation.error && (
-                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 p-3 rounded-md">
-                  Failed to create target. Please try again.
-                </div>
-              )}
             </form>
           </CardContent>
         </Card>
       )}
 
-      {/* Targets Table */}
-      <Card>
-        <CardContent className="pt-6">
-          <DataTable<TargetWithExpanded, unknown> columns={columns} data={transformedData} />
+      <div className="flex items-center gap-3 text-sm">
+        <label htmlFor="group-filter" className="text-muted-foreground">Group</label>
+        <select id="group-filter" className={cn(INPUT, 'w-auto')} value={groupFilter}
+          onChange={(e) => setGroupFilter(e.target.value)}>
+          <option value="">All groups</option>
+          {groups.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <datalist id="target-groups">
+          {groups.map((g) => <option key={g} value={g} />)}
+        </datalist>
+      </div>
 
-          {/* Expandable Details */}
-          {transformedData.map((target) =>
-            expandedTargets[target.id] ? (
-              <div
-                key={`detail-${target.id}`}
-                className="border-t border-border mt-4 pt-4 space-y-4"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Scope Rules */}
-                  <div className="space-y-2">
-                    <h4 className="font-medium text-sm">Scope Rules</h4>
-                    <div className="bg-surface-2 rounded-md p-3 text-sm text-muted-foreground space-y-1">
-                      <p>
-                        <span className="font-medium text-foreground">Value:</span> {target.value}
-                      </p>
-                      <p>
-                        <span className="font-medium text-foreground">Type:</span> {target.target_type}
-                      </p>
-                      <p>
-                        <span className="font-medium text-foreground">Created:</span>{' '}
-                        {formatDate(target.created_at)}
-                      </p>
-                    </div>
-                  </div>
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={Globe}
+          title={groupFilter ? 'No targets in this group' : 'No targets yet'}
+          description={
+            canEdit
+              ? 'Add a target, or import a CSV with name, target_type, value and group columns.'
+              : 'An analyst or admin needs to add targets.'
+          }
+        />
+      ) : (
+        <Card>
+          <CardContent className="pt-6">
+            <DataTable<TargetRow, unknown> columns={columns} data={rows} />
+          </CardContent>
+        </Card>
+      )}
 
-                  {/* Scan History */}
-                  <div className="space-y-2">
-                    <h4 className="font-medium text-sm">Scan History</h4>
-                    <div className="bg-surface-2 rounded-md p-3 text-sm text-muted-foreground">
-                      <p>No scan history available</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Delete Confirmation Dialog */}
-      {confirmDelete.targetId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="max-w-sm w-full">
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="w-full max-w-md">
             <CardHeader>
-              <CardTitle className="text-lg">Delete Target?</CardTitle>
+              <CardTitle className="text-lg">Edit target</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">Name</span>
+                <input className={INPUT} value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">Value</span>
+                <input className={INPUT} value={editForm.value}
+                  onChange={(e) => setEditForm({ ...editForm, value: e.target.value })} />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">Group</span>
+                <input className={INPUT} list="target-groups" value={editForm.group}
+                  onChange={(e) => setEditForm({ ...editForm, group: e.target.value })} />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">Assigned client</span>
+                <select className={INPUT} value={editForm.client}
+                  onChange={(e) => setEditForm({ ...editForm, client: e.target.value })}>
+                  <option value="">Not assigned</option>
+                  {(clientUsers.data ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.full_name ? `${c.full_name} (${c.email})` : c.email}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground">
+                  Clients see only the targets assigned to them, their scans, findings and reports.
+                </span>
+              </label>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+                <Button
+                  disabled={updateMutation.isPending}
+                  onClick={() =>
+                    updateMutation.mutate({
+                      id: editing.id,
+                      body: {
+                        name: editForm.name,
+                        value: editForm.value,
+                        group_name: editForm.group || null,
+                        client_id: editForm.client || null,
+                      },
+                    })
+                  }
+                >
+                  {updateMutation.isPending ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="w-full max-w-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Delete target?</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Are you sure you want to delete <span className="font-medium">{confirmDelete.targetName}</span>?
-                This action cannot be undone.
+                Delete <span className="font-medium text-foreground">{confirmDelete.name}</span>? This cannot
+                be undone. Targets that still have scans cannot be deleted.
               </p>
-              <div className="flex gap-2 justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setConfirmDelete({ targetId: null, targetName: '' })}
-                  disabled={deleteMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={handleConfirmDelete}
-                  disabled={deleteMutation.isPending}
-                >
-                  {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+                <Button variant="destructive" disabled={deleteMutation.isPending}
+                  onClick={() => deleteMutation.mutate(confirmDelete.id)}>
+                  {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
                 </Button>
               </div>
-              {deleteMutation.error && (
-                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 p-3 rounded-md">
-                  Failed to delete target. Please try again.
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>

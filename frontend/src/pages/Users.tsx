@@ -1,274 +1,290 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import axios from 'axios'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/Button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { useAuthStore, type User } from '@/stores/authStore'
-import { UserPlus, Trash2, Shield, UserCheck, UserX } from 'lucide-react'
+import { NotificationBanner, type BannerMessage } from '@/components/shared/NotificationBanner'
+import { usersApi, type ManagedUser, type Role } from '@/api/platform'
+import { useAuthStore } from '@/stores/authStore'
+import { validatePasswordLocally } from '@/utils/passwordPolicy'
+
+const ROLES: Role[] = ['admin', 'analyst', 'viewer', 'client']
+const INPUT =
+  'w-full rounded border border-border bg-surface-2 p-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary'
+
+function errorText(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  return typeof detail === 'string' ? detail : fallback
+}
 
 export function Users() {
-  const { user: currentUser, isAdmin } = useAuthStore()
+  const currentUser = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
-  const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000'
+  const [message, setMessage] = useState<BannerMessage | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [resetFor, setResetFor] = useState<ManagedUser | null>(null)
 
-  // Get auth header
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('netra_token')
-    return {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  }
-
-  // Fetch users
-  const { data: users = [], isLoading } = useQuery<User[]>({
+  const { data: users = [], isLoading, error } = useQuery({
     queryKey: ['users'],
-    queryFn: async () => {
-      const response = await axios.get(`${API_BASE}/api/v1/auth/users`, getAuthHeaders())
-      return response.data
-    },
-    enabled: isAdmin(),
+    queryFn: usersApi.list,
   })
 
-  // Delete user mutation
-  const deleteMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      await axios.delete(`${API_BASE}/api/v1/auth/users/${userId}`, getAuthHeaders())
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-    },
-  })
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['users'] })
 
-  // Update user role mutation
-  const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
-      await axios.patch(
-        `${API_BASE}/api/v1/auth/users/${userId}`,
-        { role },
-        getAuthHeaders()
-      )
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-    },
-  })
-
-  // Toggle user active status
-  const toggleActiveMutation = useMutation({
-    mutationFn: async ({ userId, is_active }: { userId: string; is_active: boolean }) => {
-      await axios.patch(
-        `${API_BASE}/api/v1/auth/users/${userId}`,
-        { is_active },
-        getAuthHeaders()
-      )
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-    },
-  })
-
-  const getRoleBadgeVariant = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'destructive' as const
-      case 'analyst':
-        return 'default' as const
-      case 'viewer':
-        return 'outline' as const
-      case 'client':
-        return 'ghost' as const
-      default:
-        return 'outline' as const
+  const changeRole = async (user: ManagedUser, role: Role) => {
+    try {
+      await usersApi.update(user.id, { role })
+      await refresh()
+      setMessage({ type: 'success', text: `${user.email} is now ${role}.` })
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'Could not change the role.') })
     }
   }
 
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return <Shield className="h-3 w-3 mr-1" />
-      case 'analyst':
-        return <UserCheck className="h-3 w-3 mr-1" />
-      case 'viewer':
-        return <UserCheck className="h-3 w-3 mr-1" />
-      case 'client':
-        return <UserX className="h-3 w-3 mr-1" />
-      default:
-        return null
+  const toggleActive = async (user: ManagedUser) => {
+    try {
+      await usersApi.update(user.id, { is_active: !user.is_active })
+      await refresh()
+      setMessage({ type: 'success', text: `${user.email} ${user.is_active ? 'deactivated' : 'reactivated'}.` })
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'Could not change the account status.') })
     }
   }
 
-  if (!isAdmin()) {
+  const deactivate = async (user: ManagedUser) => {
+    if (!window.confirm(`Deactivate ${user.email}? They will not be able to sign in.`)) return
+    try {
+      await usersApi.deactivate(user.id)
+      await refresh()
+      setMessage({ type: 'success', text: `${user.email} deactivated.` })
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'Could not deactivate the account.') })
+    }
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              You need admin privileges to access the user management page.
-            </p>
-          </CardContent>
-        </Card>
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold">Users</h1>
+        <NotificationBanner
+          message={{ type: 'error', text: errorText(error, 'Only admins can manage users.') }}
+          onDismiss={() => undefined}
+          autoHideMs={0}
+        />
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">User Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage system users, roles, and permissions
+          <h1 className="text-2xl font-semibold text-foreground">Users</h1>
+          <p className="text-sm text-muted-foreground">
+            Admins manage accounts. Viewers and clients read, analysts also make changes.
           </p>
         </div>
-        <Button disabled title="Coming soon">
-          <UserPlus className="h-4 w-4 mr-2" />
-          Add User
+        <Button onClick={() => setShowCreate((v) => !v)}>
+          {showCreate ? 'Close' : 'Add user'}
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{users.length}</div>
-            <p className="text-muted-foreground text-sm">Total Users</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">
-              {users.filter(u => u.role === 'admin').length}
-            </div>
-            <p className="text-muted-foreground text-sm">Admins</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">
-              {users.filter(u => u.role === 'analyst').length}
-            </div>
-            <p className="text-muted-foreground text-sm">Analysts</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">
-              {users.filter(u => u.is_active).length}
-            </div>
-            <p className="text-muted-foreground text-sm">Active</p>
-          </CardContent>
-        </Card>
-      </div>
+      <NotificationBanner message={message} onDismiss={() => setMessage(null)} />
 
-      {/* Users Table */}
+      {showCreate && (
+        <CreateUserCard
+          onCreated={async (email) => {
+            setShowCreate(false)
+            await refresh()
+            setMessage({ type: 'success', text: `${email} created.` })
+          }}
+          onError={(text) => setMessage({ type: 'error', text })}
+        />
+      )}
+
+      {resetFor && (
+        <ResetPasswordCard
+          user={resetFor}
+          onDone={async () => {
+            setMessage({ type: 'success', text: `Password reset for ${resetFor.email}.` })
+            setResetFor(null)
+          }}
+          onCancel={() => setResetFor(null)}
+          onError={(text) => setMessage({ type: 'error', text })}
+        />
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle>Users</CardTitle>
+          <CardTitle>Accounts</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading users...</div>
+            <p className="text-sm text-muted-foreground">Loading…</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Email</TableHead>
-                  <TableHead>Full Name</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>MFA</TableHead>
+                  <TableHead>Last sign-in</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.email}</TableCell>
-                    <TableCell>{user.full_name || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant={getRoleBadgeVariant(user.role)}>
-                        {getRoleIcon(user.role)}
-                        {user.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={user.is_active ? 'default' : 'outline'}>
+                {users.map((user) => {
+                  const isSelf = user.id === currentUser?.id
+                  return (
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        {user.email}
+                        {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
+                      </TableCell>
+                      <TableCell>
+                        <select
+                          aria-label={`Role for ${user.email}`}
+                          value={user.role}
+                          disabled={isSelf}
+                          onChange={(e) => changeRole(user, e.target.value as Role)}
+                          className="rounded border border-border bg-surface-2 px-2 py-1 text-sm"
+                        >
+                          {ROLES.map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={user.is_active ? 'default' : 'secondary'}>
                           {user.is_active ? 'Active' : 'Inactive'}
                         </Badge>
-                        {user.is_verified && (
-                          <Badge variant="outline">Verified</Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {/* Role selector */}
-                        <select
-                          value={user.role}
-                          onChange={(e) =>
-                            updateRoleMutation.mutate({
-                              userId: user.id,
-                              role: e.target.value,
-                            })
-                          }
-                          disabled={user.id === currentUser?.id}
-                          className="text-sm border border-border rounded-md bg-surface px-2 py-1"
-                        >
-                          <option value="admin">Admin</option>
-                          <option value="analyst">Analyst</option>
-                          <option value="viewer">Viewer</option>
-                          <option value="client">Client</option>
-                        </select>
-
-                        {/* Toggle active */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            toggleActiveMutation.mutate({
-                              userId: user.id,
-                              is_active: !user.is_active,
-                            })
-                          }
-                          disabled={user.id === currentUser?.id}
-                        >
-                          {user.is_active ? 'Deactivate' : 'Activate'}
+                      </TableCell>
+                      <TableCell>{user.mfa_enabled ? 'On' : 'Off'}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never'}
+                      </TableCell>
+                      <TableCell className="space-x-2">
+                        <Button variant="ghost" size="sm" onClick={() => setResetFor(user)}>
+                          Reset password
                         </Button>
-
-                        {/* Delete */}
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            if (confirm(`Delete user ${user.email}?`)) {
-                              deleteMutation.mutate(user.id)
-                            }
-                          }}
-                          disabled={user.id === currentUser?.id}
-                        >
-                          <Trash2 className="h-4 w-4" />
+                        <Button variant="ghost" size="sm" disabled={isSelf} onClick={() => toggleActive(user)}>
+                          {user.is_active ? 'Deactivate' : 'Reactivate'}
                         </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                        <Button variant="ghost" size="sm" disabled={isSelf} onClick={() => deactivate(user)}>
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function CreateUserCard({
+  onCreated,
+  onError,
+}: {
+  onCreated: (email: string) => Promise<void>
+  onError: (text: string) => void
+}) {
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState<Role>('viewer')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const problem = validatePasswordLocally(password)
+    if (problem) return onError(problem)
+    setBusy(true)
+    try {
+      await usersApi.create({ email, password, full_name: name || undefined, role })
+      setEmail('')
+      setName('')
+      setPassword('')
+      await onCreated(email)
+    } catch (err) {
+      onError(errorText(err, 'Could not create the user.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>New user</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="grid gap-3 md:grid-cols-5">
+          <input aria-label="Email" type="email" required placeholder="name@company.com"
+            value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} />
+          <input aria-label="Full name" placeholder="Full name (optional)"
+            value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
+          <input aria-label="Initial password" type="password" required placeholder="Initial password"
+            value={password} onChange={(e) => setPassword(e.target.value)} className={INPUT} />
+          <select aria-label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)} className={INPUT}>
+            {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <Button type="submit" disabled={busy}>Create user</Button>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ResetPasswordCard({
+  user,
+  onDone,
+  onCancel,
+  onError,
+}: {
+  user: ManagedUser
+  onDone: () => Promise<void>
+  onCancel: () => void
+  onError: (text: string) => void
+}) {
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const problem = validatePasswordLocally(password)
+    if (problem) return onError(problem)
+    setBusy(true)
+    try {
+      await usersApi.resetPassword(user.id, password)
+      setPassword('')
+      await onDone()
+    } catch (err) {
+      onError(errorText(err, 'Could not reset the password.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Reset password for {user.email}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="flex gap-3">
+          <input aria-label="New password" type="password" required placeholder="New password"
+            value={password} onChange={(e) => setPassword(e.target.value)} className={INPUT} />
+          <Button type="submit" disabled={busy}>Set password</Button>
+          <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

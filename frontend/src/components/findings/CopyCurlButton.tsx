@@ -27,7 +27,7 @@ export function CopyCurlButton({
       // Fetch cURL command from API
       const token = localStorage.getItem('netra_token')
       const response = await fetch(
-        `http://localhost:8000/api/v1/findings/${findingId}/curl`,
+        `/api/v1/findings/${findingId}/curl`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,

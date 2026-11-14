@@ -26,8 +26,12 @@ export interface LoginResponse {
 }
 
 export const authApi = {
-  login: async (email: string, password: string): Promise<LoginResponse> => {
-    const { data } = await apiClient.post('/api/v1/auth/login', { email, password })
+  login: async (email: string, password: string, mfaCode?: string): Promise<LoginResponse> => {
+    const { data } = await apiClient.post('/api/v1/auth/login', {
+      email,
+      password,
+      ...(mfaCode ? { mfa_code: mfaCode } : {}),
+    })
     if (data.access_token) {
       localStorage.setItem('netra_token', data.access_token)
     }

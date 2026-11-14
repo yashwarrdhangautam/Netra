@@ -19,7 +19,7 @@ interface AIAnalysis {
     confidence?: number
   }
   analyst?: {
-    framework_mappings?: Record<string, any[]>
+    framework_mappings?: Record<string, unknown[]>
     regulatory_risk?: string
     compliance_priority?: string
     confidence?: number
@@ -52,7 +52,9 @@ export function AIAnalysisPanel({ analysis, className }: AIAnalysisPanelProps) {
   const [activeTab, setActiveTab] = useState('attacker')
 
   const consensus = analysis.consensus
-  const activeData = analysis[activeTab as keyof typeof analysis]
+  const activeData = analysis[activeTab as keyof AIAnalysis] as
+    | Record<string, string | number | string[] | undefined>
+    | undefined
 
   return (
     <Card className={className}>
@@ -110,11 +112,11 @@ export function AIAnalysisPanel({ analysis, className }: AIAnalysisPanelProps) {
               <>
                 <div>
                   <div className="text-sm font-medium">Exploitability</div>
-                  <div className="text-sm text-muted-foreground">{(activeData as any).exploitability || 'N/A'}</div>
+                  <div className="text-sm text-muted-foreground">{activeData.exploitability || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-sm font-medium">Business Impact</div>
-                  <div className="text-sm text-muted-foreground">{(activeData as any).business_impact || 'N/A'}</div>
+                  <div className="text-sm text-muted-foreground">{activeData.business_impact || 'N/A'}</div>
                 </div>
               </>
             )}
@@ -123,15 +125,15 @@ export function AIAnalysisPanel({ analysis, className }: AIAnalysisPanelProps) {
               <>
                 <div>
                   <div className="text-sm font-medium">Immediate Fix</div>
-                  <div className="text-sm text-muted-foreground">{(activeData as any).immediate_fix || 'N/A'}</div>
+                  <div className="text-sm text-muted-foreground">{activeData.immediate_fix || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-sm font-medium">Long-term Fix</div>
-                  <div className="text-sm text-muted-foreground">{(activeData as any).long_term_fix || 'N/A'}</div>
+                  <div className="text-sm text-muted-foreground">{activeData.long_term_fix || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-sm font-medium">Priority</div>
-                  <Badge variant="secondary">{(activeData as any).priority || 'N/A'}</Badge>
+                  <Badge variant="secondary">{activeData.priority || 'N/A'}</Badge>
                 </div>
               </>
             )}
@@ -140,11 +142,11 @@ export function AIAnalysisPanel({ analysis, className }: AIAnalysisPanelProps) {
               <>
                 <div>
                   <div className="text-sm font-medium">Regulatory Risk</div>
-                  <div className="text-sm text-muted-foreground">{(activeData as any).regulatory_risk || 'N/A'}</div>
+                  <div className="text-sm text-muted-foreground">{activeData.regulatory_risk || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-sm font-medium">Compliance Priority</div>
-                  <Badge variant="secondary">{(activeData as any).compliance_priority || 'N/A'}</Badge>
+                  <Badge variant="secondary">{activeData.compliance_priority || 'N/A'}</Badge>
                 </div>
               </>
             )}
@@ -153,11 +155,11 @@ export function AIAnalysisPanel({ analysis, className }: AIAnalysisPanelProps) {
               <>
                 <div>
                   <div className="text-sm font-medium">Verdict</div>
-                  <Badge variant="secondary">{(activeData as any).verdict || 'N/A'}</Badge>
+                  <Badge variant="secondary">{activeData.verdict || 'N/A'}</Badge>
                 </div>
                 <div>
                   <div className="text-sm font-medium">Reasoning</div>
-                  <div className="text-sm text-muted-foreground">{(activeData as any).reasoning || 'N/A'}</div>
+                  <div className="text-sm text-muted-foreground">{activeData.reasoning || 'N/A'}</div>
                 </div>
               </>
             )}

@@ -1,5 +1,6 @@
-import { createRootRoute, createRoute, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, Navigate, Outlet, useLocation } from '@tanstack/react-router'
 import { Layout } from '@/components/layout/Layout'
+import { useAuthStore } from '@/stores/authStore'
 import { Dashboard } from '@/pages/Dashboard'
 import { ScansList } from '@/pages/ScansList'
 import { ScanDetail } from '@/pages/ScanDetail'
@@ -24,13 +25,32 @@ import { BBDoctor } from '@/pages/bb/BBDoctor'
 import { BBFindingLab } from '@/pages/bb/BBFindingLab'
 import { BBGraph } from '@/pages/bb/BBGraph'
 import { BBSubmissionDetail } from '@/pages/bb/BBSubmissionDetail'
+import { BBHuntDetail } from '@/pages/bb/BBHuntDetail'
+import { BBSettings } from '@/pages/bb/BBSettings'
+import { Schedules } from '@/pages/Schedules'
+import { Audit } from '@/pages/Audit'
 
-const rootRoute = createRootRoute({
-  component: () => (
+// Every page except /login needs a signed-in user. The login page is shown
+// without the sidebar layout.
+function RootGate() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const { pathname } = useLocation()
+
+  if (pathname === '/login') {
+    return <Outlet />
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+  return (
     <Layout>
       <Outlet />
     </Layout>
-  ),
+  )
+}
+
+const rootRoute = createRootRoute({
+  component: RootGate,
 })
 
 const indexRoute = createRoute({
@@ -135,6 +155,30 @@ const bbHuntsRoute = createRoute({
   component: BBHunts,
 })
 
+const bbHuntDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/hunts/$huntId',
+  component: BBHuntDetail,
+})
+
+const bbSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bb/settings',
+  component: BBSettings,
+})
+
+const schedulesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/schedules',
+  component: Schedules,
+})
+
+const auditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/audit',
+  component: Audit,
+})
+
 const bbTriageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/bb/triage',
@@ -195,6 +239,10 @@ export const routeTree = rootRoute.addChildren([
   bbProgramsRoute,
   bbScopeRoute,
   bbHuntsRoute,
+  bbHuntDetailRoute,
+  bbSettingsRoute,
+  schedulesRoute,
+  auditRoute,
   bbTriageRoute,
   bbSubmissionsRoute,
   bbSubmissionDetailRoute,

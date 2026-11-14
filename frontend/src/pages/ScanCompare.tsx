@@ -30,7 +30,8 @@ export function ScanCompare() {
   const [scanBId, setScanBId] = useState<string>('')
   const [comparison, setComparison] = useState<ScanComparison | null>(null)
 
-  const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000'
+  // Relative URLs: the dev server and the nginx container both proxy /api to the API.
+  const API_BASE = import.meta.env.VITE_API_URL || ''
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('netra_token')
@@ -71,9 +72,23 @@ export function ScanCompare() {
     compareMutation.mutate()
   }
 
-  const handleExportPDF = () => {
-    // TODO: Implement PDF export
-    alert('PDF export coming soon!')
+  // Export the full comparison as CSV (one row per finding, with its change status).
+  const handleExportCSV = () => {
+    if (!comparison) return
+    const rows: string[][] = [['finding_id', 'change']]
+    for (const id of comparison.diff_data.new_finding_ids ?? []) rows.push([id, 'new'])
+    for (const id of comparison.diff_data.resolved_finding_ids ?? []) rows.push([id, 'resolved'])
+    const csv = rows
+      .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `scan-comparison-${scanAId.slice(0, 8)}-${scanBId.slice(0, 8)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -95,9 +110,9 @@ export function ScanCompare() {
           </div>
         </div>
         {comparison && (
-          <Button onClick={handleExportPDF} variant="outline" size="sm">
+          <Button onClick={handleExportCSV} variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
-            Export PDF
+            Export CSV
           </Button>
         )}
       </div>
@@ -280,7 +295,7 @@ export function ScanCompare() {
 
               {(comparison.new_findings > 10 || comparison.resolved_findings > 10) && (
                 <p className="mt-4 text-sm text-muted-foreground">
-                  Showing first 10 findings. Export PDF for full report.
+                  Showing first 10 findings. Export CSV for the full list.
                 </p>
               )}
             </CardContent>

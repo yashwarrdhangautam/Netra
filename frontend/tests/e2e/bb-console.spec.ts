@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
 const dashboardFixture = {
@@ -12,7 +12,21 @@ const dashboardFixture = {
   doctor: [],
 }
 
+const EMAIL = process.env.NETRA_E2E_EMAIL
+const PASSWORD = process.env.NETRA_E2E_PASSWORD
+
+// The console sits behind the sign-in guard, so each test signs in first.
+async function signIn(page: Page) {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(EMAIL ?? '')
+  await page.getByLabel('Password').fill(PASSWORD ?? '')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page).not.toHaveURL(/\/login$/, { timeout: 15_000 })
+}
+
 test.beforeEach(async ({ page }) => {
+  test.skip(!EMAIL || !PASSWORD, 'Set NETRA_E2E_EMAIL and NETRA_E2E_PASSWORD to run')
+  await signIn(page)
   await page.route('**/api/v1/bb/dashboard', async (route) => {
     await route.fulfill({
       status: 200,

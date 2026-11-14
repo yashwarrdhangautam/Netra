@@ -32,7 +32,7 @@ export function Dashboard() {
 
   // Calculate stats
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
-  findings?.data.forEach((f) => {
+  findings?.items.forEach((f) => {
     severityCounts[f.severity as keyof typeof severityCounts]++
   })
 

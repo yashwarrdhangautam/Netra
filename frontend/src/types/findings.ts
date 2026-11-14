@@ -56,10 +56,10 @@ export interface FindingEvidence {
   method?: string
   url?: string
   headers?: Record<string, string>
-  body?: any
+  body?: unknown
   cookies?: Record<string, string>
   user_agent?: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export interface HTTPRequest {
@@ -75,13 +75,50 @@ export interface HTTPResponse {
   body?: string
 }
 
+export interface AttackerAnalysis {
+  exploitability?: string
+  business_impact?: string
+  mitre_techniques?: string[]
+  confidence?: number
+  attack_chains?: { steps?: string[] }[]
+}
+
+export interface DefenderAnalysis {
+  root_cause?: string
+  immediate_fix?: string
+  long_term_fix?: string
+  priority?: string
+  confidence?: number
+  fix_summary?: string
+  before_code?: string
+  after_code?: string
+  steps?: string[]
+}
+
+export interface AnalystAnalysis {
+  framework_mappings?: Record<string, unknown[]>
+  regulatory_risk?: string
+  compliance_priority?: string
+  confidence?: number
+}
+
+export interface SkepticAnalysis {
+  verdict?: string
+  reasoning?: string
+  confidence?: number
+}
+
 export interface AIAnalysis {
   summary?: string
   impact?: string
   remediation?: string
   confidence?: number
   personas?: PersonaResponse[]
-  [key: string]: any
+  attacker?: AttackerAnalysis
+  defender?: DefenderAnalysis
+  analyst?: AnalystAnalysis
+  skeptic?: SkepticAnalysis
+  consensus?: { status?: string; final_confidence?: number }
 }
 
 export interface PersonaResponse {
@@ -117,9 +154,9 @@ export interface FindingList {
 }
 
 export interface PaginatedResponse<T> {
-  data: T[]
+  items: T[]
   total: number
   page: number
-  page_size: number
-  has_more: boolean
+  per_page: number
+  pages: number
 }

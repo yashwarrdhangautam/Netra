@@ -11,6 +11,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [showShortcutsModal, setShowShortcutsModal] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [scanStatus, setScanStatus] = useState<'idle' | 'scanning' | 'complete' | 'success'>('idle')
 
   // Initialize global keyboard shortcuts
@@ -81,15 +82,34 @@ export function Layout({ children }: LayoutProps) {
   return (
     <>
       <div className="flex h-screen bg-background">
-        {/* Mobile: Hide sidebar, show on desktop only */}
+        {/* Desktop: sidebar always visible */}
         <div className="hidden md:block">
           <Sidebar />
         </div>
+
+        {/* Mobile: the menu button opens the sidebar as a drawer */}
+        {mobileNavOpen && (
+          <div className="fixed inset-0 z-50 flex md:hidden" role="dialog" aria-label="Navigation">
+            <div className="h-full">
+              <Sidebar />
+            </div>
+            <button
+              type="button"
+              className="flex-1 bg-black/60"
+              aria-label="Close navigation"
+              onClick={() => setMobileNavOpen(false)}
+            />
+          </div>
+        )}
+
         <div className="flex flex-1 flex-col overflow-hidden">
-          <Header onMenuClick={() => {}} />
+          <Header onMenuClick={() => setMobileNavOpen((open) => !open)} />
           <main className="flex-1 overflow-auto p-4 md:p-6">
             {children}
           </main>
+          <footer className="border-t border-border px-4 py-2 text-xs text-muted-foreground md:px-6">
+            NETRA v1.0.0 · The Third Eye of Security · AGPL-3.0
+          </footer>
         </div>
       </div>
 

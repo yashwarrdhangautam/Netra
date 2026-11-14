@@ -1,5 +1,6 @@
-import { Bell, Plus, HelpCircle, Menu, Square } from 'lucide-react'
+import { Plus, HelpCircle, Menu, Square } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useAuthStore } from '@/stores/authStore'
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
@@ -38,8 +39,10 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Menu className="h-5 w-5" />
         </button>
 
-        {/* Left side - Page title would go here */}
-        <div className="flex-1" />
+        {/* Global search across findings, scans and targets */}
+        <div className="flex flex-1 justify-center px-2 md:px-6">
+          <GlobalSearch />
+        </div>
 
         {/* Right side - Actions */}
         <div className="flex items-center space-x-2 md:space-x-4">
@@ -51,15 +54,6 @@ export function Header({ onMenuClick }: HeaderProps) {
             aria-label="Show keyboard shortcuts"
           >
             <HelpCircle className="h-5 w-5" />
-          </button>
-
-          {/* Notifications */}
-          <button
-            className="relative rounded-full p-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-            aria-label="View notifications"
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent" />
           </button>
 
           {/* New Scan Button */}

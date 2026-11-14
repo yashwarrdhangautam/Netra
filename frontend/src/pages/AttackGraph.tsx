@@ -8,6 +8,7 @@ import { SeverityBadge } from '@/components/findings/SeverityBadge'
 import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { findingsApi } from '@/api/findings'
+import { scansApi } from '@/api/scans'
 import type { Finding } from '@/types/findings'
 
 interface GraphNode {
@@ -55,7 +56,8 @@ interface SelectedFinding {
 }
 
 export function AttackGraph(): JSX.Element {
-  const { scanId } = useParams({ from: '/scans/$scanId' })
+  // Reachable from /attack-graph (no scan in the URL) and /scans/$scanId.
+  const params = useParams({ strict: false }) as { scanId?: string }
   const [selectedNode, setSelectedNode] = useState<SelectedFinding | null>(null)
   const [filteredSeverities, setFilteredSeverities] = useState<Set<string>>(
     new Set(['critical', 'high', 'medium', 'low', 'info'])
@@ -63,17 +65,20 @@ export function AttackGraph(): JSX.Element {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
   const [zoom, setZoom] = useState<number>(1)
 
-  // Fetch findings from API
+  // Without a scan in the URL, default to the most recent scan.
+  const { data: scanList } = useQuery({
+    queryKey: ['scans-for-attack-graph'],
+    queryFn: () => scansApi.list({ page: 1, per_page: 20 }),
+    enabled: !params.scanId,
+  })
+  const scanId = params.scanId ?? scanList?.items?.[0]?.id
+
+  // Fetch findings for the selected scan. The API returns { items, total, ... }.
   const { data: findings, isLoading, isError } = useQuery({
     queryKey: ['findings', scanId],
     queryFn: async () => {
-      try {
-        const response = await findingsApi.list({ scan_id: scanId })
-        return response.data || getMockFindings()
-      } catch (error) {
-        console.warn('Failed to fetch findings, using mock data:', error)
-        return getMockFindings()
-      }
+      const response = await findingsApi.list({ scan_id: scanId, per_page: 100 })
+      return response.items
     },
     enabled: !!scanId,
   })
@@ -102,7 +107,7 @@ export function AttackGraph(): JSX.Element {
         finding.ai_analysis?.attacker?.attack_chains &&
         Array.isArray(finding.ai_analysis.attacker.attack_chains)
       ) {
-        finding.ai_analysis.attacker.attack_chains.forEach((chain: any) => {
+        finding.ai_analysis.attacker.attack_chains.forEach((chain: { steps?: string[] }) => {
           if (chain.steps && Array.isArray(chain.steps)) {
             for (let i = 0; i < chain.steps.length - 1; i++) {
               const sourceId = chain.steps[i]
@@ -214,13 +219,14 @@ export function AttackGraph(): JSX.Element {
                 nodes: filteredNodes,
                 links: visibleLinks,
               }}
-              nodeColor={(node: any) => SEVERITY_COLORS[node.severity] || '#6b7280'}
-              nodeVal={(node: any) => 4 + node.confidence * 6}
-              nodeCanvasObject={(node: any, ctx) => {
-                const size = 4 + node.confidence * 6
-                ctx.fillStyle = SEVERITY_COLORS[node.severity] || '#6b7280'
+              nodeColor={(node) => SEVERITY_COLORS[(node as GraphNode).severity] || '#6b7280'}
+              nodeVal={(node) => 4 + (node as GraphNode).confidence * 6}
+              nodeCanvasObject={(node, ctx) => {
+                const n = node as GraphNode & { x: number; y: number }
+                const size = 4 + n.confidence * 6
+                ctx.fillStyle = SEVERITY_COLORS[n.severity] || '#6b7280'
                 ctx.beginPath()
-                ctx.arc(node.x, node.y, size, 0, 2 * Math.PI)
+                ctx.arc(n.x, n.y, size, 0, 2 * Math.PI)
                 ctx.fill()
 
                 // Node border for emphasis
@@ -229,27 +235,28 @@ export function AttackGraph(): JSX.Element {
                 ctx.stroke()
 
                 // Label
-                if (node === selectedNode) {
+                if (n.id === selectedNode?.id) {
                   ctx.fillStyle = '#ffffff'
                   ctx.font = 'bold 12px sans-serif'
-                  const textWidth = ctx.measureText(node.label).width
+                  const textWidth = ctx.measureText(n.label).width
                   ctx.fillText(
-                    node.label,
-                    node.x - textWidth / 2,
-                    node.y - size - 8
+                    n.label,
+                    n.x - textWidth / 2,
+                    n.y - size - 8
                   )
                 }
               }}
-              nodePointerAreaPaint={(node: any, color, ctx) => {
+              nodePointerAreaPaint={(node, color, ctx) => {
+                const n = node as GraphNode & { x: number; y: number }
                 ctx.fillStyle = color
-                const size = 4 + node.confidence * 6
+                const size = 4 + n.confidence * 6
                 ctx.beginPath()
-                ctx.arc(node.x, node.y, size * 1.5, 0, 2 * Math.PI)
+                ctx.arc(n.x, n.y, size * 1.5, 0, 2 * Math.PI)
                 ctx.fill()
               }}
               linkColor={() => 'rgba(148, 163, 184, 0.3)'}
               linkWidth={1.5}
-              onNodeClick={(node: any) => {
+              onNodeClick={(node) => {
                 handleNodeClick(node as GraphNode)
               }}
               backgroundColor="#09090b"
@@ -447,131 +454,4 @@ export function AttackGraph(): JSX.Element {
       </div>
     </div>
   )
-}
-
-// Mock data for fallback
-function getMockFindings(): Finding[] {
-  const now = new Date().toISOString()
-  return [
-    {
-      id: 'finding-001',
-      scan_id: 'scan-001',
-      title: 'SQL Injection in Login Form',
-      severity: 'critical',
-      status: 'new',
-      confidence: 95,
-      tool_source: 'sqlmap',
-      description:
-        'User input is not properly sanitized in the login form, allowing SQL injection attacks.',
-      evidence: ["SELECT * FROM users WHERE username='admin'--"],
-      created_at: now,
-      updated_at: now,
-      ai_analysis: {
-        attacker: {
-          attack_chains: [
-            {
-              steps: ['finding-001', 'finding-002', 'finding-004'],
-            },
-          ],
-        },
-      },
-    },
-    {
-      id: 'finding-002',
-      scan_id: 'scan-001',
-      title: 'Weak Password Policy',
-      severity: 'high',
-      status: 'new',
-      confidence: 87,
-      tool_source: 'nuclei',
-      description:
-        'The system allows weak passwords without minimum complexity requirements.',
-      evidence: ['Password "123456" was accepted during testing'],
-      created_at: now,
-      updated_at: now,
-      ai_analysis: {
-        attacker: {
-          attack_chains: [
-            {
-              steps: ['finding-002', 'finding-003'],
-            },
-          ],
-        },
-      },
-    },
-    {
-      id: 'finding-003',
-      scan_id: 'scan-001',
-      title: 'Session Hijacking Risk',
-      severity: 'high',
-      status: 'new',
-      confidence: 82,
-      tool_source: 'custom',
-      description:
-        'Session tokens are not properly validated on subsequent requests.',
-      evidence: ['Session token reused across multiple requests without validation'],
-      created_at: now,
-      updated_at: now,
-      ai_analysis: {
-        attacker: { attack_chains: [] },
-      },
-    },
-    {
-      id: 'finding-004',
-      scan_id: 'scan-001',
-      title: 'Data Exposure via Debug Logs',
-      severity: 'medium',
-      status: 'new',
-      confidence: 76,
-      tool_source: 'manual',
-      description:
-        'Sensitive data is logged in debug mode, including API keys and user credentials.',
-      evidence: ['DEBUG: api_key=sk_test_abc123xyz in logs'],
-      created_at: now,
-      updated_at: now,
-      ai_analysis: {
-        attacker: {
-          attack_chains: [
-            {
-              steps: ['finding-004', 'finding-005'],
-            },
-          ],
-        },
-      },
-    },
-    {
-      id: 'finding-005',
-      scan_id: 'scan-001',
-      title: 'Missing CORS Headers',
-      severity: 'medium',
-      status: 'new',
-      confidence: 68,
-      tool_source: 'nuclei',
-      description:
-        'API endpoints do not properly restrict cross-origin requests.',
-      evidence: ['CORS header missing from response'],
-      created_at: now,
-      updated_at: now,
-      ai_analysis: {
-        attacker: { attack_chains: [] },
-      },
-    },
-    {
-      id: 'finding-006',
-      scan_id: 'scan-001',
-      title: 'Outdated Dependencies',
-      severity: 'low',
-      status: 'new',
-      confidence: 54,
-      tool_source: 'pip-audit',
-      description:
-        'Several third-party libraries have known vulnerabilities and should be updated.',
-      evidence: ['lodash 4.17.15 has CVE-2021-23337'],
-      created_at: now,
-      updated_at: now,
-      ai_analysis: {
-        attacker: { attack_chains: [] },
-      },
-    },
-  ]
 }

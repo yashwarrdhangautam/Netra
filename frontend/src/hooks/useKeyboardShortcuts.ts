@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
 interface ShortcutConfig {
@@ -92,7 +92,7 @@ export function useKeyboardShortcuts({
     }, []),
   }
 
-  const shortcuts: ShortcutConfig[] = [
+  const shortcuts = useMemo<ShortcutConfig[]>(() => [
     {
       key: 'N',
       handler: defaultHandlers.handleNewScan,
@@ -148,7 +148,15 @@ export function useKeyboardShortcuts({
       description: 'Close Modal / Cancel Search',
       category: 'General',
     },
-  ]
+  ], [
+    defaultHandlers.handleNewScan,
+    defaultHandlers.handleSearch,
+    defaultHandlers.handleShowHelp,
+    defaultHandlers.handleGoToDashboard,
+    defaultHandlers.handleGoToScans,
+    defaultHandlers.handleGoToFindings,
+    defaultHandlers.handleGenerateReport,
+  ])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

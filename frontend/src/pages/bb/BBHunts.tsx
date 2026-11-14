@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Play, Square } from 'lucide-react'
 import { HuntProfile, bugBountyApi } from '@/api/bugbounty'
@@ -188,6 +189,9 @@ export function BBHunts() {
                       <td className={hunt.blocked_count ? 'font-mono text-red-400' : 'font-mono text-green-400'}>{hunt.blocked_count}</td>
                       <td className="text-muted-foreground">{formatRelativeTime(hunt.created_at)}</td>
                       <td className="text-right">
+                        <Link to="/bb/hunts/$huntId" params={{ huntId: hunt.id }} className="mr-2 text-sm text-accent underline">
+                          Live
+                        </Link>
                         {hunt.mode === 'agentic' ? (
                           <Button size="sm" variant="ghost" onClick={() => setSelectedExplainId(hunt.id)}>
                             Explain

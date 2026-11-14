@@ -1,656 +1,448 @@
 import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
-import { cn } from '@/utils/formatters'
-import {
-  Settings as SettingsIcon,
-  Key,
-  Bell,
-  Monitor,
-  Info,
-  Save,
-  Eye,
-  EyeOff,
-  Github,
-  Check,
-  AlertCircle,
-} from 'lucide-react'
+import { NotificationBanner, type BannerMessage } from '@/components/shared/NotificationBanner'
+import { accountApi, settingsApi, type IntegrationStatus } from '@/api/platform'
+import { useAuthStore } from '@/stores/authStore'
+import { validatePasswordLocally } from '@/utils/passwordPolicy'
+import { ScannerToolsCard } from '@/components/settings/ScannerToolsCard'
 
-const TABS = [
-  { id: 'api-keys', label: 'API Keys', icon: Key },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'scan-defaults', label: 'Scan Defaults', icon: Monitor },
-  { id: 'about', label: 'About', icon: Info },
-]
+const INPUT =
+  'w-full rounded border border-border bg-surface-2 p-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50'
 
-const SCAN_PROFILES = [
-  { value: 'quick-recon', label: 'Quick Recon' },
-  { value: 'standard', label: 'Standard' },
-  { value: 'full-pentest', label: 'Full Pentest' },
-  { value: 'custom', label: 'Custom' },
-]
+type Tab = 'account' | 'integrations' | 'notifications'
 
-interface NotificationMessage {
-  type: 'success' | 'error'
-  text: string
-}
-
-interface ScanDefaults {
-  profile: string
-  maxConcurrentScans: number
-  timeout: number
-}
-
-interface ApiKeys {
-  anthropic: string
-  shodan: string
-  wpscan: string
+function errorText(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  return typeof detail === 'string' ? detail : fallback
 }
 
 export function Settings() {
-  const [activeTab, setActiveTab] = useState('api-keys')
+  const [tab, setTab] = useState<Tab>('account')
+  const isAdmin = useAuthStore((s) => s.isAdmin)()
 
-  // API Keys state
-  const [apiKeys, setApiKeys] = useState<ApiKeys>({
-    anthropic: '',
-    shodan: '',
-    wpscan: '',
-  })
-  const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({
-    anthropic: false,
-    shodan: false,
-    wpscan: false,
-  })
-  const [apiKeyMessage, setApiKeyMessage] = useState<NotificationMessage | null>(null)
+  const tabs: { id: Tab; label: string; adminOnly?: boolean }[] = [
+    { id: 'account', label: 'Account' },
+    { id: 'integrations', label: 'Integrations', adminOnly: true },
+    { id: 'notifications', label: 'Notifications' },
+  ]
 
-  // Notifications state
-  const [slackWebhook, setSlackWebhook] = useState('')
-  const [smtpHost, setSmtpHost] = useState('')
-  const [smtpPort, setSmtpPort] = useState('587')
-  const [smtpUsername, setSmtpUsername] = useState('')
-  const [smtpPassword, setSmtpPassword] = useState('')
-  const [showSmtpPassword, setShowSmtpPassword] = useState(false)
-  const [notificationMessage, setNotificationMessage] = useState<NotificationMessage | null>(null)
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+        <p className="text-sm text-muted-foreground">
+          Your account, integration keys and notification checks.
+        </p>
+      </div>
 
-  // Scan Defaults state
-  const [scanDefaults, setScanDefaults] = useState<ScanDefaults>({
-    profile: 'standard',
-    maxConcurrentScans: 3,
-    timeout: 3600,
-  })
-  const [scanMessage, setScanMessage] = useState<NotificationMessage | null>(null)
+      <div role="tablist" className="flex gap-2 border-b border-border">
+        {tabs
+          .filter((t) => !t.adminOnly || isAdmin)
+          .map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={
+                tab === t.id
+                  ? 'border-b-2 border-accent px-3 py-2 text-sm font-medium text-foreground'
+                  : 'px-3 py-2 text-sm text-muted-foreground hover:text-foreground'
+              }
+            >
+              {t.label}
+            </button>
+          ))}
+      </div>
 
-  // API Keys handlers
-  const handleApiKeyChange = (key: keyof ApiKeys, value: string) => {
-    setApiKeys(prev => ({ ...prev, [key]: value }))
-  }
+      {tab === 'account' && <AccountTab />}
+      {tab === 'integrations' && isAdmin && (
+        <div className="space-y-6">
+          <IntegrationsTab />
+          <ScannerToolsCard />
+        </div>
+      )}
+      {tab === 'notifications' && <NotificationsTab isAdmin={isAdmin} />}
+    </div>
+  )
+}
 
-  const handleToggleApiKeyVisibility = (key: string) => {
-    setShowApiKeys(prev => ({ ...prev, [key]: !prev[key] }))
-  }
+// ── Account: password, MFA, personal API key ──────────────────────────────────
 
-  const handleSaveApiKeys = () => {
-    // Simulate API call
-    setApiKeyMessage({ type: 'success', text: 'API keys saved successfully' })
-    setTimeout(() => setApiKeyMessage(null), 3000)
-  }
+function AccountTab() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <PasswordCard />
+      <MfaCard />
+      <ApiKeyCard />
+    </div>
+  )
+}
 
-  // Notifications handlers
-  const handleTestSlack = () => {
-    if (!slackWebhook.trim()) {
-      setNotificationMessage({ type: 'error', text: 'Slack webhook URL is required' })
-      setTimeout(() => setNotificationMessage(null), 3000)
-      return
+function PasswordCard() {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<BannerMessage | null>(null)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const problem = validatePasswordLocally(next)
+    if (problem) return setMessage({ type: 'error', text: problem })
+    if (next !== confirm) return setMessage({ type: 'error', text: 'The new passwords do not match.' })
+    setBusy(true)
+    try {
+      await accountApi.changePassword(current, next)
+      setCurrent('')
+      setNext('')
+      setConfirm('')
+      setMessage({ type: 'success', text: 'Password changed.' })
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'Could not change the password.') })
+    } finally {
+      setBusy(false)
     }
-    // Simulate API call
-    setNotificationMessage({ type: 'success', text: 'Test notification sent to Slack' })
-    setTimeout(() => setNotificationMessage(null), 3000)
-  }
-
-  const handleTestSmtp = () => {
-    if (!smtpHost.trim() || !smtpUsername.trim()) {
-      setNotificationMessage({ type: 'error', text: 'SMTP host and username are required' })
-      setTimeout(() => setNotificationMessage(null), 3000)
-      return
-    }
-    // Simulate API call
-    setNotificationMessage({ type: 'success', text: 'Test email sent successfully' })
-    setTimeout(() => setNotificationMessage(null), 3000)
-  }
-
-  const handleSaveNotifications = () => {
-    // Simulate API call
-    setNotificationMessage({ type: 'success', text: 'Notification settings saved' })
-    setTimeout(() => setNotificationMessage(null), 3000)
-  }
-
-  // Scan Defaults handlers
-  const handleScanDefaultsChange = (key: keyof ScanDefaults, value: string | number) => {
-    setScanDefaults(prev => ({ ...prev, [key]: value }))
-  }
-
-  const handleSaveScanDefaults = () => {
-    // Simulate API call
-    setScanMessage({ type: 'success', text: 'Scan defaults saved successfully' })
-    setTimeout(() => setScanMessage(null), 3000)
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <SettingsIcon className="w-8 h-8 text-accent" />
-            <h1 className="text-3xl font-bold text-foreground">Settings</h1>
+    <Card>
+      <CardHeader>
+        <CardTitle>Change password</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="space-y-3">
+          <input type="password" aria-label="Current password" placeholder="Current password"
+            value={current} onChange={(e) => setCurrent(e.target.value)} className={INPUT} required />
+          <input type="password" aria-label="New password" placeholder="New password (12+ characters)"
+            value={next} onChange={(e) => setNext(e.target.value)} className={INPUT} required />
+          <input type="password" aria-label="Repeat new password" placeholder="Repeat new password"
+            value={confirm} onChange={(e) => setConfirm(e.target.value)} className={INPUT} required />
+          <Button type="submit" disabled={busy}>Change password</Button>
+        </form>
+        <div className="mt-3">
+          <NotificationBanner message={message} onDismiss={() => setMessage(null)} />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function MfaCard() {
+  const queryClient = useQueryClient()
+  const { data: status, refetch } = useQuery({ queryKey: ['mfa-status'], queryFn: accountApi.mfaStatus })
+  const [setup, setSetup] = useState<{ secret: string; provisioning_uri: string } | null>(null)
+  const [code, setCode] = useState('')
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
+  const [message, setMessage] = useState<BannerMessage | null>(null)
+
+  const start = async () => {
+    try {
+      setSetup(await accountApi.mfaSetup())
+      setMessage(null)
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'Could not start MFA setup.') })
+    }
+  }
+
+  const enable = async () => {
+    try {
+      const result = await accountApi.mfaEnable(code.trim())
+      setBackupCodes(result.backup_codes)
+      setSetup(null)
+      setCode('')
+      await refetch()
+      await queryClient.invalidateQueries({ queryKey: ['mfa-status'] })
+      setMessage({ type: 'success', text: 'MFA is on. Save the backup codes now; they are shown once.' })
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'That code did not match.') })
+    }
+  }
+
+  const disable = async () => {
+    try {
+      await accountApi.mfaDisable(code.trim())
+      setCode('')
+      setBackupCodes(null)
+      await refetch()
+      setMessage({ type: 'success', text: 'MFA is off.' })
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'That code did not match.') })
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Two-factor sign-in (MFA)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <p className="text-muted-foreground">
+          Status:{' '}
+          <span className="font-medium text-foreground">{status?.enabled ? 'On' : 'Off'}</span>
+          {status?.enabled && ` · ${status.backup_codes_remaining} backup codes left`}
+        </p>
+
+        {!status?.enabled && !setup && (
+          <Button onClick={start}>Set up authenticator app</Button>
+        )}
+
+        {setup && (
+          <div className="space-y-2 rounded border border-border p-3">
+            <p>Add this key to your authenticator app, then enter the 6-digit code it shows.</p>
+            <code className="block break-all rounded bg-surface-2 p-2 text-xs">{setup.secret}</code>
+            <input aria-label="Authenticator code" inputMode="numeric" placeholder="123456"
+              value={code} onChange={(e) => setCode(e.target.value)} className={INPUT} />
+            <Button onClick={enable} disabled={!code.trim()}>Turn on MFA</Button>
           </div>
-          <p className="text-foreground-secondary">Configure API keys, notifications, and scan defaults</p>
-        </div>
+        )}
 
-        {/* Tab Navigation */}
-        <div className="flex gap-2 mb-8 border-b border-border pb-4">
-          {TABS.map(tab => {
-            const Icon = tab.icon
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-colors',
-                  isActive
-                    ? 'bg-accent text-white'
-                    : 'text-foreground-secondary hover:text-foreground hover:bg-surface-2'
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
+        {status?.enabled && (
+          <div className="space-y-2">
+            <input aria-label="Current authenticator code" inputMode="numeric"
+              placeholder="Current code to turn off MFA" value={code}
+              onChange={(e) => setCode(e.target.value)} className={INPUT} />
+            <Button variant="destructive" onClick={disable} disabled={!code.trim()}>
+              Turn off MFA
+            </Button>
+          </div>
+        )}
 
-        {/* Tab Content */}
-        <div className="space-y-6">
-          {/* API Keys Tab */}
-          {activeTab === 'api-keys' && (
-            <div className="space-y-6">
-              {apiKeyMessage && (
-                <div
-                  className={cn(
-                    'p-4 rounded-md flex items-center gap-2',
-                    apiKeyMessage.type === 'success'
-                      ? 'bg-green-900/20 text-green-400 border border-green-900/50'
-                      : 'bg-red-900/20 text-red-400 border border-red-900/50'
-                  )}
-                >
-                  {apiKeyMessage.type === 'success' ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4" />
-                  )}
-                  {apiKeyMessage.text}
-                </div>
-              )}
-
-              {/* Anthropic API Key */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Key className="w-5 h-5 text-accent" />
-                    Anthropic API Key
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-foreground-secondary">
-                    Required for AI-powered analysis and threat intelligence
-                  </p>
-                  <div className="relative">
-                    <input
-                      type={showApiKeys['anthropic'] ? 'text' : 'password'}
-                      value={apiKeys.anthropic}
-                      onChange={e => handleApiKeyChange('anthropic', e.target.value)}
-                      placeholder="sk-ant-..."
-                      className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 placeholder-foreground-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
-                    />
-                    <button
-                      onClick={() => handleToggleApiKeyVisibility('anthropic')}
-                      className="absolute right-3 top-2.5 text-foreground-secondary hover:text-foreground transition-colors"
-                    >
-                      {showApiKeys['anthropic'] ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Shodan API Key */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Key className="w-5 h-5 text-accent" />
-                    Shodan API Key
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-foreground-secondary">
-                    Used for internet-wide vulnerability scanning
-                  </p>
-                  <div className="relative">
-                    <input
-                      type={showApiKeys['shodan'] ? 'text' : 'password'}
-                      value={apiKeys.shodan}
-                      onChange={e => handleApiKeyChange('shodan', e.target.value)}
-                      placeholder="Enter your Shodan API key"
-                      className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 placeholder-foreground-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
-                    />
-                    <button
-                      onClick={() => handleToggleApiKeyVisibility('shodan')}
-                      className="absolute right-3 top-2.5 text-foreground-secondary hover:text-foreground transition-colors"
-                    >
-                      {showApiKeys['shodan'] ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* WPScan API Key */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Key className="w-5 h-5 text-accent" />
-                    WPScan API Key
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-foreground-secondary">
-                    WordPress vulnerability scanning
-                  </p>
-                  <div className="relative">
-                    <input
-                      type={showApiKeys['wpscan'] ? 'text' : 'password'}
-                      value={apiKeys.wpscan}
-                      onChange={e => handleApiKeyChange('wpscan', e.target.value)}
-                      placeholder="Enter your WPScan API key"
-                      className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 placeholder-foreground-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
-                    />
-                    <button
-                      onClick={() => handleToggleApiKeyVisibility('wpscan')}
-                      className="absolute right-3 top-2.5 text-foreground-secondary hover:text-foreground transition-colors"
-                    >
-                      {showApiKeys['wpscan'] ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Save Button */}
-              <div className="flex justify-end">
-                <Button onClick={handleSaveApiKeys} size="lg" className="gap-2">
-                  <Save className="w-4 h-4" />
-                  Save API Keys
-                </Button>
-              </div>
+        {backupCodes && (
+          <div className="rounded border border-yellow-700 bg-yellow-900/20 p-3">
+            <p className="mb-2 font-medium text-yellow-300">Backup codes (each works once)</p>
+            <div className="grid grid-cols-2 gap-1 font-mono text-xs">
+              {backupCodes.map((c) => <span key={c}>{c}</span>)}
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Notifications Tab */}
-          {activeTab === 'notifications' && (
-            <div className="space-y-6">
-              {notificationMessage && (
-                <div
-                  className={cn(
-                    'p-4 rounded-md flex items-center gap-2',
-                    notificationMessage.type === 'success'
-                      ? 'bg-green-900/20 text-green-400 border border-green-900/50'
-                      : 'bg-red-900/20 text-red-400 border border-red-900/50'
-                  )}
-                >
-                  {notificationMessage.type === 'success' ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4" />
-                  )}
-                  {notificationMessage.text}
-                </div>
-              )}
+        <NotificationBanner message={message} onDismiss={() => setMessage(null)} />
+      </CardContent>
+    </Card>
+  )
+}
 
-              {/* Slack Integration */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-accent" />
-                    Slack Integration
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-foreground-secondary">
-                    Send scan results and alerts to a Slack channel
-                  </p>
-                  <input
-                    type="text"
-                    value={slackWebhook}
-                    onChange={e => setSlackWebhook(e.target.value)}
-                    placeholder="https://hooks.slack.com/services/..."
-                    className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 placeholder-foreground-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={handleTestSlack}
-                    className="w-full"
-                  >
-                    Test Slack Webhook
-                  </Button>
-                </CardContent>
-              </Card>
+function ApiKeyCard() {
+  const { data: status, refetch } = useQuery({ queryKey: ['api-key-status'], queryFn: accountApi.apiKeyStatus })
+  const [newKey, setNewKey] = useState<string | null>(null)
+  const [message, setMessage] = useState<BannerMessage | null>(null)
 
-              {/* Email (SMTP) Integration */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-accent" />
-                    Email (SMTP) Integration
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-foreground-secondary">
-                    Send email notifications for scan events
-                  </p>
+  const create = async () => {
+    try {
+      const result = await accountApi.apiKeyCreate()
+      setNewKey(result.api_key)
+      await refetch()
+      setMessage({ type: 'success', text: 'New key created. Copy it now; it is not shown again.' })
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'Could not create a key.') })
+    }
+  }
 
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1">
-                        SMTP Host
-                      </label>
-                      <input
-                        type="text"
-                        value={smtpHost}
-                        onChange={e => setSmtpHost(e.target.value)}
-                        placeholder="smtp.gmail.com"
-                        className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 placeholder-foreground-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
-                      />
-                    </div>
+  const revoke = async () => {
+    try {
+      await accountApi.apiKeyRevoke()
+      setNewKey(null)
+      await refetch()
+      setMessage({ type: 'success', text: 'API key revoked.' })
+    } catch (err) {
+      setMessage({ type: 'error', text: errorText(err, 'Could not revoke the key.') })
+    }
+  }
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Port
-                        </label>
-                        <input
-                          type="number"
-                          value={smtpPort}
-                          onChange={e => setSmtpPort(e.target.value)}
-                          placeholder="587"
-                          className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 placeholder-foreground-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1">
-                        Username
-                      </label>
-                      <input
-                        type="text"
-                        value={smtpUsername}
-                        onChange={e => setSmtpUsername(e.target.value)}
-                        placeholder="your-email@example.com"
-                        className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 placeholder-foreground-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1">
-                        Password
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showSmtpPassword ? 'text' : 'password'}
-                          value={smtpPassword}
-                          onChange={e => setSmtpPassword(e.target.value)}
-                          placeholder="Enter your password"
-                          className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 placeholder-foreground-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
-                        />
-                        <button
-                          onClick={() => setShowSmtpPassword(!showSmtpPassword)}
-                          className="absolute right-3 top-2.5 text-foreground-secondary hover:text-foreground transition-colors"
-                        >
-                          {showSmtpPassword ? (
-                            <EyeOff className="w-4 h-4" />
-                          ) : (
-                            <Eye className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    onClick={handleTestSmtp}
-                    className="w-full"
-                  >
-                    Test SMTP Configuration
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Save Button */}
-              <div className="flex justify-end">
-                <Button onClick={handleSaveNotifications} size="lg" className="gap-2">
-                  <Save className="w-4 h-4" />
-                  Save Notification Settings
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Scan Defaults Tab */}
-          {activeTab === 'scan-defaults' && (
-            <div className="space-y-6">
-              {scanMessage && (
-                <div
-                  className={cn(
-                    'p-4 rounded-md flex items-center gap-2',
-                    scanMessage.type === 'success'
-                      ? 'bg-green-900/20 text-green-400 border border-green-900/50'
-                      : 'bg-red-900/20 text-red-400 border border-red-900/50'
-                  )}
-                >
-                  {scanMessage.type === 'success' ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4" />
-                  )}
-                  {scanMessage.text}
-                </div>
-              )}
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Monitor className="w-5 h-5 text-accent" />
-                    Default Scan Configuration
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Default Scan Profile
-                    </label>
-                    <select
-                      value={scanDefaults.profile}
-                      onChange={e =>
-                        handleScanDefaultsChange('profile', e.target.value)
-                      }
-                      className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-                    >
-                      {SCAN_PROFILES.map(profile => (
-                        <option key={profile.value} value={profile.value}>
-                          {profile.label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-foreground-secondary mt-2">
-                      {scanDefaults.profile === 'quick-recon' &&
-                        'Fast reconnaissance scan focusing on basic vulnerabilities'}
-                      {scanDefaults.profile === 'standard' &&
-                        'Comprehensive scan with moderate depth and duration'}
-                      {scanDefaults.profile === 'full-pentest' &&
-                        'Thorough penetration test with all available tools'}
-                      {scanDefaults.profile === 'custom' &&
-                        'Custom configuration tailored to your needs'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Maximum Concurrent Scans
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={scanDefaults.maxConcurrentScans}
-                      onChange={e =>
-                        handleScanDefaultsChange(
-                          'maxConcurrentScans',
-                          parseInt(e.target.value)
-                        )
-                      }
-                      className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-                    />
-                    <p className="text-xs text-foreground-secondary mt-2">
-                      Number of scans that can run simultaneously (1-10)
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Scan Timeout (seconds)
-                    </label>
-                    <input
-                      type="number"
-                      min="300"
-                      step="300"
-                      value={scanDefaults.timeout}
-                      onChange={e =>
-                        handleScanDefaultsChange(
-                          'timeout',
-                          parseInt(e.target.value)
-                        )
-                      }
-                      className="w-full bg-surface-2 text-foreground border border-border rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-                    />
-                    <p className="text-xs text-foreground-secondary mt-2">
-                      Maximum duration for a single scan in seconds (~
-                      {Math.floor(scanDefaults.timeout / 60)} minutes)
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Save Button */}
-              <div className="flex justify-end">
-                <Button onClick={handleSaveScanDefaults} size="lg" className="gap-2">
-                  <Save className="w-4 h-4" />
-                  Save Scan Defaults
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* About Tab */}
-          {activeTab === 'about' && (
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Info className="w-5 h-5 text-accent" />
-                    About NETRA
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-foreground-secondary">Version</span>
-                      <Badge variant="default">1.0.0</Badge>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-foreground-secondary">License</span>
-                      <Badge variant="secondary">AGPL-3.0</Badge>
-                    </div>
-
-                    <div className="border-t border-border pt-4">
-                      <p className="text-sm text-foreground-secondary mb-4">
-                        NETRA is an AI-augmented unified cybersecurity platform
-                        that combines multiple security scanners with advanced AI
-                        analysis to provide comprehensive threat intelligence and
-                        vulnerability assessment.
-                      </p>
-                      <p className="text-sm text-foreground-secondary">
-                        This software is distributed under the GNU Affero General
-                        Public License v3.0 (AGPL-3.0). You are free to use,
-                        modify, and distribute this software under the terms of
-                        the AGPL-3.0 license.
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3 pt-4 border-t border-border">
-                      <a
-                        href="https://github.com/netra/netra"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-surface-2 hover:bg-surface-3 text-foreground transition-colors"
-                      >
-                        <Github className="w-4 h-4" />
-                        View on GitHub
-                      </a>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>System Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-foreground-secondary">Platform</span>
-                    <span className="text-foreground">Python 3.12 + React 18</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-foreground-secondary">API Version</span>
-                    <span className="text-foreground">v1</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-foreground-secondary">Database</span>
-                    <span className="text-foreground">PostgreSQL / SQLite</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-foreground-secondary">AI Engine</span>
-                    <span className="text-foreground">Claude Agent SDK</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Personal API key</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <p className="text-muted-foreground">
+          For scripts and MCP clients. Send it as <code>Authorization: Bearer &lt;key&gt;</code>.
+          Creating a new key replaces the old one.
+        </p>
+        <div className="flex gap-2">
+          <Button onClick={create}>{status?.has_key ? 'Replace key' : 'Create key'}</Button>
+          {status?.has_key && (
+            <Button variant="destructive" onClick={revoke}>Revoke</Button>
           )}
         </div>
+        {newKey && (
+          <code className="block break-all rounded bg-surface-2 p-2 text-xs" data-testid="new-api-key">
+            {newKey}
+          </code>
+        )}
+        <NotificationBanner message={message} onDismiss={() => setMessage(null)} />
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Integrations (admin): keys are encrypted at rest and shown masked ─────────
+
+function IntegrationsTab() {
+  const queryClient = useQueryClient()
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ['integrations'],
+    queryFn: settingsApi.integrations,
+  })
+  const [message, setMessage] = useState<BannerMessage | null>(null)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Integration keys</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Keys entered here are encrypted on the server. Values are never shown again after saving.
+          A key set in the server environment is used when nothing is saved here.
+        </p>
+        {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {items.map((item) => (
+          <IntegrationRow
+            key={item.name}
+            item={item}
+            onChanged={async (text) => {
+              await queryClient.invalidateQueries({ queryKey: ['integrations'] })
+              setMessage({ type: 'success', text })
+            }}
+            onError={(text) => setMessage({ type: 'error', text })}
+          />
+        ))}
+        <NotificationBanner message={message} onDismiss={() => setMessage(null)} />
+      </CardContent>
+    </Card>
+  )
+}
+
+function IntegrationRow({
+  item,
+  onChanged,
+  onError,
+}: {
+  item: IntegrationStatus
+  onChanged: (text: string) => Promise<void>
+  onError: (text: string) => void
+}) {
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await settingsApi.setIntegration(item.name, value)
+      setValue('')
+      await onChanged(`${item.label} saved.`)
+    } catch (err) {
+      onError(errorText(err, `Could not save ${item.label}.`))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const clear = async () => {
+    setBusy(true)
+    try {
+      await settingsApi.setIntegration(item.name, '')
+      await onChanged(`${item.label} cleared.`)
+    } catch (err) {
+      onError(errorText(err, `Could not clear ${item.label}.`))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const sourceLabel =
+    item.source === 'gui' ? 'set here' : item.source === 'environment' ? 'set on the server' : 'not set'
+
+  return (
+    <div className="space-y-2 rounded border border-border p-3">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium text-foreground">{item.label}</span>
+        <span className="text-muted-foreground">
+          {item.configured ? `${item.masked} (${sourceLabel})` : 'Not set'}
+        </span>
       </div>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          aria-label={`New ${item.label}`}
+          placeholder={item.configured ? 'Enter a new value to replace' : 'Enter value'}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className={INPUT}
+          autoComplete="off"
+        />
+        <Button onClick={save} disabled={busy || !value.trim()}>Save</Button>
+        {item.source === 'gui' && (
+          <Button variant="destructive" onClick={clear} disabled={busy}>Clear</Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Notifications: real test sends, honest about missing configuration ───────
+
+function NotificationsTab({ isAdmin }: { isAdmin: boolean }) {
+  const [slack, setSlack] = useState<BannerMessage | null>(null)
+  const [email, setEmail] = useState<BannerMessage | null>(null)
+  const [busy, setBusy] = useState<'slack' | 'email' | null>(null)
+
+  const sendSlack = async () => {
+    setBusy('slack')
+    try {
+      const result = await settingsApi.testSlack()
+      setSlack({ type: result.sent ? 'success' : 'error', text: result.detail })
+    } catch (err) {
+      setSlack({ type: 'error', text: errorText(err, 'Slack test failed.') })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const sendEmail = async () => {
+    setBusy('email')
+    try {
+      const result = await settingsApi.testEmail()
+      setEmail({ type: result.sent ? 'success' : 'error', text: result.detail })
+    } catch (err) {
+      setEmail({ type: 'error', text: errorText(err, 'Email test failed.') })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Slack</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted-foreground">Sends a test message to the saved webhook.</p>
+          <Button onClick={sendSlack} disabled={!isAdmin || busy !== null}>
+            Send Slack test
+          </Button>
+          {!isAdmin && <p className="text-xs text-muted-foreground">Admins can send this test.</p>}
+          <NotificationBanner message={slack} onDismiss={() => setSlack(null)} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Email</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            Sends a test email to your address using the server's SMTP settings.
+          </p>
+          <Button onClick={sendEmail} disabled={busy !== null}>Send email test</Button>
+          <NotificationBanner message={email} onDismiss={() => setEmail(null)} />
+        </CardContent>
+      </Card>
     </div>
   )
 }
