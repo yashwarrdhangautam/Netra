@@ -84,6 +84,9 @@ ignore = ["S101", "N818", "E501"]
 "src/netra/api/routes/**" = ["B008"]
 # The CLI entry points print their output to the terminal.
 "src/netra/cli/**" = ["T201"]
+# Fixed-argv git calls to pinned upstream repositories; no shell and no caller-controlled argv.
+"src/netra/scanner/tools/template_pin.py" = ["S603", "S607"]
+"src/netra/intel/payloads.py" = ["S603", "S607"]
 "src/netra/bugbounty/cli.py" = ["T201"]
 
 [tool.mypy]

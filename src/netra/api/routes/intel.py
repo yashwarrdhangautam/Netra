@@ -1,13 +1,16 @@
-"""Threat-intelligence lookups for analysts: exploitation status for CVE identifiers."""
+"""Threat-intelligence lookups for analysts: CVE exploitation status, payloads and bypass checks."""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
+from netra.core.config import settings
 from netra.intel.cve_intel import CveIntelClient, rank_key
+from netra.intel.payloads import checkout_dir, load_payloads, search
 
 router = APIRouter(prefix="/intel", tags=["Intel"])
 MAX_IDS = 50
+MAX_RESULTS = 100
 
 
 @router.get("/cve")
@@ -32,3 +35,20 @@ async def cve_intel(
         ],
         "count": len(ordered),
     }
+
+
+@router.get("/payloads")
+async def payloads(
+    q: Annotated[str, Query(max_length=200)] = "",
+    topic: Annotated[str | None, Query(max_length=100)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_RESULTS)] = 25,
+) -> dict[str, object]:
+    """Search the pinned payload library. Each passage carries its source file and commit."""
+    root = checkout_dir(settings.tools_dir)
+    if not root.is_dir():
+        raise HTTPException(
+            status_code=503,
+            detail="Payload library is not synced. Run the payload sync on the worker host.",
+        )
+    hits = search(load_payloads(root), query=q, topic=topic, limit=limit)
+    return {"items": [p.as_dict() for p in hits], "count": len(hits)}

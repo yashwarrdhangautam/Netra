@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from netra.core.config import settings
 from netra.scanner.tools.base import CliTool, ToolResult, parse_json_lines
+from netra.scanner.tools.template_pin import template_args
 
 
 class NucleiTool(CliTool):
@@ -34,6 +36,9 @@ class NucleiTool(CliTool):
             args += ["-tags", tags]
         elif templates and templates != "default":
             args += ["-templates", templates]
+        else:
+            # Default: use the pinned template checkout when it is present.
+            args += template_args(settings.tools_dir)
         result = await self._exec(args)
         rows = parse_json_lines(result.raw_output)
         result.findings = [

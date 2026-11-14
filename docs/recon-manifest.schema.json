@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://netra.local/schemas/recon-manifest-1.0.json",
+  "title": "NETRA recon manifest",
+  "description": "Contract between the recon phase and the hunt and scan phases. Every section is present, empty when a producer found nothing.",
+  "type": "object",
+  "required": ["schema_version", "target", "generated_at", "producers", "counts", "assets", "ranked_surface", "secrets", "identity_fabric"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "target": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "producers": {"type": "array", "items": {"type": "string"}},
+    "counts": {
+      "type": "object",
+      "required": ["hosts", "live"],
+      "properties": {"hosts": {"type": "integer", "minimum": 0}, "live": {"type": "integer", "minimum": 0}}
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["host", "url", "status", "tech", "protections", "source"],
+        "properties": {
+          "host": {"type": "string"},
+          "url": {"type": ["string", "null"]},
+          "status": {"type": ["integer", "null"]},
+          "title": {"type": ["string", "null"]},
+          "tech": {"type": "array", "items": {"type": "string"}},
+          "protections": {"type": "array", "items": {"type": "string"}},
+          "source": {"type": "string"}
+        }
+      }
+    },
+    "ranked_surface": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["url", "host", "bug_classes", "priority", "rationale"],
+        "properties": {
+          "url": {"type": "string"},
+          "host": {"type": "string"},
+          "bug_classes": {"type": "array", "items": {"type": "string"}},
+          "priority": {"enum": ["P1", "P2", "KILL"]},
+          "rationale": {"type": "string"}
+        }
+      }
+    },
+    "secrets": {"type": "array", "items": {"type": "object"}},
+    "identity_fabric": {"type": "object"}
+  }
+}

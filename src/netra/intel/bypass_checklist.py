@@ -62,7 +62,8 @@ class ChecklistItem:
 
 def detect_protections(headers: Mapping[str, str], status_code: int | None = None) -> list[str]:
     """Return the protection ids visible in one normal response."""
-    h = {k.lower(): v for k, v in headers.items()}
+    # httpx reports header names with underscores; normalise to the HTTP form.
+    h = {k.lower().replace("_", "-"): v for k, v in headers.items()}
     server = h.get("server", "").lower()
     found: list[str] = []
     if any(k in h for k in ("cf-ray", "x-sucuri-id", "x-akamai-transformed")) or any(
