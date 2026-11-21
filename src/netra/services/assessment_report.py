@@ -414,7 +414,7 @@ def render_pdf(data: dict[str, Any], output_dir: Path | None = None) -> Path:
             [6 * cm, 1.6 * cm, 4.4 * cm, 5 * cm],
         ),
         Paragraph("3. Methodology", styles["Heading2"]),
-        *[p("• " + line) for line in data["methodology"]],
+        *[p("- " + line) for line in data["methodology"]],
         p(
             f"Scan configuration: profile {scan['profile']}, options "
             f"{json.dumps(scan['config']) if scan['config'] else 'none'}."
@@ -519,7 +519,7 @@ def render_pdf(data: dict[str, Any], output_dir: Path | None = None) -> Path:
         e.extend(block[6:])
     e += [
         Paragraph("7. Limitations and coverage gaps", styles["Heading2"]),
-        *[p("• " + line) for line in data["limitations"]],
+        *[p("- " + line) for line in data["limitations"]],
     ]
     SimpleDocTemplate(
         str(path),
