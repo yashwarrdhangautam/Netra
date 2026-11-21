@@ -39,9 +39,12 @@ def test_record_run_keeps_the_tool_outcome() -> None:
     runs: list[dict] = []
     result = SimpleNamespace(success=False, error="timeout")
     tasks._record_run(runs, "ffuf", "https://a.example.org", result)
-    assert runs == [
-        {"tool": "ffuf", "target": "https://a.example.org", "success": False, "error": "timeout"}
-    ]
+    assert len(runs) == 1
+    assert runs[0]["tool"] == "ffuf"
+    assert runs[0]["target"] == "https://a.example.org"
+    assert runs[0]["success"] is False
+    assert runs[0]["error"] == "timeout"
+    assert runs[0]["state"] == "failed"
 
 
 def test_phase_note_stores_error_or_warnings() -> None:
@@ -92,5 +95,5 @@ async def test_failed_phase_row_is_reported(db_session) -> None:
 def test_scope_result_is_recorded_under_the_scope_phase() -> None:
     # Regression: the scope phase used to write its row as recon_subdomains.
     source = open(tasks.__file__, encoding="utf-8").read()
-    assert "PhaseType.SCOPE, result)" in source
-    assert "PhaseType.RECON_SUBDOMAINS, result)" not in source
+    assert "PhaseType.SCOPE, result, phase_started)" in source
+    assert "PhaseType.RECON_SUBDOMAINS, result" not in source

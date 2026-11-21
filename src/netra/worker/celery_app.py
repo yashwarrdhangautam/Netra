@@ -25,6 +25,11 @@ celery_app.conf.update(
     task_soft_time_limit=3600,
     task_time_limit=3700,
     broker_connection_retry_on_startup=True,
+    # With acks_late, Redis re-delivers any task not acked within visibility_timeout (default
+    # one hour). A vuln scan held to a low grant rate runs for hours, and a re-delivery would
+    # start a second copy against the same target, doubling the request rate. Keep this above
+    # the longest task time limit (VULN_SCAN_TIME_LIMIT in tasks.py).
+    broker_transport_options={"visibility_timeout": 12 * 3600},
     result_expires=3600,
 )
 

@@ -14,6 +14,7 @@ from typing import Any
 import structlog
 from celery.schedules import crontab
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from netra.db.models._types import JSONB
@@ -132,112 +133,72 @@ class ScanSchedule(Base):
 # ── Celery Tasks for Scheduling ──────────────────────────────────────────────
 
 
+async def _prepare_scheduled_scan(db: AsyncSession, schedule_id: uuid.UUID) -> dict[str, Any]:
+    """Prepare a scheduled occurrence in one transaction and event loop."""
+    from sqlalchemy import select
+
+    from netra.db.models.scan import Scan
+    from netra.services.scan_authorization import (
+        AuthorizationDenied,
+        prepare_scan_authorization,
+    )
+
+    schedule = await db.scalar(
+        select(ScanSchedule).where(ScanSchedule.id == schedule_id).with_for_update()
+    )
+    if schedule is None:
+        return {"status": "error", "message": "Schedule not found"}
+    if not schedule.is_active:
+        return {"status": "skipped", "message": "Schedule is inactive"}
+    try:
+        snapshot = await prepare_scan_authorization(db, schedule.target_id)
+    except AuthorizationDenied as exc:
+        schedule.failed_runs = (schedule.failed_runs or 0) + 1
+        await db.commit()
+        return {"status": "blocked", "message": exc.code}
+    scan = Scan(
+        name=f"{schedule.name} - {datetime.now(UTC).isoformat()}",
+        target_id=schedule.target_id,
+        profile=schedule.profile,
+        config=schedule.config or {},
+        status="pending",
+        user_id=schedule.created_by,
+        checkpoint_data={"authorization_snapshot": snapshot},
+    )
+    db.add(scan)
+    await db.flush()
+    schedule.last_run_at = datetime.now(UTC)
+    schedule.total_runs = (schedule.total_runs or 0) + 1
+    schedule.next_run_at = schedule.get_next_run()
+    await db.commit()
+    return {"status": "prepared", "schedule_id": str(schedule_id), "scan_id": str(scan.id)}
+
+
 @celery_app.task(bind=True, name="netra.scheduled_scan")
 def execute_scheduled_scan(
     self,
     schedule_id: str,
     scan_id: str | None = None,
 ) -> dict[str, Any]:
-    """Execute a scheduled scan.
-
-    Args:
-        schedule_id: Schedule UUID as string
-        scan_id: Optional existing scan ID
-
-    Returns:
-        Task result dictionary
-    """
+    """Create an authorized occurrence before dispatching it to the worker."""
     import asyncio
 
-    from sqlalchemy import select
+    from netra.db.session import async_session_factory
+    from netra.worker.tasks import run_scan
 
-    from netra.db.models.scan import Scan
-    from netra.db.models.target import Target
-    from netra.db.session import AsyncSessionLocal
-
-    schedule_uuid = uuid.UUID(schedule_id)
-    db = AsyncSessionLocal()
+    async def prepare() -> dict[str, Any]:
+        async with async_session_factory() as db:
+            return await _prepare_scheduled_scan(db, uuid.UUID(schedule_id))
 
     try:
-        # Get schedule
-        result = asyncio.run(
-            db.execute(select(ScanSchedule).where(ScanSchedule.id == schedule_uuid))
-        )
-        schedule = result.scalar_one_or_none()
-
-        if not schedule:
-            logger.error("schedule_not_found", schedule_id=schedule_id)
-            return {"status": "error", "message": "Schedule not found"}
-
-        if not schedule.is_active:
-            logger.info("schedule_inactive", schedule_id=schedule_id)
-            return {"status": "skipped", "message": "Schedule is inactive"}
-
-        # Get target
-        target_result = asyncio.run(
-            db.execute(select(Target).where(Target.id == schedule.target_id))
-        )
-        target = target_result.scalar_one_or_none()
-
-        if not target:
-            logger.error("target_not_found", target_id=str(schedule.target_id))
-            return {"status": "error", "message": "Target not found"}
-
-        # Create new scan
-        scan = Scan(
-            name=f"{schedule.name} - {datetime.now(UTC).isoformat()}",
-            target_id=schedule.target_id,
-            profile=schedule.profile,
-            config=schedule.config,
-            status="pending",
-        )
-        db.add(scan)
-        asyncio.run(db.commit())
-        asyncio.run(db.refresh(scan))
-
-        logger.info(
-            "scheduled_scan_created",
-            schedule_id=schedule_id,
-            scan_id=str(scan.id),
-        )
-
-        # Trigger scan execution via Celery
-        from netra.worker.tasks import run_scan
-
-        run_scan.delay(str(scan.id))
-
-        # Update schedule metadata
-        schedule.last_run_at = datetime.now(UTC)
-        schedule.total_runs += 1
-        schedule.next_run_at = schedule.get_next_run()
-        asyncio.run(db.commit())
-
-        return {
-            "status": "success",
-            "schedule_id": schedule_id,
-            "scan_id": str(scan.id),
-        }
-
-    except Exception as e:
-        logger.error(
-            "scheduled_scan_failed",
-            schedule_id=schedule_id,
-            error=str(e),
-        )
-
-        # Update failed runs counter
-        try:
-            schedule.failed_runs += 1
-            asyncio.run(db.commit())
-        except Exception:
-            import structlog as _sl
-
-            _sl.get_logger().debug("schedule_failed_runs_update_failed", exc_info=True)
-
-        return {"status": "error", "message": str(e)}
-
-    finally:
-        asyncio.run(db.close())
+        result = asyncio.run(prepare())
+        if result["status"] != "prepared":
+            return result
+        run_scan.delay(result["scan_id"])
+        return {**result, "status": "success"}
+    except Exception:
+        logger.exception("scheduled_scan_failed", schedule_id=schedule_id)
+        return {"status": "error", "message": "scheduled_dispatch_failed"}
 
 
 @celery_app.task(bind=True, name="netra.cleanup_old_schedules")

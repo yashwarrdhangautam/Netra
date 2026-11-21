@@ -23,6 +23,10 @@ BB_BEAT_SCHEDULE = {
         "task": "netra.ingest_public_signatures",
         "schedule": crontab(hour=4, minute=0),
     },
+    "reclaim-stale-scans": {
+        "task": "netra.reclaim_stale_scans",
+        "schedule": 300.0,
+    },
     "bb-export-submissions-graphify": {
         "task": "netra.export_bugbounty_submissions",
         "schedule": crontab(hour=3, minute=0),
