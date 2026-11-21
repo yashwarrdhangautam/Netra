@@ -5,7 +5,22 @@ export type FindingStatus = 'new' | 'confirmed' | 'in_progress' | 'resolved' | '
 export type ScanStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
 export type ScanProfile = 'quick' | 'standard' | 'deep' | 'api_only' | 'cloud' | 'mobile' | 'container' | 'ai_llm' | 'custom'
 
-export interface Scan {
+export interface ToolCoverage {
+  phase: string
+  tool: string
+  state: 'completed' | 'skipped' | 'unavailable' | 'failed' | 'parse_error' | 'pending'
+  required: boolean
+  reason_code: string | null
+  findings_count: number | null
+}
+
+export interface ScanCoverage {
+  outcome?: 'complete' | 'incomplete'
+  coverage_reason?: string | null
+  coverage?: ToolCoverage[]
+}
+
+export interface Scan extends ScanCoverage {
   id: string
   name: string
   status: ScanStatus
@@ -17,7 +32,7 @@ export interface Scan {
   updated_at: string
 }
 
-export interface ScanList {
+export interface ScanList extends ScanCoverage {
   id: string
   name: string
   status: ScanStatus

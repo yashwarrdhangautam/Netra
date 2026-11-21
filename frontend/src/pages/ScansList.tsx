@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { NotificationBanner, type BannerMessage } from '@/components/shared/NotificationBanner'
 import { useAuthStore } from '@/stores/authStore'
 import { cn, formatRelativeTime } from '@/utils/formatters'
+import { consumePendingNewScan } from '@/utils/newScan'
 import type { ScanList } from '@/types'
 
 const PROFILES = [
@@ -60,6 +61,8 @@ export function ScansList() {
   // The header "New scan" button dispatches this event.
   useEffect(() => {
     if (!canEdit) return
+    // Opened from another page: the header navigated here and left a one-shot flag.
+    if (consumePendingNewScan()) setCreating(true)
     const open = () => setCreating(true)
     window.addEventListener('netra:new-scan', open)
     return () => window.removeEventListener('netra:new-scan', open)

@@ -56,6 +56,19 @@ export const authApi = {
     return data
   },
 
+  requestPasswordReset: async (email: string): Promise<{ detail: string }> => {
+    const { data } = await apiClient.post('/api/v1/auth/password-reset/request', { email })
+    return data
+  },
+
+  confirmPasswordReset: async (token: string, newPassword: string): Promise<{ detail: string }> => {
+    const { data } = await apiClient.post('/api/v1/auth/password-reset/confirm', {
+      token,
+      new_password: newPassword,
+    })
+    return data
+  },
+
   logout: (): void => {
     localStorage.removeItem('netra_token')
   },

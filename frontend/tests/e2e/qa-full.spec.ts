@@ -6,6 +6,7 @@ import { test, expect, type Page } from '@playwright/test'
 
 const EMAIL = process.env.NETRA_E2E_EMAIL ?? ''
 const PASSWORD = process.env.NETRA_E2E_PASSWORD ?? ''
+const API = process.env.NETRA_E2E_API_URL ?? 'http://localhost:8001'
 
 const PAGES: { path: string; heading: RegExp }[] = [
   { path: '/', heading: /Dashboard|Risk Score/ },
@@ -116,6 +117,29 @@ test.describe('NETRA GUI QA', () => {
 
 test.describe('NETRA GUI QA: write flows (cleaned up afterwards by the QA script)', () => {
   test.skip(!EMAIL || !PASSWORD, 'Set NETRA_E2E_EMAIL and NETRA_E2E_PASSWORD to run')
+
+  // Remove what these tests created, even when an assertion failed partway through.
+  test.afterAll(async ({ request }) => {
+    const login = await request.post(`${API}/api/v1/auth/login`, {
+      data: { email: EMAIL, password: PASSWORD },
+    })
+    if (!login.ok()) return
+    const headers = { Authorization: `Bearer ${(await login.json()).access_token}` }
+
+    const targets = await (await request.get(`${API}/api/v1/targets/?per_page=100`, { headers })).json()
+    for (const t of targets.items ?? []) {
+      if (String(t.name).startsWith('Browser QA target ')) {
+        await request.delete(`${API}/api/v1/targets/${t.id}`, { headers })
+      }
+    }
+    const users = await (await request.get(`${API}/api/v1/auth/users`, { headers })).json()
+    for (const u of users) {
+      if (String(u.email).startsWith('qa-ui-user-')) {
+        const removed = await request.delete(`${API}/api/v1/auth/users/${u.id}`, { headers })
+        console.log(`cleanup: user ${u.email} -> HTTP ${removed.status()}`)
+      }
+    }
+  })
 
   test('add a target through the form, with a group', async ({ page }) => {
     const targetName = `Browser QA target ${Date.now()}`

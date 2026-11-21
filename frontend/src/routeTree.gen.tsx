@@ -29,6 +29,7 @@ import { BBHuntDetail } from '@/pages/bb/BBHuntDetail'
 import { BBSettings } from '@/pages/bb/BBSettings'
 import { Schedules } from '@/pages/Schedules'
 import { Audit } from '@/pages/Audit'
+import { ResetPassword } from '@/pages/ResetPassword'
 
 // Every page except /login needs a signed-in user. The login page is shown
 // without the sidebar layout.
@@ -36,7 +37,8 @@ function RootGate() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const { pathname } = useLocation()
 
-  if (pathname === '/login') {
+  // Sign-in and the emailed password-reset page are shown without the sidebar layout.
+  if (pathname === '/login' || pathname === '/reset-password') {
     return <Outlet />
   }
   if (!isAuthenticated) {
@@ -129,6 +131,12 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: Login,
+})
+
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password',
+  component: ResetPassword,
 })
 
 const bbRoute = createRoute({
@@ -235,6 +243,7 @@ export const routeTree = rootRoute.addChildren([
   settingsRoute,
   usersRoute,
   loginRoute,
+  resetPasswordRoute,
   bbRoute,
   bbProgramsRoute,
   bbScopeRoute,

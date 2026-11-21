@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { requestNewScan } from '@/utils/newScan'
 
 interface ShortcutConfig {
   key: string
@@ -40,12 +41,10 @@ export function useKeyboardShortcuts({
       if (onNewScan) {
         onNewScan()
       } else {
-        // Default: navigate to scans page with new scan modal trigger
-        console.log('New Scan shortcut triggered')
-        // Dispatch custom event for modal to listen to
-        window.dispatchEvent(new CustomEvent('netra:new-scan'))
+        // Default: open the create dialog on the Scans page, navigating there if needed.
+        requestNewScan(navigate)
       }
-    }, [onNewScan]),
+    }, [onNewScan, navigate]),
 
     handleSearch: useCallback(() => {
       if (onSearch) {

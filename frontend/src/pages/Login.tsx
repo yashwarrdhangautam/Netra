@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useAuthStore, type User } from '@/stores/authStore'
 import { authApi } from '@/api/auth'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
@@ -143,6 +143,9 @@ export function Login() {
             <Button type="submit" disabled={isLoading} className="w-full">
               {isLoading ? 'Signing in...' : needsMfa ? 'Verify and sign in' : 'Sign in'}
             </Button>
+            <Link to="/reset-password" className="block text-center text-sm text-accent underline">
+              Forgot password?
+            </Link>
           </form>
         </CardContent>
       </Card>

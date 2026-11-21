@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/Button'
 import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useAuthStore } from '@/stores/authStore'
 import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { useMutation } from '@tanstack/react-query'
+import { requestNewScan } from '@/utils/newScan'
 import { bugBountyApi } from '@/api/bugbounty'
 
 interface HeaderProps {
@@ -12,6 +14,7 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [killConfirm, setKillConfirm] = useState('')
   const [showKillConfirm, setShowKillConfirm] = useState(false)
@@ -59,7 +62,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           {/* New Scan Button */}
           <Button 
             size="sm" 
-            onClick={() => window.dispatchEvent(new CustomEvent('netra:new-scan'))}
+            onClick={() => requestNewScan(navigate)}
             className="hidden md:inline-flex"
           >
             <Plus className="h-4 w-4 md:mr-2" />
@@ -69,7 +72,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           {/* Mobile FAB */}
           <Button
             size="sm"
-            onClick={() => window.dispatchEvent(new CustomEvent('netra:new-scan'))}
+            onClick={() => requestNewScan(navigate)}
             className="md:hidden h-10 w-10 rounded-full p-0"
             aria-label="New Scan"
           >
