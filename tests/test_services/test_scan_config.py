@@ -33,6 +33,18 @@ def test_profile_config_types_and_keys():
     assert validate_scan_config("bugbounty_active", {"enable_nuclei": False, "agentic": True})
 
 
+@pytest.mark.parametrize("profile", ["quick", "standard", "deep", "api_only"])
+def test_tech_targeted_is_a_web_profile_option(profile):
+    assert validate_scan_config(profile, {"tech_targeted": True}) == {"tech_targeted": True}
+    with pytest.raises(ValueError):
+        validate_scan_config(profile, {"tech_targeted": "yes"})
+
+
+def test_tech_targeted_not_on_bounty_profiles():
+    with pytest.raises(ValueError):
+        validate_scan_config("bugbounty_active", {"tech_targeted": True})
+
+
 def test_source_path_stays_inside_root(tmp_path):
     root = tmp_path / "sources"
     root.mkdir()

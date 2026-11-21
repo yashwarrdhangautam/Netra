@@ -1,6 +1,7 @@
 """Celery tasks for distributed scan execution."""
 
 import functools
+import re
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -616,6 +617,10 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
             "status": "completed",
             "live_hosts": live_hosts,
             "host_status": host_status,
+            # Detected technology per host, for tech-targeted nuclei (scan config tech_targeted).
+            "host_tech": {
+                f.get("url"): f.get("tech") or [] for f in http_result.findings if f.get("url")
+            },
             "count": len(live_hosts),
             "runs": runs,
             **_phase_verdict(runs),
@@ -646,6 +651,37 @@ _NUCLEI_SHARE_WITH_NIKTO = 0.70
 # marked light_scan in coverage, so it never reads as fully tested.
 LIGHT_SCAN_TAGS = "misconfig,exposure,tech"
 LIGHT_SCAN_TIMEOUT = 1800
+
+
+# Fast mode (scan config tech_targeted): nuclei runs this baseline plus the tags for the
+# technology httpx detected on the host, and skips info severity. Nuclei's own -as mode is not
+# used: when its detector finds nothing it runs no templates at all, which would read as a
+# clean result. The baseline always runs, so an undetected stack still gets general checks.
+# No "cve" tag here: most templates are CVEs. CVEs for the detected stack still run through
+# the product tags (e.g. nginx).
+TECH_BASELINE_TAGS = "misconfig,exposure,tech"
+_TECH_TAG = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
+
+
+def _tech_tags(tech: list[Any]) -> list[str]:
+    """Nuclei tags from httpx tech names: 'Nginx:1.30.4' -> 'nginx', 'Next.js' -> 'nextjs'."""
+    tags: list[str] = []
+    for name in tech:
+        if not isinstance(name, str):
+            continue
+        tag = name.split(":", 1)[0].strip().lower().replace(".", "").replace(" ", "-")
+        if _TECH_TAG.match(tag) and tag not in tags:
+            tags.append(tag)
+    return tags
+
+
+def _host_tech(previous_result: dict, checkpoint: dict) -> dict[str, list[Any]]:
+    """Detected technology per host from the recon phase, or from its checkpoint."""
+    tech = previous_result.get("host_tech")
+    if isinstance(tech, dict) and tech:
+        return tech
+    rows = checkpoint.get("http_hosts") or []
+    return {r["url"]: r.get("tech") or [] for r in rows if isinstance(r, dict) and r.get("url")}
 
 
 def _phase_budget(share: float, reserved: int = 0) -> int:
@@ -811,23 +847,36 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
         nikto_hosts = full_hosts[:10] if nikto_enabled else []
         reserved = LIGHT_SCAN_TIMEOUT * len(light_hosts)
         nuclei_timeout = _nuclei_timeout(len(full_hosts), len(nikto_hosts), reserved)
+        tech_targeted = overrides.get("tech_targeted") is True
+        host_tech = _host_tech(previous_result, scan.checkpoint_data or {})
         for target in full_hosts + light_hosts:
             light = target in light_hosts
+            tags: str | None = None
+            run_severity = severity
+            reason: str | None = None
+            if light:
+                tags, reason = LIGHT_SCAN_TAGS, "light_scan_4xx_root"
+            elif tech_targeted:
+                tags = ",".join(
+                    [TECH_BASELINE_TAGS, *_tech_tags(list(host_tech.get(target) or []))]
+                )
+                run_severity = ",".join(s for s in severity.split(",") if s != "info") or severity
+                reason = "tech_targeted"
             await _require_action(db, scan, target, "vulnerability_scan", "GET")
             run = await nuclei.run(
                 target,
-                severity=severity,
+                severity=run_severity,
                 rate_limit=rate_limit,
                 timeout=LIGHT_SCAN_TIMEOUT if light else nuclei_timeout,
-                tags=LIGHT_SCAN_TAGS if light else None,
+                tags=tags,
                 **_nuclei_grant_args(record),
             )
             if (
-                light
+                reason
                 and isinstance(run.metadata, dict)
                 and run.metadata.get("state") == "completed"
             ):
-                run.metadata = {**run.metadata, "reason_code": "light_scan_4xx_root"}
+                run.metadata = {**run.metadata, "reason_code": reason}
             _record_run(runs, "nuclei", target, run)
             total_findings += await _persist_findings(db, scan_id, "nuclei", run.findings)
         if nikto_enabled:

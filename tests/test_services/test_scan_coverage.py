@@ -219,3 +219,16 @@ def test_pentest_tools_required_only_with_an_active_grant():
     assert {"phase": "pentest", "tool": "sqlmap"} in granted["required_tools"]
     denied = build_coverage_manifest("deep", {}, active_test_allowed=False)
     assert {"phase": "pentest", "tool": "sqlmap"} in denied["optional_tools"]
+
+
+def test_tech_targeted_run_is_never_complete():
+    run = {"tool": "subfinder", "state": "completed", "reason_code": "tech_targeted"}
+    result = scan_coverage(scan(), [phase([run])])
+    assert result.outcome == "incomplete"
+    assert result.coverage_reason == "tech_targeted"
+    assert result.coverage[0].reason_code == "tech_targeted"
+
+
+def test_light_pass_on_4xx_host_still_counts_as_completed():
+    run = {"tool": "subfinder", "state": "completed", "reason_code": "light_scan_4xx_root"}
+    assert scan_coverage(scan(), [phase([run])]).outcome == "complete"

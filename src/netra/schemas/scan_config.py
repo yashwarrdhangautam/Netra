@@ -44,17 +44,21 @@ TEST_SQLI = ("test_sqli", "boolean", _is_bool)
 ENABLE_NUCLEI = ("enable_nuclei", "boolean", _is_bool)
 AGENTIC = ("agentic", "boolean", _is_bool)
 PROGRAM_ID = ("program_id", "UUID string", _is_uuid)
+# Fast mode: nuclei runs the templates for the technology httpx detected plus a fixed
+# baseline, instead of the whole set. Runs are marked tech_targeted in coverage.
+TECH_TARGETED = ("tech_targeted", "boolean", _is_bool)
 
 _BOUNTY_KEYS = (RATE_LIMIT, ENABLE_NUCLEI, AGENTIC, PROGRAM_ID)
 
 # Profiles without a dedicated configuration get the general keys only.
 _GENERAL_KEYS = (RATE_LIMIT, TEST_SQLI)
+_WEB_KEYS = (RATE_LIMIT, TEST_SQLI, TECH_TARGETED)
 
 PROFILE_KEYS: dict[str, tuple[tuple[str, str, Callable[[Any], bool]], ...]] = {
-    ScanProfile.QUICK: (RATE_LIMIT, TEST_SQLI),
-    ScanProfile.STANDARD: _GENERAL_KEYS,
-    ScanProfile.DEEP: _GENERAL_KEYS,
-    ScanProfile.API_ONLY: _GENERAL_KEYS,
+    ScanProfile.QUICK: _WEB_KEYS,
+    ScanProfile.STANDARD: _WEB_KEYS,
+    ScanProfile.DEEP: _WEB_KEYS,
+    ScanProfile.API_ONLY: _WEB_KEYS,
     ScanProfile.CLOUD: _GENERAL_KEYS,
     ScanProfile.MOBILE: _GENERAL_KEYS,
     ScanProfile.CONTAINER: _GENERAL_KEYS,

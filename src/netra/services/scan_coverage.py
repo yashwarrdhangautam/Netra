@@ -133,14 +133,25 @@ def scan_coverage(scan: Any, phases: list[Any]) -> ScanCoverage:
             )
     if evidence:
         invalid = True  # An undeclared run cannot silently broaden the reviewed manifest.
+    # A fast (tech-targeted) run finished, but on a subset of templates: never a full assessment.
+    reduced = any(entry.required and entry.reason_code == "tech_targeted" for entry in coverage)
     complete = (
         str(scan.status) == "completed"
         and not invalid
         and not denied
+        and not reduced
         and all(not entry.required or entry.state == "completed" for entry in coverage)
     )
+    if complete:
+        reason = None
+    elif denied:
+        reason = "policy_denied"
+    elif reduced and all(not e.required or e.state == "completed" for e in coverage):
+        reason = "tech_targeted"
+    else:
+        reason = "coverage_incomplete"
     return ScanCoverage(
         outcome="complete" if complete else "incomplete",
-        coverage_reason=None if complete else "policy_denied" if denied else "coverage_incomplete",
+        coverage_reason=reason,
         coverage=coverage,
     )

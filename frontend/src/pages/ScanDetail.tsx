@@ -117,6 +117,9 @@ export function ScanDetail() {
         </CardHeader>
         <CardContent>
           <p className="mb-3 text-sm text-muted-foreground">Coverage records which required tools completed. Zero findings do not establish that a target is secure.</p>
+          {scan?.coverage_reason === 'tech_targeted' && (
+            <p className="mb-3 text-sm text-amber-400">Fast scan: nuclei ran only the templates for the detected technology plus general misconfiguration and exposure checks. Run a full scan for complete coverage.</p>
+          )}
           {!scan?.coverage?.length && <p>Coverage evidence is unavailable for this scan.</p>}
           <ul className="space-y-2">
             {scan?.coverage?.map((run, index) => (

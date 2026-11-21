@@ -274,3 +274,105 @@ async def test_4xx_root_host_gets_light_nuclei_and_no_nikto(monkeypatch) -> None
     assert by_target[("nuclei", "http://a:80")]["reason_code"] == "light_scan_4xx_root"
     assert by_target[("nikto", "http://a:80")]["state"] == "skipped"
     assert by_target[("nikto", "http://a:80")]["reason_code"] == "light_scan_4xx_root"
+
+
+def test_tech_tags_from_httpx_names() -> None:
+    tags = tasks._tech_tags(["Next.js", "Nginx:1.30.4", "Node.js", "React", "Webpack", "Bad;tag"])
+    assert tags == ["nextjs", "nginx", "nodejs", "react", "webpack"]
+
+
+def test_host_tech_from_checkpoint() -> None:
+    checkpoint = {"http_hosts": [{"url": "https://a:443", "tech": ["Nginx:1.2"]}, {"url": "x"}]}
+    assert tasks._host_tech({}, checkpoint) == {"https://a:443": ["Nginx:1.2"], "x": []}
+    assert tasks._host_tech({"host_tech": {"h": ["React"]}}, checkpoint) == {"h": ["React"]}
+
+
+async def test_tech_targeted_nuclei_uses_detected_tech_plus_baseline(monkeypatch) -> None:
+    calls: list[tuple[str, str, dict]] = []
+
+    def fake(name):
+        class Fake:
+            def __init__(self, work_dir=None):
+                pass
+
+            async def run(self, target, **kwargs):
+                calls.append((name, target, kwargs))
+                return ToolResult(tool_name=name, success=True, metadata={"state": "completed"})
+
+        return Fake
+
+    record = SimpleNamespace(
+        max_requests_per_second=1, http_methods={"GET", "HEAD"}, ports=[80, 443]
+    )
+    scan = SimpleNamespace(
+        profile="deep", config={"tech_targeted": True}, checkpoint_data={}, target=None
+    )
+
+    async def fake_auth(db, scan_id):
+        return scan, None, record, None
+
+    async def nothing(*args, **kwargs):
+        return 0
+
+    class FakeDb:
+        async def execute(self, *_):
+            return SimpleNamespace(scalar_one_or_none=lambda: scan)
+
+    monkeypatch.setattr(tasks, "require_scan_authorization", fake_auth)
+    monkeypatch.setattr(tasks, "_require_action", nothing)
+    monkeypatch.setattr(tasks, "_persist_findings", nothing)
+    monkeypatch.setattr(tasks, "NucleiTool", fake("nuclei"))
+    monkeypatch.setattr(tasks, "NiktoTool", fake("nikto"))
+    previous = {
+        "live_hosts": ["https://a:443", "http://a:80"],
+        "host_status": {"https://a:443": 200, "http://a:80": 404},
+        "host_tech": {"https://a:443": ["Next.js", "Nginx:1.30.4"]},
+    }
+    result = await tasks._execute_vuln_scan(FakeDb(), uuid.uuid4(), previous)
+
+    nuclei = {t: kw for n, t, kw in calls if n == "nuclei"}
+    assert nuclei["https://a:443"]["tags"] == tasks.TECH_BASELINE_TAGS + ",nextjs,nginx"
+    assert "info" not in nuclei["https://a:443"]["severity"].split(",")
+    # The 4xx host keeps its light pass; tech targeting does not change it.
+    assert nuclei["http://a:80"]["tags"] == tasks.LIGHT_SCAN_TAGS
+    by_target = {(r["tool"], r["target"]): r for r in result["runs"]}
+    assert by_target[("nuclei", "https://a:443")]["reason_code"] == "tech_targeted"
+    # Nikto still runs on the full host.
+    assert [t for n, t, _ in calls if n == "nikto"] == ["https://a:443"]
+
+
+async def test_default_scan_stays_full_template_set(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class Fake:
+        def __init__(self, work_dir=None):
+            pass
+
+        async def run(self, target, **kwargs):
+            calls.append(kwargs)
+            return ToolResult(tool_name="nuclei", success=True, metadata={"state": "completed"})
+
+    record = SimpleNamespace(
+        max_requests_per_second=1, http_methods={"GET", "HEAD"}, ports=[80, 443]
+    )
+    scan = SimpleNamespace(profile="deep", config={}, checkpoint_data={}, target=None)
+
+    async def fake_auth(db, scan_id):
+        return scan, None, record, None
+
+    async def nothing(*args, **kwargs):
+        return 0
+
+    class FakeDb:
+        async def execute(self, *_):
+            return SimpleNamespace(scalar_one_or_none=lambda: scan)
+
+    monkeypatch.setattr(tasks, "require_scan_authorization", fake_auth)
+    monkeypatch.setattr(tasks, "_require_action", nothing)
+    monkeypatch.setattr(tasks, "_persist_findings", nothing)
+    monkeypatch.setattr(tasks, "NucleiTool", Fake)
+    monkeypatch.setattr(tasks, "NiktoTool", Fake)
+    previous = {"live_hosts": ["https://a:443"], "host_tech": {"https://a:443": ["React"]}}
+    await tasks._execute_vuln_scan(FakeDb(), uuid.uuid4(), previous)
+    assert calls[0]["tags"] is None
+    assert calls[0]["severity"] == "critical,high,medium,low,info"

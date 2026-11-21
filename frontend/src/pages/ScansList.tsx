@@ -26,6 +26,9 @@ const PROFILES = [
   'custom',
 ] as const
 
+// Profiles that accept the tech_targeted config key (see schemas/scan_config.py).
+const FAST_PROFILES: readonly string[] = ['quick', 'standard', 'deep', 'api_only']
+
 const INPUT = cn(
   'w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-foreground',
   'focus:outline-none focus:ring-2 focus:ring-accent'
@@ -45,7 +48,7 @@ export function ScansList() {
   const canEdit = useAuthStore((s) => s.canEdit)()
   const [creating, setCreating] = useState(false)
   const [message, setMessage] = useState<BannerMessage | null>(null)
-  const [form, setForm] = useState({ name: '', targetId: '', profile: 'standard' as CreateScanPayload['profile'] })
+  const [form, setForm] = useState({ name: '', targetId: '', profile: 'standard' as CreateScanPayload['profile'], fast: false })
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['scans'],
@@ -73,9 +76,15 @@ export function ScansList() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await scansApi.create({ name: form.name, target_id: form.targetId, profile: form.profile })
+      const fastAllowed = FAST_PROFILES.includes(form.profile)
+      await scansApi.create({
+        name: form.name,
+        target_id: form.targetId,
+        profile: form.profile,
+        ...(form.fast && fastAllowed ? { config: { tech_targeted: true } } : {}),
+      })
       setCreating(false)
-      setForm({ name: '', targetId: '', profile: 'standard' })
+      setForm({ name: '', targetId: '', profile: 'standard', fast: false })
       setMessage({ type: 'success', text: 'Scan queued. It runs on the worker; watch the status here.' })
       await refresh()
     } catch (err) {
@@ -153,6 +162,18 @@ export function ScansList() {
                 <div className="flex items-end">
                   <Button type="submit" disabled={!form.targetId || !form.name.trim()}>Start scan</Button>
                 </div>
+                {FAST_PROFILES.includes(form.profile) && (
+                  <label className="flex items-start gap-2 text-sm md:col-span-4">
+                    <input type="checkbox" className="mt-1" checked={form.fast}
+                      onChange={(e) => setForm({ ...form, fast: e.target.checked })} />
+                    <span>
+                      Fast scan (technology-targeted)
+                      <span className="block text-muted-foreground">
+                        Nuclei runs only the templates for the technology detected on each host, plus general misconfiguration and exposure checks, and skips info severity. Much faster at the same request rate; the scan is marked incomplete coverage.
+                      </span>
+                    </span>
+                  </label>
+                )}
               </form>
             )}
           </CardContent>
