@@ -581,3 +581,35 @@ async def export_finding_curl(
         "url": url,
         "has_body": bool(body),
     }
+
+
+@router.get("/{finding_id}/history")
+async def finding_history(
+    finding_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    """Audited changes to one finding (status, severity, assignee), oldest first."""
+    from netra.db.models.audit_log import AuditLog
+
+    finding = await db.get(Finding, finding_id)
+    if not finding or not await can_see_scan(db, current_user, finding.scan_id):
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if is_client(current_user):
+        return []  # triage history is internal
+    rows = (
+        await db.scalars(
+            select(AuditLog)
+            .where(AuditLog.resource_type == "finding", AuditLog.resource_id == str(finding_id))
+            .order_by(AuditLog.created_at)
+        )
+    ).all()
+    return [
+        {
+            "at": r.created_at.isoformat() if r.created_at else None,
+            "actor": r.actor_email,
+            "action": r.action,
+            "changes": (r.detail or {}).get("changes") or {},
+        }
+        for r in rows
+    ]

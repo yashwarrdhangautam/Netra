@@ -12,6 +12,7 @@ export type FindingStatus =
   | 'verified' 
   | 'false_positive' 
   | 'accepted_risk'
+  | 'needs_review'
 
 export interface Finding {
   id: string
@@ -50,6 +51,41 @@ export interface Finding {
   
   // Compliance mappings
   framework_mappings?: FrameworkMapping[]
+
+  // Detail-page context from GET /findings/{id}
+  knowledge?: FindingKnowledge[]
+  check_id?: string | null
+  scan_name?: string | null
+  target?: string | null
+}
+
+/** Reviewed explanation for a check (security headers, disclosure, email, inventory). */
+export interface FindingKnowledge {
+  key: string
+  title: string
+  category: string
+  purpose: string
+  impact: string
+  conditions: string
+  false_positive: string
+  remediation: string
+  retest: string
+  cwe: string | null
+  owasp: string[]
+  references: string[]
+}
+
+export interface FindingSummary {
+  scan_id: string
+  total: number
+  by_severity: Record<Severity, number>
+  by_tool: Record<string, number>
+  by_status: Record<string, number>
+  informational: number
+  actionable: number
+  unique: number
+  verified: number
+  false_positive: number
 }
 
 export interface FindingEvidence {

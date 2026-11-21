@@ -1,5 +1,11 @@
 import apiClient from './client'
-import type { PaginatedResponse, Finding, FindingStatus, Severity } from '@/types/findings'
+import type {
+  PaginatedResponse,
+  Finding,
+  FindingStatus,
+  FindingSummary,
+  Severity,
+} from '@/types/findings'
 
 export interface CreateFindingPayload {
   scan_id: string
@@ -15,15 +21,29 @@ export interface CreateFindingPayload {
 export interface FindingFilters {
   page?: number
   per_page?: number
-  severity?: Severity
-  status?: FindingStatus
+  /** One severity or a comma list, e.g. "high,critical". */
+  severity?: Severity | string
+  status?: FindingStatus | string
   scan_id?: string
+  target_id?: string
+  tool_source?: string
+  cwe_id?: string
+  cve?: string
+  q?: string
 }
 
 export const findingsApi = {
   /** List findings with pagination and filters */
   list: async (filters?: FindingFilters): Promise<PaginatedResponse<Finding>> => {
     const { data } = await apiClient.get<PaginatedResponse<Finding>>('/api/v1/findings', { params: filters })
+    return data
+  },
+
+  /** Counts for one scan, computed from its stored findings */
+  summary: async (scanId: string): Promise<FindingSummary> => {
+    const { data } = await apiClient.get<FindingSummary>('/api/v1/findings/summary', {
+      params: { scan_id: scanId },
+    })
     return data
   },
 

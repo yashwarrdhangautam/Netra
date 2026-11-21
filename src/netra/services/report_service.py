@@ -1,5 +1,6 @@
 """Report generation service for NETRA."""
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,69 @@ from netra.core.config import settings
 logger = structlog.get_logger()
 
 
+_XML_UNSAFE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _clean_value(value: Any) -> Any:
+    """Strip control characters (Word and Excel reject them) from nested report data."""
+    if isinstance(value, str):
+        return _XML_UNSAFE.sub("", value)
+    if isinstance(value, dict):
+        return {k: _clean_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_clean_value(v) for v in value]
+    return value
+
+
+def _clean_inputs(func: Any) -> Any:
+    """Every generator gets cleaned copies of the scan and finding data it is given."""
+    import functools
+
+    @functools.wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        args = tuple(_clean_value(a) if isinstance(a, dict | list) else a for a in args)
+        kwargs = {
+            k: _clean_value(v) if isinstance(v, dict | list) else v for k, v in kwargs.items()
+        }
+        return await func(*args, **kwargs)
+
+    return wrapper
+
+
+def _cell(value: Any) -> Any:
+    """Excel cell value: text that starts like a formula is stored as text, not evaluated."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
+def _kv(doc: Any, label: str, value: object) -> None:
+    """A Word paragraph with a bold label. python-docx prints markup literally, and it rejects
+    control characters, which tool output can contain."""
+    paragraph = doc.add_paragraph()
+    paragraph.add_run(f"{label}: ").bold = True
+    paragraph.add_run(_XML_UNSAFE.sub("", "" if value is None else str(value)))
+
+
+def _h(value: object) -> str:
+    """Escape text for HTML (quotes too: some values land in attributes)."""
+    import html
+
+    return html.escape("" if value is None else str(value), quote=True)
+
+
+def _x(value: object) -> str:
+    """Escape text for reportlab Paragraph markup.
+
+    Paragraph parses its text as XML-like markup, so a finding title such as a Link header
+    value ``</_next/static/...>`` broke the whole PDF (unclosed tag) and could inject
+    formatting. Every scan- or target-supplied value goes through this.
+    """
+    from xml.sax.saxutils import escape
+
+    return escape("" if value is None else str(value))
+
+
 def generate_word_h1(finding: Any, submission: Any, output_path: Path) -> Path:
     """Generate a HackerOne-style Word submission packet."""
     from netra.services.templates.h1_submission import build_h1_docx
@@ -18,6 +82,7 @@ def generate_word_h1(finding: Any, submission: Any, output_path: Path) -> Path:
     return build_h1_docx(finding, submission, output_path)
 
 
+@_clean_inputs
 async def generate_executive_report(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -72,13 +137,13 @@ async def generate_executive_report(
     # Scan metadata
     elements.append(
         Paragraph(
-            f"Scan: {scan_data.get('name', 'Unknown')} | Date: {scan_data.get('created_at', 'N/A')}",
+            f"Scan: {_x(scan_data.get('name', 'Unknown'))} | Date: {_x(scan_data.get('created_at', 'N/A'))}",
             styles["Normal"],
         )
     )
     elements.append(
         Paragraph(
-            f"Target: {scan_data.get('target', 'N/A')} | Profile: {scan_data.get('profile', 'standard')}",
+            f"Target: {_x(scan_data.get('target', 'N/A'))} | Profile: {_x(scan_data.get('profile', 'standard'))}",
             styles["Normal"],
         )
     )
@@ -124,7 +189,7 @@ async def generate_executive_report(
     for i, f in enumerate(critical_findings, 1):
         elements.append(
             Paragraph(
-                f"{i}. <b>{f['title']}</b> — {f.get('url', 'N/A')}",
+                f"{i}. <b>{_x(f['title'])}</b> — {_x(f.get('url', 'N/A'))}",
                 styles["Normal"],
             )
         )
@@ -161,6 +226,7 @@ async def generate_executive_report(
     return output_path
 
 
+@_clean_inputs
 async def generate_technical_report(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -259,10 +325,10 @@ async def generate_technical_report(
             doc.add_heading(f"{i}. {finding.get('title', 'Unknown')}", level=3)
 
             # Details
-            doc.add_paragraph(f"<b>Severity:</b> {severity.upper()}")
-            doc.add_paragraph(f"<b>URL:</b> {finding.get('url', 'N/A')}")
-            doc.add_paragraph(f"<b>CWE:</b> {finding.get('cwe_id', 'N/A')}")
-            doc.add_paragraph(f"<b>Tool:</b> {finding.get('tool_source', 'Unknown')}")
+            _kv(doc, "Severity", severity.upper())
+            _kv(doc, "URL", finding.get("url", "N/A"))
+            _kv(doc, "CWE", finding.get("cwe_id", "N/A"))
+            _kv(doc, "Tool", finding.get("tool_source", "Unknown"))
 
             # Description
             doc.add_heading("Description", level=4)
@@ -274,7 +340,7 @@ async def generate_technical_report(
                 doc.add_heading("Evidence", level=4)
                 for key, value in evidence.items():
                     if isinstance(value, str) and len(value) < 1000:
-                        doc.add_paragraph(f"<b>{key}:</b> {value}")
+                        _kv(doc, str(key), value)
 
             # AI Analysis
             ai_analysis = finding.get("ai_analysis", {})
@@ -283,13 +349,13 @@ async def generate_technical_report(
 
                 defender = ai_analysis.get("defender", {})
                 if defender and isinstance(defender, dict):
-                    doc.add_paragraph(f"<b>Remediation:</b> {defender.get('immediate_fix', 'N/A')}")
+                    _kv(doc, "Remediation", defender.get("immediate_fix", "N/A"))
 
                 analyst = ai_analysis.get("analyst", {})
                 if analyst and isinstance(analyst, dict):
                     mappings = analyst.get("framework_mappings", {})
                     if mappings:
-                        doc.add_paragraph(f"<b>Compliance:</b> {', '.join(mappings.keys())}")
+                        _kv(doc, "Compliance", ", ".join(mappings.keys()))
 
             doc.add_paragraph("\n")
 
@@ -299,6 +365,7 @@ async def generate_technical_report(
     return output_path
 
 
+@_clean_inputs
 async def generate_pentest_report(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -356,13 +423,13 @@ async def generate_pentest_report(
     # Metadata
     elements.append(
         Paragraph(
-            f"<b>Client:</b> {scan_data.get('target', 'N/A')}",
+            f"<b>Client:</b> {_x(scan_data.get('target', 'N/A'))}",
             styles["Normal"],
         )
     )
     elements.append(
         Paragraph(
-            f"<b>Assessment Date:</b> {scan_data.get('created_at', 'N/A')}",
+            f"<b>Assessment Date:</b> {_x(scan_data.get('created_at', 'N/A'))}",
             styles["Normal"],
         )
     )
@@ -421,8 +488,8 @@ async def generate_pentest_report(
             if isinstance(chain, dict):
                 chain_name = chain.get("name", f"Chain {i}")
                 chain_desc = chain.get("description", "No description")
-                elements.append(Paragraph(f"<b>{i}. {chain_name}</b>", styles["Heading2"]))
-                elements.append(Paragraph(chain_desc, styles["Normal"]))
+                elements.append(Paragraph(f"<b>{i}. {_x(chain_name)}</b>", styles["Heading2"]))
+                elements.append(Paragraph(_x(chain_desc), styles["Normal"]))
                 elements.append(Spacer(1, 0.1 * inch))
         elements.append(PageBreak())
 
@@ -565,6 +632,7 @@ def _score_to_grade(score: int) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 
 
+@_clean_inputs
 async def generate_html_report(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -599,16 +667,17 @@ async def generate_html_report(
     # Build findings table rows
     findings_rows = ""
     for i, f in enumerate(findings[:500], 1):  # Limit to 500 for performance
-        severity = f.get("severity", "info")
+        # Values come from target responses: escape them, or a hostile banner becomes script.
+        severity = _h(f.get("severity", "info"))
         severity_class = f"severity-{severity}"
         findings_rows += f"""
         <tr class="finding-row" data-severity="{severity}">
             <td>{i}</td>
             <td class="severity-badge {severity_class}">{severity.upper()}</td>
-            <td>{f.get('title', 'Unknown')[:80]}</td>
-            <td>{f.get('url', 'N/A')[:50]}</td>
-            <td>{f.get('cwe_id', 'N/A')}</td>
-            <td>{f.get('tool_source', 'Unknown')}</td>
+            <td>{_h(str(f.get('title') or 'Unknown')[:80])}</td>
+            <td>{_h(str(f.get('url') or 'N/A')[:50])}</td>
+            <td>{_h(f.get('cwe_id') or 'N/A')}</td>
+            <td>{_h(f.get('tool_source') or 'Unknown')}</td>
         </tr>"""
 
     html_content = f"""<!DOCTYPE html>
@@ -616,7 +685,7 @@ async def generate_html_report(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NETRA Security Report — {scan_data.get('name', 'Unknown')}</title>
+    <title>NETRA Security Report — {_h(scan_data.get('name', 'Unknown'))}</title>
     <style>
         :root {{
             --bg-primary: #0d1117;
@@ -760,15 +829,15 @@ async def generate_html_report(
 
         <div class="header-grid">
             <div class="stat-card">
-                <div class="stat-value">{scan_data.get('name', 'Unknown')}</div>
+                <div class="stat-value">{_h(scan_data.get('name', 'Unknown'))}</div>
                 <div class="stat-label">Scan Name</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{scan_data.get('target', 'N/A')}</div>
+                <div class="stat-value">{_h(scan_data.get('target', 'N/A'))}</div>
                 <div class="stat-label">Target</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{scan_data.get('created_at', 'N/A')}</div>
+                <div class="stat-value">{_h(scan_data.get('created_at', 'N/A'))}</div>
                 <div class="stat-label">Date</div>
             </div>
             <div class="stat-card">
@@ -870,6 +939,7 @@ async def generate_html_report(
     return output_path
 
 
+@_clean_inputs
 async def generate_excel_report(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -923,7 +993,7 @@ async def generate_excel_report(
     # Sheet 1: Summary
     ws_summary = wb.create_sheet("Summary")
     ws_summary.append(["NETRA Security Report - Summary"])
-    ws_summary.append(["Scan Name", scan_data.get("name", "Unknown")])
+    ws_summary.append(["Scan Name", _cell(scan_data.get("name", "Unknown"))])
     ws_summary.append(["Target", scan_data.get("target", "N/A")])
     ws_summary.append(["Date", scan_data.get("created_at", "N/A")])
     ws_summary.append(["Profile", scan_data.get("profile", "standard")])
@@ -943,25 +1013,35 @@ async def generate_excel_report(
     for i, f in enumerate(findings, 1):
         ws_findings.append(
             [
-                i,
-                f.get("severity", "info").upper(),
-                f.get("title", ""),
-                f.get("url", ""),
-                f.get("cwe_id", ""),
-                ", ".join(f.get("cve_ids", [])),
-                f.get("tool_source", ""),
-                f.get("description", "")[:32000],  # Excel limit
+                _cell(v)
+                for v in (
+                    i,
+                    str(f.get("severity") or "info").upper(),
+                    f.get("title") or "",
+                    f.get("url") or "",
+                    f.get("cwe_id") or "",
+                    ", ".join(f.get("cve_ids") or []),
+                    f.get("tool_source") or "",
+                    (f.get("description") or "")[:32000],  # Excel limit
+                )
             ]
         )
 
     # Sheet 3: Compliance
     ws_compliance = wb.create_sheet("Compliance")
-    ws_compliance.append(["Framework", "Control", "Status", "Finding", "Severity"])
+    # A CWE is a weakness class, not a control of any framework: list it as such. (This sheet
+    # used to label every CWE an ISO 27001 control with status "Fail", which no data supports.)
+    ws_compliance.append(["Weakness (CWE)", "Finding", "Severity", "Note"])
     for f in findings:
-        cwe = f.get("cwe_id", "")
+        cwe = f.get("cwe_id") or ""
         if cwe:
             ws_compliance.append(
-                ["ISO 27001", cwe, "Fail", f.get("title", ""), f.get("severity", "")]
+                [
+                    _cell(cwe),
+                    _cell(f.get("title") or ""),
+                    f.get("severity") or "",
+                    "Framework control mapping needs analyst review",
+                ]
             )
 
     # Sheet 4: Assets
@@ -971,7 +1051,7 @@ async def generate_excel_report(
     for f in findings:
         url = f.get("url", "")
         if url and url not in assets_seen:
-            ws_assets.append(["URL", url, f.get("tool_source", "")])
+            ws_assets.append(["URL", _cell(url), f.get("tool_source", "")])
             assets_seen.add(url)
 
     # Sheet 5: Timeline
@@ -1033,6 +1113,7 @@ async def generate_excel_report(
     return output_path
 
 
+@_clean_inputs
 async def generate_evidence_zip(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -1129,6 +1210,7 @@ All files are hashed with SHA256. See manifest.json for hashes.
     return output_path
 
 
+@_clean_inputs
 async def generate_delta_report(
     scan_a_data: dict[str, Any],
     scan_b_data: dict[str, Any],
@@ -1198,7 +1280,7 @@ async def generate_delta_report(
 
     elements.append(
         Paragraph(
-            f"Comparing: {scan_a_data.get('name', 'A')} → {scan_b_data.get('name', 'B')}",
+            f"Comparing: {_x(scan_a_data.get('name', 'A'))} → {_x(scan_b_data.get('name', 'B'))}",
             styles["Normal"],
         )
     )
@@ -1230,7 +1312,7 @@ async def generate_delta_report(
     for i, f in enumerate(new_findings[:20], 1):
         elements.append(
             Paragraph(
-                f"{i}. [{f.get('severity', 'info').upper()}] {f.get('title', 'Unknown')[:80]}",
+                f"{i}. [{_x(str(f.get('severity', 'info')).upper())}] {_x(str(f.get('title', 'Unknown'))[:80])}",
                 styles["Normal"],
             )
         )
@@ -1244,7 +1326,7 @@ async def generate_delta_report(
     for i, f in enumerate(resolved_findings[:20], 1):
         elements.append(
             Paragraph(
-                f"{i}. [{f.get('severity', 'info').upper()}] {f.get('title', 'Unknown')[:80]}",
+                f"{i}. [{_x(str(f.get('severity', 'info')).upper())}] {_x(str(f.get('title', 'Unknown'))[:80])}",
                 styles["Normal"],
             )
         )
@@ -1256,6 +1338,7 @@ async def generate_delta_report(
     return output_path
 
 
+@_clean_inputs
 async def generate_api_report(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -1279,6 +1362,7 @@ async def generate_api_report(
     return await generate_pentest_report(scan_data, api_findings or findings, output_path)
 
 
+@_clean_inputs
 async def generate_cloud_report(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -1299,6 +1383,7 @@ async def generate_cloud_report(
     return await generate_pentest_report(scan_data, cloud_findings or findings, output_path)
 
 
+@_clean_inputs
 async def generate_compliance_report(
     framework: str,
     scan_data: dict[str, Any],
@@ -1332,9 +1417,9 @@ async def generate_compliance_report(
     elements = []
 
     # Title
-    elements.append(Paragraph(f"{framework.upper()} Compliance Report", styles["Title"]))
+    elements.append(Paragraph(f"{_x(framework.upper())} Compliance Report", styles["Title"]))
     elements.append(Spacer(1, 0.2 * inch))
-    elements.append(Paragraph(f"Scan: {scan_data.get('name', 'Unknown')}", styles["Normal"]))
+    elements.append(Paragraph(f"Scan: {_x(scan_data.get('name', 'Unknown'))}", styles["Normal"]))
     elements.append(Spacer(1, 0.3 * inch))
 
     # Score
@@ -1376,6 +1461,7 @@ async def generate_compliance_report(
     return output_path
 
 
+@_clean_inputs
 async def generate_full_report(
     scan_data: dict[str, Any],
     findings: list[dict[str, Any]],
@@ -1410,7 +1496,7 @@ async def generate_full_report(
 
     # Executive Summary Section
     elements.append(Paragraph("NETRA Full Security Report", styles["Title"]))
-    elements.append(Paragraph(f"Scan: {scan_data.get('name', 'Unknown')}", styles["Normal"]))
+    elements.append(Paragraph(f"Scan: {_x(scan_data.get('name', 'Unknown'))}", styles["Normal"]))
     elements.append(Spacer(1, 0.3 * inch))
 
     severity_counts = _count_severities(findings)
@@ -1447,7 +1533,7 @@ async def generate_full_report(
             for i, f in enumerate(sev_findings[:10], 1):
                 elements.append(
                     Paragraph(
-                        f"{i}. {f.get('title', 'Unknown')[:80]}",
+                        f"{i}. {_x(str(f.get('title', 'Unknown'))[:80])}",
                         styles["Normal"],
                     )
                 )

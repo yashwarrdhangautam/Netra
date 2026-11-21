@@ -73,3 +73,5 @@ CMD ["celery", "-A", "netra.worker.celery_app", "worker", "--loglevel=info"]
 # Declared last so changing it does not invalidate the build cache.
 ARG NETRA_REVISION=unknown
 LABEL org.opencontainers.image.revision=$NETRA_REVISION
+# Reports record which build produced them.
+ENV NETRA_REVISION=$NETRA_REVISION

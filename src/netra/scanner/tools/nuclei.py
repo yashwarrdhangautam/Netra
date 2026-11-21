@@ -7,6 +7,9 @@ Every non-empty output line must be a JSON object. A line that is not one makes 
 from __future__ import annotations
 
 import json
+import re
+from datetime import UTC, datetime
+from pathlib import Path
 
 from netra.core.config import settings
 from netra.scanner.tools.base import CliTool, ToolResult
@@ -17,6 +20,13 @@ from netra.scanner.tools.template_pin import template_args
 HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE", "CONNECT")
 # Tags never run in a vulnerability scan: they change state, flood, or fuzz the target.
 NON_EXPLOIT_EXCLUDE_TAGS = ("intrusive", "dos", "fuzz")
+
+# Nuclei's default (30) drops a host after 30 request errors. At a 1 rps grant a healthy but
+# slow site reaches that on a handful of slow paths (scan 47b5dfc4 lost its main host this way
+# while nikto later ran fine), so the limit is raised. A host that is really down still stops.
+MAX_HOST_ERRORS = 100
+# Progress line interval (seconds); one JSON line on stderr each time, well under the output cap.
+STATS_INTERVAL = 60
 
 # Nuclei drops a host after repeated errors and still exits 0 with no output, which would
 # read as "tested, nothing found". This line is how that case is recognised.
@@ -30,6 +40,44 @@ def method_condition(allowed_methods: list[str] | tuple[str, ...]) -> str | None
     if not denied:
         return None
     return " && ".join(f'!contains(http_method, "{m}")' for m in denied)
+
+
+def last_stats(stderr: str) -> dict[str, int] | None:
+    """The latest -stats-json progress line: requests sent, total planned, percent, errors."""
+    for line in reversed(stderr.splitlines()):
+        line = line.strip()
+        if not (line.startswith("{") and '"requests"' in line):
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        out = {}
+        for key in ("requests", "total", "percent", "errors", "matched"):
+            try:
+                out[key] = int(str(row.get(key, "")).strip())
+            except ValueError:
+                pass
+        return out or None
+    return None
+
+
+def save_artifacts(work_dir: Path | None, target: str, result: ToolResult) -> list[dict]:
+    """Keep raw stdout/stderr beside the phase so a stopped or empty run can be explained."""
+    if work_dir is None:
+        return []
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    host = re.sub(r"[^A-Za-z0-9._-]+", "_", target)[:80]
+    saved = []
+    for kind, text in (
+        ("stdout", result.raw_output or ""),
+        ("stderr", str(result.metadata.get("stderr") or "")),
+    ):
+        name = f"nuclei-{host}-{stamp}.{kind}.{'jsonl' if kind == 'stdout' else 'log'}"
+        path = work_dir / name
+        path.write_text(text, encoding="utf-8")
+        saved.append({"kind": kind, "name": name, "path": str(path), "bytes": path.stat().st_size})
+    return saved
 
 
 def parse_nuclei_output(result: ToolResult) -> ToolResult:
@@ -113,6 +161,13 @@ class NucleiTool(CliTool):
             "10",
             # No update check or template download at start: the run uses the pinned set.
             "-disable-update-check",
+            "-max-host-error",
+            str(MAX_HOST_ERRORS),
+            # Progress as JSON lines on stderr: how far a long run got, even if it stops.
+            "-stats",
+            "-stats-json",
+            "-stats-interval",
+            str(STATS_INTERVAL),
         ]
         if protocol_types:
             args += ["-type", ",".join(protocol_types)]
@@ -131,4 +186,11 @@ class NucleiTool(CliTool):
             # Default: use the pinned template checkout when it is present.
             args += template_args(settings.tools_dir)
         result = await self._exec(args, timeout=timeout)
+        metadata = dict(result.metadata or {})
+        progress = last_stats(str(metadata.get("stderr") or ""))
+        try:
+            artifacts = save_artifacts(self.work_dir, target, result)
+        except OSError:
+            artifacts = []  # a full disk must not turn a finished scan into a crash
+        result.metadata = {**metadata, "progress": progress, "artifacts": artifacts}
         return parse_nuclei_output(result)

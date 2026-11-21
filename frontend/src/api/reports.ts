@@ -13,6 +13,36 @@ export type ReportType =
   | 'cloud' 
   | 'compliance' 
   | 'full'
+  | 'assessment_pdf'
+  | 'assessment_json'
+  | 'findings_csv'
+  | 'sarif'
+
+/** File extension per report type. Downloads used to be saved as .bin for PDF/Word/ZIP. */
+export const REPORT_EXTENSIONS: Record<string, string> = {
+  executive: 'pdf',
+  technical: 'docx',
+  pentest: 'pdf',
+  html: 'html',
+  excel: 'xlsx',
+  evidence: 'zip',
+  delta: 'pdf',
+  api: 'pdf',
+  cloud: 'pdf',
+  compliance: 'pdf',
+  full: 'pdf',
+  assessment_pdf: 'pdf',
+  assessment_json: 'json',
+  findings_csv: 'csv',
+  sarif: 'sarif',
+}
+
+/** Download name: the server's file extension when known, else the type's. */
+export function reportFilename(row: { id: string; report_type: string; file_path?: string | null }): string {
+  const fromPath = row.file_path?.match(/\.([a-z0-9]{2,6})$/i)?.[1]?.toLowerCase()
+  const ext = fromPath ?? REPORT_EXTENSIONS[row.report_type] ?? 'bin'
+  return `netra-${row.report_type}-${row.id.slice(0, 8)}.${ext}`
+}
 
 export const reportsApi = {
   /** Generate a report for a scan */

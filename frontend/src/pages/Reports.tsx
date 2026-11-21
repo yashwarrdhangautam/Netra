@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { reportsApi, type ReportType } from '@/api/reports'
+import { useSearch } from '@tanstack/react-router'
+import { reportFilename, reportsApi, type ReportType } from '@/api/reports'
 import { reportFilesApi } from '@/api/platform'
 import { scansApi } from '@/api/scans'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -9,6 +10,10 @@ import { NotificationBanner, type BannerMessage } from '@/components/shared/Noti
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 
 const reportTypes: { value: ReportType; label: string; description: string }[] = [
+  { value: 'assessment_pdf', label: 'Assessment PDF', description: 'Scope, methodology, tool execution, coverage, findings, limitations' },
+  { value: 'assessment_json', label: 'Assessment JSON', description: 'The same report as structured data' },
+  { value: 'findings_csv', label: 'Findings CSV', description: 'Findings with CWE, OWASP and remediation' },
+  { value: 'sarif', label: 'SARIF', description: 'For code-scanning dashboards' },
   { value: 'executive', label: 'Executive', description: 'Short PDF summary for leadership' },
   { value: 'technical', label: 'Technical', description: 'Detailed Word document' },
   { value: 'pentest', label: 'Pentest', description: 'Pentest deliverable (PDF)' },
@@ -29,6 +34,7 @@ interface ReportRow {
   status: string
   file_path?: string | null
   file_size?: number | null
+  error_message?: string | null
   created_at: string
 }
 
@@ -39,8 +45,9 @@ function errorText(err: unknown, fallback: string): string {
 
 export function Reports() {
   const queryClient = useQueryClient()
-  const [scanId, setScanId] = useState('')
-  const [selectedType, setSelectedType] = useState<ReportType>('executive')
+  const search = useSearch({ from: '/reports' }) as { scan_id?: string }
+  const [scanId, setScanId] = useState(search.scan_id ?? '')
+  const [selectedType, setSelectedType] = useState<ReportType>('assessment_pdf')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<BannerMessage | null>(null)
 
@@ -76,9 +83,9 @@ export function Reports() {
   }
 
   const download = async (row: ReportRow) => {
-    const ext = row.report_type === 'excel' ? 'xlsx' : row.report_type === 'html' ? 'html' : 'bin'
     try {
-      await reportFilesApi.download(row.id, `netra-${row.report_type}-${row.id.slice(0, 8)}.${ext}`)
+      // Real extension (pdf, docx, zip, …): downloads used to be saved as .bin.
+      await reportFilesApi.download(row.id, reportFilename(row))
     } catch (err) {
       setMessage({ type: 'error', text: errorText(err, 'The report file is not available.') })
     }
@@ -170,7 +177,7 @@ export function Reports() {
                           Download
                         </Button>
                       ) : row.status === 'failed' ? (
-                        <span className="text-xs text-red-400">Failed</span>
+                        <span className="text-xs text-red-400">Failed: {row.error_message ?? 'unknown error'}</span>
                       ) : (
                         <span className="text-xs text-muted-foreground">Working…</span>
                       )}

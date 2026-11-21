@@ -48,3 +48,5 @@ CMD ["uvicorn", "netra.api.app:create_app", "--factory", "--host", "0.0.0.0", "-
 # Declared last so changing it does not invalidate the build cache.
 ARG NETRA_REVISION=unknown
 LABEL org.opencontainers.image.revision=$NETRA_REVISION
+# Reports record which build produced them.
+ENV NETRA_REVISION=$NETRA_REVISION

@@ -213,6 +213,13 @@ def _record_run(runs: list[dict], tool: str, target: str, result: Any) -> None:
             if state == "completed"
             else None,
             "truncated": truncated,
+            # How far the tool got (nuclei -stats) and where its raw output was saved.
+            "progress": metadata.get("progress"),
+            "artifacts": [
+                {k: a.get(k) for k in ("kind", "name", "bytes")}
+                for a in (metadata.get("artifacts") or [])
+                if isinstance(a, dict)
+            ],
         }
     )
 
@@ -657,7 +664,23 @@ _NUCLEI_SHARE_WITH_NIKTO = 0.70
 # application there, so it gets a short nuclei pass with these tags and no nikto. Its runs are
 # marked light_scan in coverage, so it never reads as fully tested.
 LIGHT_SCAN_TAGS = "misconfig,exposure,tech"
+# Minimum light-pass budget. The real budget follows the granted rate: the light set without
+# info severity is ~1,470 templates, ~4,500 requests (measured on the lab). Scan 47b5dfc4 ran it
+# with info included (3,135 templates) in a fixed 30 minutes at 1 rps, so it timed out.
 LIGHT_SCAN_TIMEOUT = 1800
+LIGHT_SCAN_REQUESTS = 4500
+LIGHT_SCAN_MAX = 7200
+
+
+def _light_timeout(rate: int) -> int:
+    """Seconds for one light pass at the granted rate, with 25% headroom, within 30-120 min."""
+    return max(
+        LIGHT_SCAN_TIMEOUT, min(LIGHT_SCAN_MAX, int(LIGHT_SCAN_REQUESTS / max(1, rate) * 1.25))
+    )
+
+
+def _without_info(severity: str) -> str:
+    return ",".join(s for s in severity.split(",") if s != "info") or severity
 
 
 # Fast mode (scan config tech_targeted): nuclei runs this baseline plus the tags for the
@@ -735,7 +758,9 @@ def _host_status(previous_result: dict, checkpoint: dict) -> dict[str, Any]:
     }
 
 
-def _record_skipped(runs: list[dict], tool: str, target: str, reason: str) -> None:
+def _record_skipped(
+    runs: list[dict], tool: str, target: str, reason: str, detail: str | None = None
+) -> None:
     """A tool deliberately not run on a host: visible in coverage with its reason."""
     runs.append(
         {
@@ -745,6 +770,7 @@ def _record_skipped(runs: list[dict], tool: str, target: str, reason: str) -> No
             "error": None,
             "state": "skipped",
             "reason_code": reason,
+            "detail": detail,
             "findings_count": 0,
             "truncated": False,
         }
@@ -850,9 +876,13 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
         full_hosts, light_hosts = _split_hosts(
             live_hosts[:50], _host_status(previous_result, scan.checkpoint_data or {})
         )
+        if overrides.get("full_scan_4xx_hosts") is True:
+            # Explicit opt-out: a 4xx root can still serve an application on deeper paths.
+            full_hosts, light_hosts = full_hosts + light_hosts, []
         nikto_enabled = bool(profile.get("use_nikto")) and bool(overrides.get("use_nikto", True))
         nikto_hosts = full_hosts[:10] if nikto_enabled else []
-        reserved = LIGHT_SCAN_TIMEOUT * len(light_hosts)
+        light_timeout = _light_timeout(rate_limit)
+        reserved = light_timeout * len(light_hosts)
         nuclei_timeout = _nuclei_timeout(len(full_hosts), len(nikto_hosts), reserved)
         tech_targeted = overrides.get("tech_targeted") is True
         host_tech = _host_tech(previous_result, scan.checkpoint_data or {})
@@ -863,18 +893,19 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
             reason: str | None = None
             if light:
                 tags, reason = LIGHT_SCAN_TAGS, "light_scan_4xx_root"
+                run_severity = _without_info(severity)
             elif tech_targeted:
                 tags = ",".join(
                     [TECH_BASELINE_TAGS, *_tech_tags(list(host_tech.get(target) or []))]
                 )
-                run_severity = ",".join(s for s in severity.split(",") if s != "info") or severity
+                run_severity = _without_info(severity)
                 reason = "tech_targeted"
             await _require_action(db, scan, target, "vulnerability_scan", "GET")
             run = await nuclei.run(
                 target,
                 severity=run_severity,
                 rate_limit=rate_limit,
-                timeout=LIGHT_SCAN_TIMEOUT if light else nuclei_timeout,
+                timeout=light_timeout if light else nuclei_timeout,
                 tags=tags,
                 **_nuclei_grant_args(record),
             )
@@ -887,8 +918,16 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
             _record_run(runs, "nuclei", target, run)
             total_findings += await _persist_findings(db, scan_id, "nuclei", run.findings)
         if nikto_enabled:
+            status = _host_status(previous_result, scan.checkpoint_data or {})
             for target in light_hosts[:10]:
-                _record_skipped(runs, "nikto", target, "light_scan_4xx_root")
+                _record_skipped(
+                    runs,
+                    "nikto",
+                    target,
+                    "light_scan_4xx_root",
+                    detail=f"root returned HTTP {status.get(target)}; set full_scan_4xx_hosts "
+                    "to test this host in full",
+                )
         # Nikto runs only grant-allowed, non-exploit tests at the granted rate (see nikto.py).
         nikto = NiktoTool(work_dir=_phase_dir(scan_id, "vuln_scan") / "nikto")
         nikto_timeout = _nikto_timeout(len(nikto_hosts), reserved)

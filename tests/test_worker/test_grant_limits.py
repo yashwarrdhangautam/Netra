@@ -293,16 +293,19 @@ async def test_4xx_root_host_gets_light_nuclei_and_no_nikto(monkeypatch) -> None
 
     nuclei = {t: kw for n, t, kw in calls if n == "nuclei"}
     assert nuclei["http://a:80"]["tags"] == tasks.LIGHT_SCAN_TAGS
-    assert nuclei["http://a:80"]["timeout"] == tasks.LIGHT_SCAN_TIMEOUT
+    assert nuclei["http://a:80"]["timeout"] == tasks._light_timeout(1)
+    # The light pass never inherits info severity (it doubled the template count).
+    assert "info" not in nuclei["http://a:80"]["severity"].split(",")
     assert nuclei["https://a:443"]["tags"] is None
     assert nuclei["https://a:443"]["timeout"] == tasks._nuclei_timeout(
-        1, nikto_hosts=1, reserved=tasks.LIGHT_SCAN_TIMEOUT
+        1, nikto_hosts=1, reserved=tasks._light_timeout(1)
     )
     assert [t for n, t, _ in calls if n == "nikto"] == ["https://a:443"]
     by_target = {(r["tool"], r["target"]): r for r in result["runs"]}
     assert by_target[("nuclei", "http://a:80")]["reason_code"] == "light_scan_4xx_root"
     assert by_target[("nikto", "http://a:80")]["state"] == "skipped"
     assert by_target[("nikto", "http://a:80")]["reason_code"] == "light_scan_4xx_root"
+    assert "HTTP 404" in by_target[("nikto", "http://a:80")]["detail"]
 
 
 def test_tech_tags_from_httpx_names() -> None:
@@ -405,3 +408,52 @@ async def test_default_scan_stays_full_template_set(monkeypatch) -> None:
     await tasks._execute_vuln_scan(FakeDb(), uuid.uuid4(), previous)
     assert calls[0]["tags"] is None
     assert calls[0]["severity"] == "critical,high,medium,low,info"
+
+
+def test_light_timeout_follows_the_granted_rate() -> None:
+    assert tasks._light_timeout(1) == 5625  # ~4,500 requests at 1 rps plus 25%
+    assert tasks._light_timeout(10) == tasks.LIGHT_SCAN_TIMEOUT  # never below 30 min
+    assert tasks._light_timeout(0) <= tasks.LIGHT_SCAN_MAX
+
+
+async def test_full_scan_4xx_hosts_opt_out(monkeypatch) -> None:
+    calls: list[tuple[str, str, dict]] = []
+
+    def fake(name):
+        class Fake:
+            def __init__(self, work_dir=None):
+                pass
+
+            async def run(self, target, **kwargs):
+                calls.append((name, target, kwargs))
+                return ToolResult(tool_name=name, success=True, metadata={"state": "completed"})
+
+        return Fake
+
+    record = SimpleNamespace(
+        max_requests_per_second=1, http_methods={"GET", "HEAD"}, ports=[80, 443]
+    )
+    scan = SimpleNamespace(
+        profile="deep", config={"full_scan_4xx_hosts": True}, checkpoint_data={}, target=None
+    )
+
+    async def fake_auth(db, scan_id):
+        return scan, None, record, None
+
+    async def nothing(*args, **kwargs):
+        return 0
+
+    class FakeDb:
+        async def execute(self, *_):
+            return SimpleNamespace(scalar_one_or_none=lambda: scan)
+
+    monkeypatch.setattr(tasks, "require_scan_authorization", fake_auth)
+    monkeypatch.setattr(tasks, "_require_action", nothing)
+    monkeypatch.setattr(tasks, "_persist_findings", nothing)
+    monkeypatch.setattr(tasks, "NucleiTool", fake("nuclei"))
+    monkeypatch.setattr(tasks, "NiktoTool", fake("nikto"))
+    previous = {"live_hosts": ["http://a:80"], "host_status": {"http://a:80": 404}}
+    await tasks._execute_vuln_scan(FakeDb(), uuid.uuid4(), previous)
+    nuclei = {t: kw for n, t, kw in calls if n == "nuclei"}
+    assert nuclei["http://a:80"]["tags"] is None
+    assert [t for n, t, _ in calls if n == "nikto"] == ["http://a:80"]

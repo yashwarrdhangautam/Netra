@@ -126,3 +126,31 @@ async def test_tags_filter_inside_the_pinned_template_set(monkeypatch):
     args = seen["args"]
     assert args[args.index("-tags") + 1] == "misconfig,exposure,tech"
     assert args[args.index("-templates") + 1] == "/pinned"
+
+
+async def test_run_tolerates_slow_hosts_and_reports_progress(monkeypatch, tmp_path) -> None:
+    seen: list[list[str]] = []
+    stats = '{"requests":"4033","total":"10776","percent":"37","errors":"12","matched":"1"}'
+
+    async def fake_exec(self, args, **kwargs):
+        seen.append(args)
+        return ToolResult(
+            tool_name="nuclei",
+            success=True,
+            raw_output='{"template-id":"x","info":{"name":"X","severity":"info"}}\n',
+            metadata={"stderr": f"[INF] start\n{stats}\n", "state": "completed"},
+        )
+
+    monkeypatch.setattr(NucleiTool, "_exec", fake_exec)
+    result = await NucleiTool(work_dir=tmp_path).run("https://a.example.org:443", rate_limit=1)
+    args = seen[0]
+    # A healthy site answering slowly at 1 rps must not be dropped after 30 errors.
+    assert args[args.index("-max-host-error") + 1] == "100"
+    assert "-stats" in args and "-stats-json" in args
+    progress = result.metadata["progress"]
+    assert progress == {"requests": 4033, "total": 10776, "percent": 37, "errors": 12, "matched": 1}
+    # Raw output is kept as artifacts next to the phase, for later diagnosis.
+    artifacts = result.metadata["artifacts"]
+    assert {a["kind"] for a in artifacts} == {"stdout", "stderr"}
+    for a in artifacts:
+        assert (tmp_path / a["name"]).exists()

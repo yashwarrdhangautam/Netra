@@ -125,3 +125,26 @@ async def test_finding_status_change_audits_old_and_new(db_session):
         await db_session.scalars(select(AuditLog).where(AuditLog.action == "finding.update"))
     ).one()
     assert row.detail["changes"] == {"status": ["new", "needs_review"]}
+
+
+async def test_finding_history_lists_audited_changes(db_session):
+    target = Target(name="hist", target_type="domain", value="hist.example.net")
+    db_session.add(target)
+    await db_session.flush()
+    scan = Scan(name="hist", target_id=target.id, profile="quick")
+    db_session.add(scan)
+    await db_session.flush()
+    finding = Finding(
+        scan_id=scan.id, title="t", description="d", severity="low", tool_source="fixture"
+    )
+    db_session.add(finding)
+    await db_session.commit()
+    async with api(db_session, UserRole.ANALYST) as client:
+        await client.patch(f"/api/v1/findings/{finding.id}", json={"status": "confirmed"})
+        await client.patch(f"/api/v1/findings/{finding.id}", json={"severity": "medium"})
+        history = (await client.get(f"/api/v1/findings/{finding.id}/history")).json()
+    assert [h["changes"] for h in history] == [
+        {"status": ["new", "confirmed"]},
+        {"severity": ["low", "medium"]},
+    ]
+    assert history[0]["actor"] == "analyst@example.org"

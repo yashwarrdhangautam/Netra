@@ -47,12 +47,14 @@ PROGRAM_ID = ("program_id", "UUID string", _is_uuid)
 # Fast mode: nuclei runs the templates for the technology httpx detected plus a fixed
 # baseline, instead of the whole set. Runs are marked tech_targeted in coverage.
 TECH_TARGETED = ("tech_targeted", "boolean", _is_bool)
+# Test hosts whose root answers 4xx in full instead of the light pass.
+FULL_SCAN_4XX = ("full_scan_4xx_hosts", "boolean", _is_bool)
 
 _BOUNTY_KEYS = (RATE_LIMIT, ENABLE_NUCLEI, AGENTIC, PROGRAM_ID)
 
 # Profiles without a dedicated configuration get the general keys only.
 _GENERAL_KEYS = (RATE_LIMIT, TEST_SQLI)
-_WEB_KEYS = (RATE_LIMIT, TEST_SQLI, TECH_TARGETED)
+_WEB_KEYS = (RATE_LIMIT, TEST_SQLI, TECH_TARGETED, FULL_SCAN_4XX)
 
 PROFILE_KEYS: dict[str, tuple[tuple[str, str, Callable[[Any], bool]], ...]] = {
     ScanProfile.QUICK: _WEB_KEYS,

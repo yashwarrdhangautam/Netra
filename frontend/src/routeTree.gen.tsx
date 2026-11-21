@@ -28,6 +28,7 @@ import { BBSubmissionDetail } from '@/pages/bb/BBSubmissionDetail'
 import { BBHuntDetail } from '@/pages/bb/BBHuntDetail'
 import { BBSettings } from '@/pages/bb/BBSettings'
 import { Schedules } from '@/pages/Schedules'
+import { parseFindingSearch } from '@/utils/findingSearch'
 import { Audit } from '@/pages/Audit'
 import { ResetPassword } from '@/pages/ResetPassword'
 
@@ -77,18 +78,24 @@ const findingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/findings',
   component: FindingsList,
+  // Filters live in the URL so a scan's findings view survives navigation and can be shared.
+  validateSearch: parseFindingSearch,
 })
 
 const findingDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/findings/$findingId',
   component: FindingDetail,
+  validateSearch: parseFindingSearch,
 })
 
 const reportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/reports',
   component: Reports,
+  validateSearch: (search: Record<string, unknown>): { scan_id?: string } => ({
+    scan_id: typeof search.scan_id === 'string' ? search.scan_id : undefined,
+  }),
 })
 
 const complianceRoute = createRoute({

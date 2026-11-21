@@ -1,9 +1,14 @@
 """Report routes for generating security reports."""
 
+import asyncio
+import json
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Annotated
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy import select
@@ -13,6 +18,7 @@ from sqlalchemy.orm import selectinload
 from netra.api.deps import get_db_session
 from netra.api.routes.auth import get_current_active_user
 from netra.api.scope import apply, can_see_scan, report_filter
+from netra.core.config import settings
 from netra.db.models.finding import Finding
 from netra.db.models.report import Report, ReportStatus, ReportType
 from netra.db.models.scan import Scan
@@ -20,11 +26,71 @@ from netra.db.models.user import User
 from netra.schemas.report import ReportResponse
 
 router = APIRouter()
+logger = structlog.get_logger()
+
+
+def _render_sarif(data: dict) -> Path:
+    from netra.reports.sarif import build_sarif
+
+    rows = [SimpleNamespace(**{**f, "tool_source": f["tool"]}) for f in data["findings"]]
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = settings.reports_dir / f"sarif_{data['scan']['id']}_{stamp}.sarif"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(build_sarif(rows), indent=2), encoding="utf-8")
+    return path
+
+
+def _assessment_renderers() -> dict:
+    """Report types built from the assessment data model (imported lazily: reportlab)."""
+    from netra.services.assessment_report import render_csv, render_json, render_pdf
+
+    return {
+        ReportType.ASSESSMENT_PDF: render_pdf,
+        ReportType.ASSESSMENT_JSON: render_json,
+        ReportType.FINDINGS_CSV: render_csv,
+        ReportType.SARIF: _render_sarif,
+    }
+
+
+_MEDIA = {
+    ".pdf": "application/pdf",
+    ".json": "application/json",
+    ".csv": "text/csv",
+    ".sarif": "application/sarif+json",
+    ".html": "text/html",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".zip": "application/zip",
+}
+
+
+# Background report jobs. asyncio only keeps weak references to tasks, so an unreferenced
+# job could be garbage-collected mid-run and leave its report "generating" forever.
+_JOBS: set[asyncio.Task] = set()
+# A job still "generating" after this long was lost (e.g. the API restarted mid-job).
+STALE_AFTER = timedelta(minutes=15)
+
+
+async def _expire_stale(db: AsyncSession) -> None:
+    cutoff = datetime.now(UTC) - STALE_AFTER
+    stale = (
+        await db.scalars(
+            select(Report).where(
+                Report.status == ReportStatus.GENERATING, Report.created_at < cutoff
+            )
+        )
+    ).all()
+    for report in stale:
+        report.status = ReportStatus.FAILED
+        report.error_message = "Report job was interrupted (the API restarted). Generate it again."
+    if stale:
+        await db.commit()
 
 
 @router.post("/{scan_id}/generate", response_model=ReportResponse)
 async def generate_report(
     scan_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
     report_type: ReportType = Query(...),
     db: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
@@ -40,7 +106,7 @@ async def generate_report(
     """
     # Verify scan exists
     scan = await db.get(Scan, scan_id)
-    if not scan:
+    if not scan or not await can_see_scan(db, current_user, scan_id):
         raise HTTPException(status_code=404, detail="Scan not found")
 
     # Create report record
@@ -53,11 +119,10 @@ async def generate_report(
     await db.commit()
     await db.refresh(report)
 
-    # Generate report in background
-    import asyncio
-
     # The request session closes when the response is sent, so the task gets only IDs.
-    asyncio.create_task(_generate_report_async(report.id, scan.id))
+    task = asyncio.create_task(_generate_report_async(report.id, scan.id))
+    _JOBS.add(task)
+    task.add_done_callback(_JOBS.discard)
 
     return ReportResponse.model_validate(report)
 
@@ -94,6 +159,27 @@ async def _build_report(db: AsyncSession, report: Report, scan: Scan) -> None:
             generate_pentest_report,
             generate_technical_report,
         )
+
+        renderers = _assessment_renderers()
+        if report.report_type in renderers:
+            from netra.services.assessment_report import build_assessment
+
+            data = await build_assessment(db, scan.id)
+            path = await asyncio.to_thread(renderers[report.report_type], data)
+            report.file_path = str(path)
+            report.file_size = path.stat().st_size
+            # What the report was built from, so a later change never rewrites its meaning.
+            report.config = {
+                "built_from": {
+                    "scan_status": data["scan"]["status"],
+                    "coverage_outcome": data["coverage"]["outcome"],
+                    "findings": data["summary"]["total"],
+                    "netra_revision": data["report"]["netra_revision"],
+                }
+            }
+            report.status = ReportStatus.COMPLETED
+            await db.commit()
+            return
 
         # Get findings
         result = await db.execute(select(Finding).where(Finding.scan_id == scan.id))
@@ -176,8 +262,10 @@ async def _build_report(db: AsyncSession, report: Report, scan: Scan) -> None:
             report.file_size = os.path.getsize(output_path)
 
     except Exception as e:
+        await db.rollback()
         report.status = ReportStatus.FAILED
-        report.error_message = str(e)
+        report.error_message = f"{type(e).__name__}: {e}"[:2000]
+        logger.error("report_failed", report_id=str(report.id), error=report.error_message)
 
     await db.commit()
 
@@ -189,6 +277,7 @@ async def list_reports(
     limit: int = Query(100, ge=1, le=500),
 ) -> list[ReportResponse]:
     """All reports, newest first. The GUI report history uses this."""
+    await _expire_stale(db)
     result = await db.execute(
         apply(select(Report), report_filter(current_user))
         .order_by(Report.created_at.desc())
@@ -214,7 +303,7 @@ async def download_report(
     path = Path(report.file_path)
     if not path.is_file():
         raise HTTPException(status_code=410, detail="Report file is no longer on disk")
-    return FileResponse(path, filename=path.name)
+    return FileResponse(path, filename=path.name, media_type=_MEDIA.get(path.suffix.lower()))
 
 
 @router.get("/{report_id}", response_model=ReportResponse)
@@ -273,6 +362,7 @@ async def list_reports_for_scan(
     """
     if not await can_see_scan(db, current_user, scan_id):
         raise HTTPException(status_code=404, detail="Scan not found")
+    await _expire_stale(db)
     result = await db.execute(
         select(Report).where(Report.scan_id == scan_id).order_by(Report.created_at.desc())
     )
@@ -284,6 +374,7 @@ async def list_reports_for_scan(
 @router.delete("/{report_id}", status_code=204)
 async def delete_report(
     report_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a report.
@@ -293,7 +384,7 @@ async def delete_report(
         db: Database session
     """
     report = await db.get(Report, report_id)
-    if not report:
+    if not report or not await can_see_scan(db, current_user, report.scan_id):
         raise HTTPException(status_code=404, detail="Report not found")
 
     # Delete file if exists

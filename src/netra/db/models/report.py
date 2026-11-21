@@ -28,6 +28,11 @@ class ReportType(StrEnum):
     API = "api"
     CLOUD = "cloud"
     FULL = "full"
+    # Security assessment built from stored scan records (coverage, tool runs, limitations).
+    ASSESSMENT_PDF = "assessment_pdf"
+    ASSESSMENT_JSON = "assessment_json"
+    FINDINGS_CSV = "findings_csv"
+    SARIF = "sarif"
 
 
 class ReportStatus(StrEnum):

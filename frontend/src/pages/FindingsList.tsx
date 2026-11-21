@@ -1,56 +1,64 @@
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { findingsApi } from '@/api/findings'
+import { scansApi } from '@/api/scans'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
-import { getSeverityColor } from '@/utils/formatters'
-import type { Finding } from '@/types/findings'
+import { FindingsTable } from '@/components/findings/FindingsTable'
+import type { FindingSearch } from '@/utils/findingSearch'
 
 export function FindingsList() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['findings'],
-    queryFn: () => findingsApi.list({ page: 1, per_page: 50 }),
+  const search = useSearch({ from: '/findings' }) as FindingSearch
+  const navigate = useNavigate({ from: '/findings' })
+  const scanId = search.scan_id
+
+  const { data: scan } = useQuery({
+    queryKey: ['scan', scanId],
+    queryFn: () => scansApi.get(scanId as string),
+    enabled: !!scanId,
+  })
+  const { data: summary } = useQuery({
+    queryKey: ['findings-summary', scanId],
+    queryFn: () => findingsApi.summary(scanId as string),
+    enabled: !!scanId,
   })
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Findings</h1>
+      <div>
+        <h1 className="text-2xl font-bold">Findings</h1>
+        {scanId ? (
+          <p className="text-sm text-muted-foreground">
+            Showing findings from scan{' '}
+            <Link to="/scans/$scanId" params={{ scanId }} className="text-accent underline">
+              {scan?.name ?? scanId.slice(0, 8)}
+            </Link>{' '}
+            only.{' '}
+            <Link to="/findings" search={{}} className="underline">Show all scans</Link>
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            All scans. Open a scan to see only its findings, or filter below.
+          </p>
+        )}
+      </div>
+
+      {summary && (
+        <p className="text-sm text-muted-foreground">
+          {summary.total} stored findings: {summary.actionable} low or higher,{' '}
+          {summary.informational} informational. Severities are the tools' own.
+        </p>
+      )}
 
       <Card>
         <CardHeader>
-          <CardTitle>All Findings ({data?.total || 0})</CardTitle>
+          <CardTitle>{scanId ? 'Scan findings' : 'All findings'}</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Tool</TableHead>
-                  <TableHead>Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.items.map((finding: Finding) => (
-                  <TableRow key={finding.id}>
-                    <TableCell>
-                      <Badge className={getSeverityColor(finding.severity)}>
-                        {finding.severity}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{finding.title}</TableCell>
-                    <TableCell>{finding.status}</TableCell>
-                    <TableCell className="text-muted-foreground">{finding.tool_source}</TableCell>
-                    <TableCell className="text-muted-foreground">{new Date(finding.created_at).toLocaleDateString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <FindingsTable
+            filters={search}
+            tools={summary ? Object.keys(summary.by_tool) : ['nuclei', 'nikto', 'http_analysis', 'passive_posture', 'sqlmap', 'dalfox']}
+            onChange={(next) => navigate({ search: next })}
+          />
         </CardContent>
       </Card>
     </div>

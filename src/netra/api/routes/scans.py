@@ -220,6 +220,63 @@ async def get_scan(
     return await _scan_response(db, scan)
 
 
+@router.get("/{scan_id}/assets")
+async def get_scan_assets(
+    scan_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """What recon found: scope, discovered names, probed hosts with status and technology."""
+    scan = await db.get(Scan, scan_id)
+    if not scan or not await can_see_scan(db, current_user, scan_id):
+        raise HTTPException(status_code=404, detail="Scan not found")
+    target = await db.get(Target, scan.target_id)
+    checkpoint = scan.checkpoint_data or {}
+    policy = (checkpoint.get("authorization_snapshot") or {}).get("policy") or {}
+    host_keys = ("url", "hostname", "status_code", "title", "tech", "protections")
+    return {
+        "target": target.value if target else None,
+        "passive_zone": checkpoint.get("passive_zone"),
+        "passive_names_observed": checkpoint.get("passive_names_observed"),
+        "subdomains_in_scope": checkpoint.get("subdomains") or [],
+        "live_hosts": checkpoint.get("live_hosts") or [],
+        "hosts": [
+            {k: h.get(k) for k in host_keys}
+            for h in (checkpoint.get("http_hosts") or [])
+            if isinstance(h, dict)
+        ],
+        "authorization": {
+            k: policy.get(k)
+            for k in ("allowed_actions", "http_methods", "ports", "max_requests_per_second")
+        },
+    }
+
+
+@router.get("/{scan_id}/owasp-coverage")
+async def get_scan_owasp_coverage(
+    scan_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    """OWASP Top 10:2025 coverage for this scan, from the tool runs that actually happened."""
+    if not await can_see_scan(db, current_user, scan_id):
+        raise HTTPException(status_code=404, detail="Scan not found")
+    from netra.db.models.finding import Finding
+    from netra.services.owasp_coverage import owasp_coverage
+    from netra.services.scan_execution import phase_view, stored_findings_by_phase
+
+    scan = await db.get(Scan, scan_id)
+    phases = list((await db.scalars(select(ScanPhase).where(ScanPhase.scan_id == scan_id))).all())
+    stored = await stored_findings_by_phase(db, scan_id)
+    runs = [r for p in phases for r in phase_view(p, stored).runs]
+    policy = ((scan.checkpoint_data or {}).get("authorization_snapshot") or {}).get("policy") or {}
+    findings = [
+        {"title": f.title, "cwe_id": f.cwe_id, "evidence": f.evidence}
+        for f in (await db.scalars(select(Finding).where(Finding.scan_id == scan_id))).all()
+    ]
+    return owasp_coverage(runs, list(policy.get("allowed_actions") or []), findings)
+
+
 @router.patch("/{scan_id}", response_model=ScanResponse)
 async def update_scan(
     scan_id: uuid.UUID,

@@ -135,3 +135,24 @@ def test_run_status_labels() -> None:
     assert run_status({"state": "unavailable"}) == "not_configured"
     assert run_status({"state": "failed", "reason_code": "timeout"}) == "timed_out"
     assert run_status({"state": "parse_error"}) == "failed"
+
+
+@pytest.mark.asyncio
+async def test_assets_and_owasp_endpoints(client: AsyncClient, finished_scan, db_session) -> None:
+    finished_scan.checkpoint_data = {
+        "live_hosts": ["https://www.example.org:443"],
+        "http_hosts": [
+            {"url": "https://www.example.org:443", "status_code": 200, "tech": ["Nginx"]}
+        ],
+        "authorization_snapshot": {"policy": {"allowed_actions": ["vulnerability_scan"]}},
+    }
+    await db_session.commit()
+    assets = (await client.get(f"/api/v1/scans/{finished_scan.id}/assets")).json()
+    assert assets["hosts"][0]["tech"] == ["Nginx"]
+    assert assets["authorization"]["allowed_actions"] == ["vulnerability_scan"]
+    rows = (await client.get(f"/api/v1/scans/{finished_scan.id}/owasp-coverage")).json()
+    assert [r["id"] for r in rows] == [f"A{i:02d}" for i in range(1, 11)]
+    states = {r["id"]: r["state"] for r in rows}
+    # nuclei failed on one host and timed out on the other; nikto completed.
+    assert states["A02"] == "partially_tested"
+    assert states["A05"] == "not_tested"

@@ -112,6 +112,9 @@ def phase_view(phase: Any, stored: dict[str, int]) -> ScanPhaseResponse:
             "error": r.get("error"),
             # Raw items the tool returned (hosts, subdomains, matches): not stored findings.
             "raw_results": r.get("findings_count"),
+            "detail": r.get("detail"),
+            "progress": r.get("progress"),
+            "artifacts": r.get("artifacts") or [],
         }
         for r in (raw_runs or [])
         if isinstance(r, dict)
