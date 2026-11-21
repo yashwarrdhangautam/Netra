@@ -1,0 +1,90 @@
+[
+  {
+    "Name": "type-arg",
+    "Count": 162
+  },
+  {
+    "Name": "no-untyped-def",
+    "Count": 80
+  },
+  {
+    "Name": "attr-defined",
+    "Count": 46
+  },
+  {
+    "Name": "untyped-decorator",
+    "Count": 39
+  },
+  {
+    "Name": "no-untyped-call",
+    "Count": 31
+  },
+  {
+    "Name": "no-any-return",
+    "Count": 30
+  },
+  {
+    "Name": "arg-type",
+    "Count": 27
+  },
+  {
+    "Name": "return-value",
+    "Count": 14
+  },
+  {
+    "Name": "union-attr",
+    "Count": 13
+  },
+  {
+    "Name": "import-untyped",
+    "Count": 13
+  },
+  {
+    "Name": "assignment",
+    "Count": 7
+  },
+  {
+    "Name": "dict-item",
+    "Count": 6
+  },
+  {
+    "Name": "index",
+    "Count": 5
+  },
+  {
+    "Name": "var-annotated",
+    "Count": 3
+  },
+  {
+    "Name": "unused-ignore",
+    "Count": 3
+  },
+  {
+    "Name": "import-not-found",
+    "Count": 3
+  },
+  {
+    "Name": "operator",
+    "Count": 2
+  },
+  {
+    "Name": "comparison-overlap",
+    "Count": 2
+  },
+  {
+    "Name": "call-overload",
+    "Count": 2
+  },
+  {
+    "Name": "call-arg",
+    "Count": 2
+  },
+  {
+    "Name": "no-redef",
+    "Count": 1
+  },
+  {
+    "Name": "misc",
+    "Count": 1
+  }
+]

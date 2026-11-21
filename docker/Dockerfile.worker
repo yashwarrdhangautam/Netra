@@ -1,5 +1,5 @@
 # Scanner binaries are built from source in a Go stage (same tool set as docker/Dockerfile).
-FROM golang:1.23-bookworm AS gotools
+FROM golang@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db AS gotools
 ENV CGO_ENABLED=0 GOTOOLCHAIN=auto
 RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
     go install github.com/projectdiscovery/httpx/cmd/httpx@latest && \
@@ -15,14 +15,14 @@ RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && 
     go install github.com/hahwul/dalfox/v2@latest && \
     go install github.com/owasp-amass/amass/v4/cmd/amass@master
 
-FROM python:3.12-slim AS builder
+FROM python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS builder
 WORKDIR /app
 RUN pip install poetry==2.4.0
 COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false && \
     poetry install --only main --no-root --no-interaction --no-ansi
 
-FROM python:3.12-slim
+FROM python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 WORKDIR /app
 ENV PYTHONPATH=/app/src
 # Tools the scanner wrappers call by name (see src/netra/scanner/tools/).
@@ -40,11 +40,26 @@ RUN git clone --depth 1 https://github.com/sullo/nikto /opt/nikto \
 RUN python -m venv /opt/scanner-tools \
  && /opt/scanner-tools/bin/pip install --no-cache-dir semgrep checkov pip-audit shodan \
  && for b in semgrep checkov pip-audit shodan; do ln -s /opt/scanner-tools/bin/$b /usr/local/bin/$b; done
+# Recontool (discovery engine, https://github.com/MANISHIGAUTAM/Recontool), pinned to a reviewed
+# commit and installed editable from a clone, which its config/ directory requires. Own venv so its
+# dependencies never touch the NETRA pins. NETRA's scope phase runs it with --profile passive_only
+# (no target traffic); active phases only run for a target authorised for them.
+ARG RECONTOOL_COMMIT=e874d0f9948a5f7fd4fe1955f1d962efc5c1efbf
+RUN git clone https://github.com/MANISHIGAUTAM/Recontool /opt/recontool \
+ && git -C /opt/recontool checkout ${RECONTOOL_COMMIT} \
+ && python -m venv /opt/recontool-venv \
+ && /opt/recontool-venv/bin/pip install --no-cache-dir -e /opt/recontool \
+ && ln -s /opt/recontool-venv/bin/recontool /usr/local/bin/recontool
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+# graphify (bug-bounty code graph) in its own venv, pinned to the version used on the host.
+RUN python -m venv /opt/graphify-tools \
+ && /opt/graphify-tools/bin/pip install --no-cache-dir graphifyy==0.7.9 \
+ && ln -s /opt/graphify-tools/bin/graphify /usr/local/bin/graphify
 COPY --from=gotools /go/bin/ /usr/local/bin/
 COPY src/ ./src/
 COPY verifier_allowlist.yaml ./
+COPY data/vuln_class_priors.yaml ./data/
 RUN useradd -m netra && mkdir -p /home/netra/.netra /home/netra/netra_output && chown -R netra:netra /app /home/netra
 USER netra
 CMD ["celery", "-A", "netra.worker.celery_app", "worker", "--loglevel=info"]

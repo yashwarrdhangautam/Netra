@@ -1,0 +1,10 @@
+# Developer override: publishes Postgres and Redis to localhost only.
+# Use explicitly, for example: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Not loaded automatically, so the default stack publishes nothing for these services.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"

@@ -1,3 +1,5 @@
+> Planning update (2026-11-16): The [master blueprint](blueprint/README.md) supersedes the work ordering below. This file remains a historical status record; its test counts and completion claims have not been rerun by the blueprint authoring task.
+
 # NETRA plan
 
 Status as of 2026-11-14. Each item says what is verified and what is not.

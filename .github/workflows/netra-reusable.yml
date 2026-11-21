@@ -2,7 +2,6 @@
 # Use this workflow to run NETRA security scans in your CI/CD pipeline
 
 name: NETRA Security Scan
-description: "Run NETRA security scan as part of CI/CD"
 
 on:
   workflow_call:
@@ -32,40 +31,15 @@ on:
       SHODAN_API_KEY:
         required: false
 
+# Inputs/secrets are retained for caller compatibility. They are intentionally unused
+# until an API-backed, authorization-aware CLI assessment is implemented.
 jobs:
   scan:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
-
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install NETRA
-        run: pip install netra
-
-      - name: Install security tools
+      - name: Report unavailable scanner integration
         run: |
-          go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-
-      - name: Run scan
-        env:
-          NETRA_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SHODAN_API_KEY: ${{ secrets.SHODAN_API_KEY }}
-        run: |
-          netra scan \
-            --target "${{ inputs.target }}" \
-            --profile "${{ inputs.profile }}" \
-            --output-sarif results.sarif \
-            --fail-on "${{ inputs.fail_on_severity }}"
-
-      - name: Upload SARIF
-        if: inputs.upload_sarif && always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: results.sarif
+          echo "::error::NETRA CLI scan is not available. No assessment was performed and no scan artifacts were generated."
+          exit 2

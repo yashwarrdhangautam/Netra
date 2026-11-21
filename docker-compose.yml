@@ -1,16 +1,19 @@
 services:
   # ── FastAPI Application ─────────────────────────────────────────────────────
+  # Published on localhost only. Remote access goes through a reviewed reverse proxy.
   api:
     build:
       context: .
       dockerfile: docker/Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${NETRA_API_PORT:-8000}:8000"
     environment:
-      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
-      - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
-      - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:${NETRA_DB_PASSWORD:?NETRA_DB_PASSWORD must be set}@postgres:5432/netra
+      - NETRA_CELERY_BROKER_URL=redis://:${NETRA_REDIS_PASSWORD:?NETRA_REDIS_PASSWORD must be set}@redis:6379/0
+      - NETRA_CELERY_RESULT_BACKEND=redis://:${NETRA_REDIS_PASSWORD}@redis:6379/1
       - NETRA_ENVIRONMENT=${NETRA_ENVIRONMENT:-production}
+      # Host Ollama (embeddings and planner) as seen from inside the container.
+      - NETRA_OLLAMA_BASE_URL=${NETRA_OLLAMA_CONTAINER_URL:-http://host.docker.internal:11434}
       - NETRA_DEBUG=false
       # Auth
       - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:?NETRA_JWT_SECRET_KEY must be set}
@@ -59,11 +62,12 @@ services:
       context: .
       dockerfile: docker/Dockerfile.worker
     environment:
-      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:${NETRA_DB_PASSWORD:?NETRA_DB_PASSWORD must be set}@postgres:5432/netra
       - NETRA_DB_NULL_POOL=true
-      - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
-      - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - NETRA_CELERY_BROKER_URL=redis://:${NETRA_REDIS_PASSWORD:?NETRA_REDIS_PASSWORD must be set}@redis:6379/0
+      - NETRA_CELERY_RESULT_BACKEND=redis://:${NETRA_REDIS_PASSWORD}@redis:6379/1
       - NETRA_CELERY_WORKER_CONCURRENCY=4
+      - NETRA_OLLAMA_BASE_URL=${NETRA_OLLAMA_CONTAINER_URL:-http://host.docker.internal:11434}
       # Auth
       - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:?NETRA_JWT_SECRET_KEY must be set}
       # Notifications
@@ -102,10 +106,10 @@ services:
       dockerfile: docker/Dockerfile.worker
     command: celery -A netra.worker.celery_app beat --loglevel=info
     environment:
-      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:${NETRA_DB_PASSWORD:?NETRA_DB_PASSWORD must be set}@postgres:5432/netra
       - NETRA_DB_NULL_POOL=true
-      - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
-      - NETRA_CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - NETRA_CELERY_BROKER_URL=redis://:${NETRA_REDIS_PASSWORD:?NETRA_REDIS_PASSWORD must be set}@redis:6379/0
+      - NETRA_CELERY_RESULT_BACKEND=redis://:${NETRA_REDIS_PASSWORD}@redis:6379/1
       - NETRA_JWT_SECRET_KEY=${NETRA_JWT_SECRET_KEY:?NETRA_JWT_SECRET_KEY must be set}
       - H1_API_USERNAME=${H1_API_USERNAME:-}
       - H1_API_TOKEN=${H1_API_TOKEN:-}
@@ -129,24 +133,25 @@ services:
       dockerfile: docker/Dockerfile
     command: alembic upgrade head
     environment:
-      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:netra@postgres:5432/netra
+      - NETRA_DATABASE_URL=postgresql+asyncpg://netra:${NETRA_DB_PASSWORD:?NETRA_DB_PASSWORD must be set}@postgres:5432/netra
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - netra-net
 
-  # ── Celery Flower (Monitoring) ─────────────────────────────────────────────
+  # ── Celery Flower (Monitoring, opt-in) ─────────────────────────────────────
+  # Localhost only, with HTTP basic auth. Set NETRA_FLOWER_BASIC_AUTH to user:password.
   flower:
     image: netra-worker:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
-    command: celery -A netra.worker.celery_app flower --port=5555 --broker=redis://redis:6379/0
+    command: celery -A netra.worker.celery_app flower --port=5555 --basic_auth=${NETRA_FLOWER_BASIC_AUTH:?NETRA_FLOWER_BASIC_AUTH must be set} --broker=redis://:${NETRA_REDIS_PASSWORD:?NETRA_REDIS_PASSWORD must be set}@redis:6379/0
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     environment:
-      - NETRA_CELERY_BROKER_URL=redis://redis:6379/0
+      - NETRA_CELERY_BROKER_URL=redis://:${NETRA_REDIS_PASSWORD}@redis:6379/0
     depends_on:
       - worker
       - redis
@@ -156,14 +161,13 @@ services:
       - monitoring
 
   # ── PostgreSQL Database ────────────────────────────────────────────────────
+  # Not published. Developers use docker-compose.dev.yml to reach it on localhost.
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector@sha256:484e838076e04939d27d3e176e91c86eea96236126023be8d3059761122e579f
     environment:
       - POSTGRES_USER=netra
-      - POSTGRES_PASSWORD=netra
+      - POSTGRES_PASSWORD=${NETRA_DB_PASSWORD:?NETRA_DB_PASSWORD must be set}
       - POSTGRES_DB=netra
-    ports:
-      - "5432:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
     healthcheck:
@@ -175,10 +179,13 @@ services:
       - netra-net
 
   # ── Redis (Cache + Message Broker) ─────────────────────────────────────────
+  # Not published, and password-protected: it is the Celery broker, so anyone who can
+  # write to it can queue work for the worker.
   redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    image: redis@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    command: ["redis-server", "--requirepass", "${NETRA_REDIS_PASSWORD:?NETRA_REDIS_PASSWORD must be set}"]
+    environment:
+      - REDISCLI_AUTH=${NETRA_REDIS_PASSWORD:?NETRA_REDIS_PASSWORD must be set}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -189,16 +196,9 @@ services:
     volumes:
       - redis-data:/data
 
-  bugbounty-mcp:
-    image: ghcr.io/gokulapap/gokulapap-mcp:latest
-    profiles:
-      - bb
-    networks:
-      - netra-net
-    expose:
-      - "3000"
-    environment:
-      - MCP_TRANSPORT=stdio
+  # The third-party bug-bounty MCP image was removed from the default stack: its registry
+  # denies pulls, so it cannot be pinned by digest or verified (spec S8). Re-add it only
+  # after review, pinned by digest, under the `bb` profile.
 
   # ── Nginx Frontend ─────────────────────────────────────────────────────────
   frontend:
@@ -206,17 +206,16 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     depends_on:
       - api
     networks:
       - netra-net
 
-  # ── Ollama (Local LLM) ─────────────────────────────────────────────────────
+  # ── Ollama (Local LLM, opt-in) ─────────────────────────────────────────────
+  # Not published. The API and worker reach it on the internal network at http://ollama:11434.
   ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
+    image: ollama/ollama@sha256:910d0d8107b538fb0894e63163eb195de0cc7aefcbc666dc62d3b18f71124592
     volumes:
       - ollama-data:/root/.ollama
     networks:

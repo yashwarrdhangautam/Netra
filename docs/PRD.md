@@ -1,3 +1,5 @@
+> Readiness update (2026-11-16): Historical production-ready and completion labels below are not current validation evidence. Use the [master blueprint and readiness gates](blueprint/README.md) for present planning. End-to-end scans, isolation and clean installs require fresh validation.
+
 # NETRA — Product Requirements Document (PRD)
 
 **Version:** 1.0.0
