@@ -198,3 +198,79 @@ async def test_vuln_scan_runs_nikto_with_grant_limits(monkeypatch) -> None:
     assert calls["nikto"]["timeout"] == tasks._nikto_timeout(1)
     assert calls["nuclei"]["timeout"] == tasks._nuclei_timeout(1, nikto_hosts=1)
     assert [r["tool"] for r in result["runs"]] == ["nuclei", "nikto"]
+
+
+def test_split_hosts_light_only_for_4xx_root() -> None:
+    hosts = ["https://a:443", "http://a:80", "https://b:443", "https://c:443"]
+    status = {"https://a:443": 200, "http://a:80": 404, "https://b:443": 301, "https://c:443": None}
+    full, light = tasks._split_hosts(hosts, status)
+    assert light == ["http://a:80"]
+    # A redirect or a missing status keeps the full scan: missing data never reduces coverage.
+    assert full == ["https://a:443", "https://b:443", "https://c:443"]
+
+
+def test_host_status_falls_back_to_checkpoint() -> None:
+    checkpoint = {"http_hosts": [{"url": "http://a:80", "status_code": 404}]}
+    assert tasks._host_status({}, checkpoint) == {"http://a:80": 404}
+    assert tasks._host_status({"host_status": {"x": 200}}, checkpoint) == {"x": 200}
+
+
+def test_light_hosts_fit_the_budget() -> None:
+    reserved = tasks.LIGHT_SCAN_TIMEOUT
+    nuclei = tasks._nuclei_timeout(1, nikto_hosts=1, reserved=reserved)
+    nikto = tasks._nikto_timeout(1, reserved=reserved)
+    assert nuclei + nikto + reserved <= tasks.VULN_SCAN_SOFT_LIMIT
+
+
+async def test_4xx_root_host_gets_light_nuclei_and_no_nikto(monkeypatch) -> None:
+    calls: list[tuple[str, str, dict]] = []
+
+    def fake(name):
+        class Fake:
+            def __init__(self, work_dir=None):
+                pass
+
+            async def run(self, target, **kwargs):
+                calls.append((name, target, kwargs))
+                return ToolResult(tool_name=name, success=True, metadata={"state": "completed"})
+
+        return Fake
+
+    record = SimpleNamespace(
+        max_requests_per_second=1, http_methods={"GET", "HEAD"}, ports=[80, 443]
+    )
+    scan = SimpleNamespace(profile="deep", config={}, checkpoint_data={}, target=None)
+
+    async def fake_auth(db, scan_id):
+        return scan, None, record, None
+
+    async def nothing(*args, **kwargs):
+        return 0
+
+    class FakeDb:
+        async def execute(self, *_):
+            return SimpleNamespace(scalar_one_or_none=lambda: scan)
+
+    monkeypatch.setattr(tasks, "require_scan_authorization", fake_auth)
+    monkeypatch.setattr(tasks, "_require_action", nothing)
+    monkeypatch.setattr(tasks, "_persist_findings", nothing)
+    monkeypatch.setattr(tasks, "NucleiTool", fake("nuclei"))
+    monkeypatch.setattr(tasks, "NiktoTool", fake("nikto"))
+    previous = {
+        "live_hosts": ["https://a:443", "http://a:80"],
+        "host_status": {"https://a:443": 200, "http://a:80": 404},
+    }
+    result = await tasks._execute_vuln_scan(FakeDb(), uuid.uuid4(), previous)
+
+    nuclei = {t: kw for n, t, kw in calls if n == "nuclei"}
+    assert nuclei["http://a:80"]["tags"] == tasks.LIGHT_SCAN_TAGS
+    assert nuclei["http://a:80"]["timeout"] == tasks.LIGHT_SCAN_TIMEOUT
+    assert nuclei["https://a:443"]["tags"] is None
+    assert nuclei["https://a:443"]["timeout"] == tasks._nuclei_timeout(
+        1, nikto_hosts=1, reserved=tasks.LIGHT_SCAN_TIMEOUT
+    )
+    assert [t for n, t, _ in calls if n == "nikto"] == ["https://a:443"]
+    by_target = {(r["tool"], r["target"]): r for r in result["runs"]}
+    assert by_target[("nuclei", "http://a:80")]["reason_code"] == "light_scan_4xx_root"
+    assert by_target[("nikto", "http://a:80")]["state"] == "skipped"
+    assert by_target[("nikto", "http://a:80")]["reason_code"] == "light_scan_4xx_root"

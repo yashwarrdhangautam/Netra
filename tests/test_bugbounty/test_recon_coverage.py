@@ -561,7 +561,12 @@ async def test_nuclei_safe_normalises_both_key_styles(monkeypatch) -> None:
 
     target, kwargs = recorder.calls[0]
     assert target == "https://a.example.com"
-    assert kwargs == {"tags": "cve,exposure,misconfig", "severity": "high", "rate_limit": 25}
+    assert kwargs == {
+        "tags": "cve,exposure,misconfig",
+        "severity": "high",
+        "rate_limit": 25,
+        "exclude_tags": ["intrusive", "dos", "fuzz"],  # never exploit-class templates
+    }
 
 
 async def test_nuclei_safe_defaults_to_medium_cap(monkeypatch) -> None:

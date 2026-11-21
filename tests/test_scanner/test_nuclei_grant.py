@@ -108,3 +108,21 @@ async def test_run_passes_its_timeout_and_skips_update_check(monkeypatch) -> Non
     await NucleiTool().run("https://a.example.org", timeout=17700)
     assert seen["kwargs"]["timeout"] == 17700
     assert "-disable-update-check" in seen["args"]
+
+
+async def test_tags_filter_inside_the_pinned_template_set(monkeypatch):
+    from netra.scanner.tools import nuclei as mod
+
+    tool = mod.NucleiTool()
+    seen = {}
+
+    async def fake_exec(args, stdin=None, timeout=300):
+        seen["args"] = args
+        return mod.ToolResult(tool_name="nuclei", success=True, metadata={"state": "completed"})
+
+    monkeypatch.setattr(mod, "template_args", lambda _: ["-templates", "/pinned"])
+    monkeypatch.setattr(tool, "_exec", fake_exec)
+    await tool.run("https://example.test", tags="misconfig,exposure,tech")
+    args = seen["args"]
+    assert args[args.index("-tags") + 1] == "misconfig,exposure,tech"
+    assert args[args.index("-templates") + 1] == "/pinned"

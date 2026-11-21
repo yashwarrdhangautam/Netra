@@ -123,8 +123,9 @@ class NucleiTool(CliTool):
             if condition:
                 args += ["-template-condition", condition]
         if tags:
+            # Tags filter within the template set below; they never switch to another set.
             args += ["-tags", tags]
-        elif templates and templates != "default":
+        if templates and templates != "default":
             args += ["-templates", templates]
         else:
             # Default: use the pinned template checkout when it is present.

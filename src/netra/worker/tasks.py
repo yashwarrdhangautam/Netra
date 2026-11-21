@@ -589,6 +589,11 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
             for f in http_result.findings
             if f.get("status_code", 0) in range(200, 500)
         ]
+        # Root status per host: the vuln phase gives a host that answers 4xx at its root a
+        # light pass instead of the full template set (see _split_hosts).
+        host_status = {
+            f.get("url", ""): f.get("status_code") for f in http_result.findings if f.get("url")
+        }
 
         # Save checkpoint
         scan.checkpoint_data = {
@@ -610,6 +615,7 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
             "phase": "recon",
             "status": "completed",
             "live_hosts": live_hosts,
+            "host_status": host_status,
             "count": len(live_hosts),
             "runs": runs,
             **_phase_verdict(runs),
@@ -635,19 +641,71 @@ _VULN_SCAN_MARGIN = 600
 _NUCLEI_SHARE_WITH_NIKTO = 0.70
 
 
-def _phase_budget(share: float) -> int:
-    return int((VULN_SCAN_SOFT_LIMIT - _VULN_SCAN_MARGIN) * share)
+# A host that answers 4xx at its root (e.g. a bare port-80 server returning 404) serves no
+# application there, so it gets a short nuclei pass with these tags and no nikto. Its runs are
+# marked light_scan in coverage, so it never reads as fully tested.
+LIGHT_SCAN_TAGS = "misconfig,exposure,tech"
+LIGHT_SCAN_TIMEOUT = 1800
 
 
-def _nuclei_timeout(host_count: int, nikto_hosts: int = 0) -> int:
-    """Per-host nuclei timeout: its share of the phase budget, never below 5 minutes."""
+def _phase_budget(share: float, reserved: int = 0) -> int:
+    return int(max(0, VULN_SCAN_SOFT_LIMIT - _VULN_SCAN_MARGIN - reserved) * share)
+
+
+def _nuclei_timeout(host_count: int, nikto_hosts: int = 0, reserved: int = 0) -> int:
+    """Per-host nuclei timeout: its share of the phase budget, never below 5 minutes.
+
+    reserved: seconds already set aside for light-scan hosts.
+    """
     share = _NUCLEI_SHARE_WITH_NIKTO if nikto_hosts else 1.0
-    return max(300, _phase_budget(share) // max(1, host_count))
+    return max(300, _phase_budget(share, reserved) // max(1, host_count))
 
 
-def _nikto_timeout(host_count: int) -> int:
+def _nikto_timeout(host_count: int, reserved: int = 0) -> int:
     """Per-host nikto timeout: the budget nuclei leaves, never below 5 minutes."""
-    return max(300, _phase_budget(1 - _NUCLEI_SHARE_WITH_NIKTO) // max(1, host_count))
+    share = 1 - _NUCLEI_SHARE_WITH_NIKTO
+    return max(300, _phase_budget(share, reserved) // max(1, host_count))
+
+
+def _split_hosts(hosts: list[str], status: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """(full, light): hosts answering 4xx at the root get a light pass.
+
+    A host with no recorded status keeps the full scan, so missing data never reduces coverage.
+    """
+    full: list[str] = []
+    light: list[str] = []
+    for host in hosts:
+        code = status.get(host)
+        is_4xx = isinstance(code, int) and not isinstance(code, bool) and 400 <= code < 500
+        (light if is_4xx else full).append(host)
+    return full, light
+
+
+def _host_status(previous_result: dict, checkpoint: dict) -> dict[str, Any]:
+    """Root status per host from the recon phase, or from its checkpoint after a resume."""
+    status = previous_result.get("host_status")
+    if isinstance(status, dict) and status:
+        return status
+    rows = checkpoint.get("http_hosts") or []
+    return {
+        r.get("url"): r.get("status_code") for r in rows if isinstance(r, dict) and r.get("url")
+    }
+
+
+def _record_skipped(runs: list[dict], tool: str, target: str, reason: str) -> None:
+    """A tool deliberately not run on a host: visible in coverage with its reason."""
+    runs.append(
+        {
+            "tool": tool,
+            "target": str(target)[:200],
+            "success": True,
+            "error": None,
+            "state": "skipped",
+            "reason_code": reason,
+            "findings_count": 0,
+            "truncated": False,
+        }
+    )
 
 
 @celery_app.task(
@@ -746,24 +804,38 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
         rate_limit = _granted_rate(
             overrides.get("rate_limit", profile.get("rate_limit", 150)), record
         )
-        nuclei_hosts = live_hosts[:50]
+        full_hosts, light_hosts = _split_hosts(
+            live_hosts[:50], _host_status(previous_result, scan.checkpoint_data or {})
+        )
         nikto_enabled = bool(profile.get("use_nikto")) and bool(overrides.get("use_nikto", True))
-        nikto_hosts = live_hosts[:10] if nikto_enabled else []
-        nuclei_timeout = _nuclei_timeout(len(nuclei_hosts), len(nikto_hosts))
-        for target in nuclei_hosts:
+        nikto_hosts = full_hosts[:10] if nikto_enabled else []
+        reserved = LIGHT_SCAN_TIMEOUT * len(light_hosts)
+        nuclei_timeout = _nuclei_timeout(len(full_hosts), len(nikto_hosts), reserved)
+        for target in full_hosts + light_hosts:
+            light = target in light_hosts
             await _require_action(db, scan, target, "vulnerability_scan", "GET")
             run = await nuclei.run(
                 target,
                 severity=severity,
                 rate_limit=rate_limit,
-                timeout=nuclei_timeout,
+                timeout=LIGHT_SCAN_TIMEOUT if light else nuclei_timeout,
+                tags=LIGHT_SCAN_TAGS if light else None,
                 **_nuclei_grant_args(record),
             )
+            if (
+                light
+                and isinstance(run.metadata, dict)
+                and run.metadata.get("state") == "completed"
+            ):
+                run.metadata = {**run.metadata, "reason_code": "light_scan_4xx_root"}
             _record_run(runs, "nuclei", target, run)
             total_findings += await _persist_findings(db, scan_id, "nuclei", run.findings)
+        if nikto_enabled:
+            for target in light_hosts[:10]:
+                _record_skipped(runs, "nikto", target, "light_scan_4xx_root")
         # Nikto runs only grant-allowed, non-exploit tests at the granted rate (see nikto.py).
         nikto = NiktoTool(work_dir=_phase_dir(scan_id, "vuln_scan") / "nikto")
-        nikto_timeout = _nikto_timeout(len(nikto_hosts))
+        nikto_timeout = _nikto_timeout(len(nikto_hosts), reserved)
         for target in nikto_hosts:
             await _require_action(db, scan, target, "vulnerability_scan", "GET")
             run = await nikto.run(

@@ -48,6 +48,7 @@ def _row_to_finding(row: dict[str, Any]) -> dict[str, Any]:
         "url": row.get("url") or row.get("input"),
         "hostname": row.get("host") or row.get("input"),
         "status_code": row.get("status_code"),
+        "location": row.get("location"),
         "tech": row.get("tech") or [],
         "title": row.get("title"),
         "protections": protections,
