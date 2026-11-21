@@ -1,5 +1,6 @@
 """Finding routes for managing security findings."""
 
+import re
 import uuid
 from datetime import UTC, datetime
 from json import dumps as json_dumps
@@ -7,7 +8,7 @@ from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import Select, String, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.api.deps import CurrentUser, get_db_session
@@ -15,7 +16,10 @@ from netra.api.routes.auth import get_current_active_user
 from netra.api.scope import apply, can_see_scan, finding_filter, is_client
 from netra.core.ssrf_protection import SSRFProtection, SSRFProtectionError
 from netra.db.models.finding import Finding, FindingStatus
+from netra.db.models.scan import Scan
+from netra.db.models.target import Target
 from netra.db.models.user import User
+from netra.intel.finding_knowledge import knowledge_for
 from netra.schemas.common import PaginatedResponse
 from netra.schemas.finding import (
     FindingBulkUpdate,
@@ -80,6 +84,58 @@ async def create_finding(
     return FindingResponse.model_validate(finding)
 
 
+SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
+# Risk order, not alphabetical: a plain ORDER BY severity put info above low and medium.
+_SEVERITY_RANK = case(
+    {s: i for i, s in enumerate(SEVERITY_ORDER)}, value=Finding.severity, else_=len(SEVERITY_ORDER)
+)
+_CVE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
+_CWE = re.compile(r"^CWE-\d{1,6}$", re.IGNORECASE)
+
+
+def _csv(value: str | None) -> list[str]:
+    return [v.strip() for v in (value or "").split(",") if v.strip()]
+
+
+def _filtered(
+    current_user: User,
+    *,
+    scan_id: uuid.UUID | None = None,
+    target_id: uuid.UUID | None = None,
+    severity: str | None = None,
+    status: str | None = None,
+    tool_source: str | None = None,
+    cwe_id: str | None = None,
+    cve: str | None = None,
+    q: str | None = None,
+) -> Select:
+    """Findings the user may see, narrowed by the list filters (comma lists allowed)."""
+    query = apply(select(Finding), finding_filter(current_user))
+    if scan_id:
+        query = query.where(Finding.scan_id == scan_id)
+    if target_id:
+        query = query.where(Finding.scan_id.in_(select(Scan.id).where(Scan.target_id == target_id)))
+    if severity:
+        query = query.where(Finding.severity.in_(_csv(severity.lower())))
+    if status:
+        query = query.where(Finding.status.in_(_csv(status.lower())))
+    if tool_source:
+        query = query.where(Finding.tool_source.in_(_csv(tool_source)))
+    if cwe_id:
+        if not _CWE.match(cwe_id):
+            raise HTTPException(status_code=422, detail="cwe_id must look like CWE-79")
+        query = query.where(func.upper(Finding.cwe_id) == cwe_id.upper())
+    if cve:
+        if not _CVE.match(cve):
+            raise HTTPException(status_code=422, detail="cve must look like CVE-2024-12345")
+        # cve_ids is a JSON list; match the quoted id in its text form (works on SQLite too).
+        query = query.where(cast(Finding.cve_ids, String).ilike(f'%"{cve.upper()}"%'))
+    if q:
+        term = f"%{q.strip()[:200]}%"
+        query = query.where(or_(Finding.title.ilike(term), Finding.url.ilike(term)))
+    return query
+
+
 @router.get("/", response_model=PaginatedResponse[FindingListResponse])
 async def list_findings(
     current_user: Annotated[User, Depends(get_current_active_user)],
@@ -88,50 +144,35 @@ async def list_findings(
     severity: str | None = None,
     status: str | None = None,
     scan_id: uuid.UUID | None = None,
+    target_id: uuid.UUID | None = None,
+    tool_source: str | None = None,
+    cwe_id: str | None = None,
+    cve: str | None = None,
+    q: str | None = Query(None, max_length=200),
     db: AsyncSession = Depends(get_db_session),
 ) -> PaginatedResponse[FindingListResponse]:
-    """List findings with filtering and pagination.
+    """List findings with filtering and pagination, highest risk first.
 
-    Args:
-        page: Page number
-        per_page: Items per page
-        severity: Filter by severity
-        status: Filter by status
-        scan_id: Filter by scan ID
-        db: Database session
-
-    Returns:
-        Paginated list of findings
+    severity, status and tool_source accept comma-separated lists.
     """
-    query = apply(select(Finding), finding_filter(current_user))
-
-    if severity:
-        query = query.where(Finding.severity == severity)
-    if status:
-        query = query.where(Finding.status == status)
-    if scan_id:
-        query = query.where(Finding.scan_id == scan_id)
-
-    # Order by severity (critical first) then created_at
-    query = query.order_by(Finding.severity, Finding.created_at.desc())
-
-    # Pagination
-    offset = (page - 1) * per_page
-    query = query.offset(offset).limit(per_page)
-
-    result = await db.execute(query)
-    findings = list(result.scalars().all())
-
-    # Get total count
-    count_query = apply(select(Finding), finding_filter(current_user))
-    if severity:
-        count_query = count_query.where(Finding.severity == severity)
-    if status:
-        count_query = count_query.where(Finding.status == status)
-    if scan_id:
-        count_query = count_query.where(Finding.scan_id == scan_id)
-    total_result = await db.execute(count_query)
-    total = len(list(total_result.scalars().all()))
+    base = _filtered(
+        current_user,
+        scan_id=scan_id,
+        target_id=target_id,
+        severity=severity,
+        status=status,
+        tool_source=tool_source,
+        cwe_id=cwe_id,
+        cve=cve,
+        q=q,
+    )
+    query = (
+        base.order_by(_SEVERITY_RANK, Finding.created_at.desc(), Finding.id)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    )
+    findings = list((await db.execute(query)).scalars().all())
+    total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
 
     return PaginatedResponse(
         items=[FindingListResponse.model_validate(f) for f in findings],
@@ -139,6 +180,55 @@ async def list_findings(
         page=page,
         per_page=per_page,
     )
+
+
+@router.get("/summary")
+async def findings_summary(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    scan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Counts for one scan, computed from the stored finding rows.
+
+    Every number here is a count of persisted findings, so it matches the findings list and
+    the report. Tool run counts (hosts, subdomains, raw matches) are reported separately on
+    the scan's tool runs and never mixed in.
+    """
+    if not await can_see_scan(db, current_user, scan_id):
+        raise HTTPException(status_code=404, detail="Scan not found")
+    base = _filtered(current_user, scan_id=scan_id).subquery()
+    rows = (
+        await db.execute(
+            select(base.c.severity, base.c.tool_source, base.c.status, func.count()).group_by(
+                base.c.severity, base.c.tool_source, base.c.status
+            )
+        )
+    ).all()
+    by_severity = dict.fromkeys(SEVERITY_ORDER, 0)
+    by_tool: dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    for severity, tool, status, count in rows:
+        by_severity[str(severity)] = by_severity.get(str(severity), 0) + count
+        by_tool[str(tool)] = by_tool.get(str(tool), 0) + count
+        by_status[str(status)] = by_status.get(str(status), 0) + count
+    total = sum(by_severity.values())
+    unique = (
+        await db.execute(
+            select(func.count(func.distinct(func.coalesce(base.c.dedup_hash, base.c.title))))
+        )
+    ).scalar_one()
+    return {
+        "scan_id": str(scan_id),
+        "total": total,
+        "by_severity": by_severity,
+        "by_tool": dict(sorted(by_tool.items())),
+        "by_status": dict(sorted(by_status.items())),
+        "informational": by_severity.get("info", 0),
+        "actionable": total - by_severity.get("info", 0),
+        "unique": unique,
+        "verified": by_status.get("verified", 0) + by_status.get("confirmed", 0),
+        "false_positive": by_status.get("false_positive", 0),
+    }
 
 
 @router.get("/{finding_id}", response_model=FindingResponse | FindingClientResponse)
@@ -160,9 +250,24 @@ async def get_finding(
     if not finding or not await can_see_scan(db, current_user, finding.scan_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
-    if is_client(current_user):
-        return FindingClientResponse.model_validate(finding)
-    return FindingResponse.model_validate(finding)
+    view = (FindingClientResponse if is_client(current_user) else FindingResponse).model_validate(
+        finding
+    )
+    scan = await db.get(Scan, finding.scan_id)
+    target = await db.get(Target, scan.target_id) if scan else None
+    view.knowledge = knowledge_for(finding.title, finding.evidence, finding.tool_source)
+    view.check_id = check_id(finding.evidence)
+    view.scan_name = scan.name if scan else None
+    view.target = target.value if target else None
+    return view
+
+
+def check_id(evidence: object) -> str | None:
+    """The tool's own id for the check: nuclei template-id, nikto test id."""
+    if not isinstance(evidence, dict):
+        return None
+    value = evidence.get("template-id") or evidence.get("template_id") or evidence.get("nikto_id")
+    return str(value) if value else None
 
 
 @router.patch("/{finding_id}", response_model=FindingResponse)
@@ -183,8 +288,17 @@ async def update_finding(
         Updated finding details
     """
     finding = await db.get(Finding, finding_id)
-    if not finding:
+    if not finding or not await can_see_scan(db, current_user, finding.scan_id):
         raise HTTPException(status_code=404, detail="Finding not found")
+
+    # Old and new values go into the audit entry, so every triage decision is traceable.
+    changes: dict[str, list[str | None]] = {}
+    if payload.status is not None and payload.status != finding.status:
+        changes["status"] = [str(finding.status), str(payload.status)]
+    if payload.severity is not None and payload.severity != finding.severity:
+        changes["severity"] = [str(finding.severity), str(payload.severity)]
+    if payload.assignee is not None and payload.assignee != finding.assignee:
+        changes["assignee"] = [finding.assignee, payload.assignee]
 
     if payload.status is not None:
         finding.status = payload.status
@@ -205,6 +319,7 @@ async def update_finding(
         action="finding.update",
         resource_type="finding",
         resource_id=str(finding_id),
+        detail={"scan_id": str(finding.scan_id), "changes": changes},
     )
     await db.commit()
     await db.refresh(finding)

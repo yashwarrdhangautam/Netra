@@ -66,6 +66,13 @@ class FindingResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Detail-page context, filled by GET /findings/{id}: reviewed explanation entries
+    # (empty when none applies), the check id from the tool, and the scan it came from.
+    knowledge: list[dict] = []
+    check_id: str | None = None
+    scan_name: str | None = None
+    target: str | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -89,6 +96,13 @@ class FindingClientResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Detail-page context, filled by GET /findings/{id}: reviewed explanation entries
+    # (empty when none applies), the check id from the tool, and the scan it came from.
+    knowledge: list[dict] = []
+    check_id: str | None = None
+    scan_name: str | None = None
+    target: str | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -102,6 +116,10 @@ class FindingListResponse(BaseModel):
     status: FindingStatus
     tool_source: str
     created_at: datetime
+    # Additive fields for the per-scan findings table (affected URL, weakness class).
+    url: str | None = None
+    cwe_id: str | None = None
+    confidence: int | None = None
 
     model_config = {"from_attributes": True}
 

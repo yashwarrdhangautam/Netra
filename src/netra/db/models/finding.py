@@ -35,6 +35,8 @@ class FindingStatus(StrEnum):
     VERIFIED = "verified"
     FALSE_POSITIVE = "false_positive"
     ACCEPTED_RISK = "accepted_risk"
+    # Waiting for an analyst to confirm or reject (e.g. a scanner match on a version banner).
+    NEEDS_REVIEW = "needs_review"
 
 
 class Finding(Base):

@@ -139,8 +139,8 @@ def _recontool_findings(rows: list[dict]) -> list[dict]:
     return findings
 
 
-async def _analyze_http(db: AsyncSession, scan: Scan, runs: list[dict], rows: list[dict]) -> None:
-    """Header and TLS findings for hosts the recon probe already reached.
+async def _analyze_http(db: AsyncSession, scan: Scan, runs: list[dict], rows: list[dict]) -> int:
+    """Header and TLS findings for hosts the recon probe already reached. Returns rows stored.
 
     Everything here talks only to a host/port that passed the http_probe gate; the TLS check
     re-asks the gate for its own destination before connecting.
@@ -165,7 +165,7 @@ async def _analyze_http(db: AsyncSession, scan: Scan, runs: list[dict], rows: li
             tls_result = await probe_tls(key[0], key[1])
             _record_run(runs, "tls_probe", key[0], tls_result)
             findings += tls_result.findings
-    await _persist_findings(db, scan.id, "http_analysis", findings)
+    return await _persist_findings(db, scan.id, "http_analysis", findings)
 
 
 async def _persist_findings(db: AsyncSession, scan_id: uuid.UUID, tool: str, findings: list) -> int:
@@ -431,6 +431,7 @@ async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dic
                 "status": "completed",
                 "subdomains": [target],
                 "count": 1,
+                "findings_count": 0,
                 "runs": runs,
             }
 
@@ -460,8 +461,10 @@ async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dic
             }
         )
         zone = str(posture.metadata.get("zone") or host)
-        await _persist_findings(db, scan_id, "recontool", _recontool_findings(discovery.findings))
-        await _persist_findings(
+        stored = await _persist_findings(
+            db, scan_id, "recontool", _recontool_findings(discovery.findings)
+        )
+        stored += await _persist_findings(
             db,
             scan_id,
             "passive_posture",
@@ -485,6 +488,8 @@ async def _execute_scope_resolution(db: AsyncSession, scan_id: uuid.UUID) -> dic
             "status": "completed",
             "subdomains": subdomains,
             "count": len(subdomains),
+            # Finding rows stored by this phase; count is hosts handed to recon.
+            "findings_count": stored,
             "runs": runs,
             **_phase_verdict(runs),
         }
@@ -555,7 +560,7 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
 
     try:
         if not subdomains:
-            return {"status": "completed", "live_hosts": [], "count": 0}
+            return {"status": "completed", "live_hosts": [], "count": 0, "findings_count": 0}
 
         httpx_tool = HttpxTool(work_dir=_phase_dir(scan_id, "discovery"))
         runs: list[dict] = []
@@ -583,7 +588,7 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
             rate_limit=record.max_requests_per_second,
         )
         _record_run(runs, "httpx", ",".join(subdomains[:50]), http_result)
-        await _analyze_http(db, scan, runs, http_result.findings)
+        stored = await _analyze_http(db, scan, runs, http_result.findings)
 
         live_hosts = [
             f.get("url", "")
@@ -617,6 +622,8 @@ async def _execute_recon(db: AsyncSession, scan_id: uuid.UUID, previous_result: 
             "status": "completed",
             "live_hosts": live_hosts,
             "host_status": host_status,
+            # Finding rows stored by this phase; count is live hosts.
+            "findings_count": stored,
             # Detected technology per host, for tech-targeted nuclei (scan config tech_targeted).
             "host_tech": {
                 f.get("url"): f.get("tech") or [] for f in http_result.findings if f.get("url")
@@ -1278,7 +1285,9 @@ async def _update_phase_status(
     phase.status = status
     phase.completed_at = now
     phase.progress = 1.0 if status in (PhaseStatus.COMPLETED, PhaseStatus.SKIPPED) else 0.0
-    phase.findings_count = result.get("findings_count", result.get("count", 0))
+    # Only stored finding rows. "count" (hosts, subdomains, records) is a different unit and
+    # used to leak in here, so the Phases card mixed hosts with findings.
+    phase.findings_count = int(result.get("findings_count") or 0)
     phase.error_message = _phase_note(result)
     if status == PhaseStatus.SKIPPED and result.get("reason"):
         phase.error_message = str(result["reason"])[:2000]

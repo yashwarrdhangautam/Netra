@@ -105,7 +105,16 @@ class FindingService:
 
         # Validate transition
         valid_transitions: dict[FindingStatus, list[FindingStatus]] = {
-            FindingStatus.NEW: [FindingStatus.CONFIRMED, FindingStatus.FALSE_POSITIVE],
+            FindingStatus.NEW: [
+                FindingStatus.CONFIRMED,
+                FindingStatus.FALSE_POSITIVE,
+                FindingStatus.NEEDS_REVIEW,
+            ],
+            FindingStatus.NEEDS_REVIEW: [
+                FindingStatus.CONFIRMED,
+                FindingStatus.FALSE_POSITIVE,
+                FindingStatus.ACCEPTED_RISK,
+            ],
             FindingStatus.CONFIRMED: [
                 FindingStatus.IN_PROGRESS,
                 FindingStatus.FALSE_POSITIVE,

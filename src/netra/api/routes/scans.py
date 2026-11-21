@@ -308,8 +308,10 @@ async def get_scan_phases(
         select(ScanPhase).where(ScanPhase.scan_id == scan_id).order_by(ScanPhase.started_at)
     )
     phases = list(result.scalars().all())
+    from netra.services.scan_execution import phase_view, stored_findings_by_phase
 
-    return [ScanPhaseResponse.model_validate(p) for p in phases]
+    stored = await stored_findings_by_phase(db, scan_id)
+    return [phase_view(p, stored) for p in phases]
 
 
 @router.post("/{scan_id}/resume", response_model=ScanResponse)

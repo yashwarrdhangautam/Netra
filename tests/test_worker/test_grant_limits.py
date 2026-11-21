@@ -136,6 +136,35 @@ async def test_phase_row_keeps_the_real_start_time(db_session) -> None:
     assert phase.progress == 1.0
 
 
+async def test_phase_findings_count_is_stored_rows_not_hosts(db_session) -> None:
+    target = Target(name="T", target_type="domain", value="count.example.org")
+    db_session.add(target)
+    await db_session.flush()
+    scan = Scan(name="count", target_id=target.id, profile="quick")
+    db_session.add(scan)
+    await db_session.commit()
+
+    # Recon found 2 live hosts and stored 4 finding rows: the phase shows 4.
+    await tasks._update_phase_status(
+        db_session,
+        scan.id,
+        PhaseType.RECON_DISCOVERY,
+        {"status": "completed", "count": 2, "findings_count": 4},
+    )
+    # A phase that stores no findings shows 0, never its host or record count.
+    await tasks._update_phase_status(
+        db_session, scan.id, PhaseType.REPORTING, {"status": "completed", "count": 7}
+    )
+    phases = {
+        p.phase_type: p.findings_count
+        for p in (
+            await db_session.scalars(select(ScanPhase).where(ScanPhase.scan_id == scan.id))
+        ).all()
+    }
+    assert phases[PhaseType.RECON_DISCOVERY] == 4
+    assert phases[PhaseType.REPORTING] == 0
+
+
 def test_nuclei_timeout_shares_the_phase_budget() -> None:
     from netra.worker.celery_app import celery_app
 

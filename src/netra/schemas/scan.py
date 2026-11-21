@@ -92,6 +92,13 @@ class ScanPhaseResponse(BaseModel):
     completed_at: datetime | None
     # Why a phase failed or was skipped, or its warnings (e.g. active_test_not_authorized).
     error_message: str | None = None
+    # completed | completed_with_warnings | skipped | failed | running | pending: a phase whose
+    # pipeline finished while some tool runs failed or timed out is not plain "completed".
+    outcome: str | None = None
+    # Finding rows stored by this phase's tools (from the findings table, so it reconciles).
+    stored_findings: int | None = None
+    # One entry per tool run: tool, target, state, reason_code, error, findings_count.
+    runs: list[dict] = []
 
     model_config = {"from_attributes": True}
 
