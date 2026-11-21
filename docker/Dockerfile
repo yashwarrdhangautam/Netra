@@ -43,3 +43,8 @@ RUN useradd -m netra && mkdir -p /home/netra/.netra /home/netra/netra_output && 
 USER netra
 EXPOSE 8000
 CMD ["uvicorn", "netra.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+
+# Git commit this image was built from (set by: NETRA_REVISION=$(git rev-parse HEAD) docker compose build).
+# Declared last so changing it does not invalidate the build cache.
+ARG NETRA_REVISION=unknown
+LABEL org.opencontainers.image.revision=$NETRA_REVISION

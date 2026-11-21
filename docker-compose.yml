@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        NETRA_REVISION: ${NETRA_REVISION:-unknown}
     ports:
       - "127.0.0.1:${NETRA_API_PORT:-8000}:8000"
     environment:
@@ -61,6 +63,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
+      args:
+        NETRA_REVISION: ${NETRA_REVISION:-unknown}
     environment:
       - NETRA_DATABASE_URL=postgresql+asyncpg://netra:${NETRA_DB_PASSWORD:?NETRA_DB_PASSWORD must be set}@postgres:5432/netra
       - NETRA_DB_NULL_POOL=true
@@ -104,6 +108,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
+      args:
+        NETRA_REVISION: ${NETRA_REVISION:-unknown}
     command: celery -A netra.worker.celery_app beat --loglevel=info
     environment:
       - NETRA_DATABASE_URL=postgresql+asyncpg://netra:${NETRA_DB_PASSWORD:?NETRA_DB_PASSWORD must be set}@postgres:5432/netra
@@ -131,6 +137,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        NETRA_REVISION: ${NETRA_REVISION:-unknown}
     command: alembic upgrade head
     environment:
       - NETRA_DATABASE_URL=postgresql+asyncpg://netra:${NETRA_DB_PASSWORD:?NETRA_DB_PASSWORD must be set}@postgres:5432/netra
@@ -147,6 +155,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
+      args:
+        NETRA_REVISION: ${NETRA_REVISION:-unknown}
     command: celery -A netra.worker.celery_app flower --port=5555 --basic_auth=${NETRA_FLOWER_BASIC_AUTH:?NETRA_FLOWER_BASIC_AUTH must be set} --broker=redis://:${NETRA_REDIS_PASSWORD:?NETRA_REDIS_PASSWORD must be set}@redis:6379/0
     ports:
       - "127.0.0.1:5555:5555"
@@ -205,6 +215,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NETRA_REVISION: ${NETRA_REVISION:-unknown}
     ports:
       - "127.0.0.1:5173:80"
     depends_on:

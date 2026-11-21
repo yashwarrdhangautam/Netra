@@ -18,3 +18,8 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
+
+# Git commit this image was built from (set by: NETRA_REVISION=$(git rev-parse HEAD) docker compose build).
+# Declared last so changing it does not invalidate the build cache.
+ARG NETRA_REVISION=unknown
+LABEL org.opencontainers.image.revision=$NETRA_REVISION

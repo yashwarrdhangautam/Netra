@@ -63,3 +63,8 @@ COPY data/vuln_class_priors.yaml ./data/
 RUN useradd -m netra && mkdir -p /home/netra/.netra /home/netra/netra_output && chown -R netra:netra /app /home/netra
 USER netra
 CMD ["celery", "-A", "netra.worker.celery_app", "worker", "--loglevel=info"]
+
+# Git commit this image was built from (set by: NETRA_REVISION=$(git rev-parse HEAD) docker compose build).
+# Declared last so changing it does not invalidate the build cache.
+ARG NETRA_REVISION=unknown
+LABEL org.opencontainers.image.revision=$NETRA_REVISION
