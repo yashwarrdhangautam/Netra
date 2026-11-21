@@ -76,9 +76,9 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 netra.db
-reports/
-# Anchored to the repo root: unanchored "evidence/" and "tools/" were hiding
-# src/netra/bugbounty/evidence and src/netra/scanner/tools from git.
+/reports/
+# Anchored to the repo root: unanchored "evidence/", "tools/" and "reports/" were hiding
+# src/netra/bugbounty/evidence, src/netra/scanner/tools and src/netra/reports from git.
 /evidence/
 /tools/
 data/graphify/
