@@ -65,7 +65,7 @@ async def create_finding(
     )
 
     db.add(finding)
-    await db.commit()
+    await db.flush()
     await record_audit(
         db,
         actor=current_user,
@@ -353,6 +353,26 @@ async def retest_finding(
     if not finding.url:
         outcome = {"outcome": "unverifiable", "reason": "finding has no URL to re-request"}
     else:
+        from netra.services.scan_authorization import (
+            AuthorizationDenied,
+            require_scan_authorization,
+            require_target_action,
+        )
+
+        try:
+            scan, target, _, _ = await require_scan_authorization(db, finding.scan_id)
+            await require_target_action(
+                db,
+                target.id,
+                finding.url,
+                "retest",
+                method="GET",
+                snapshot=(scan.checkpoint_data or {}).get("authorization_snapshot"),
+            )
+        except AuthorizationDenied as exc:
+            raise HTTPException(
+                status_code=503 if exc.code == "policy_unavailable" else 403, detail=exc.code
+            ) from exc
         try:
             allowed, reason = SSRFProtection.validate_url(finding.url)
         except SSRFProtectionError as exc:  # unresolvable host or private address

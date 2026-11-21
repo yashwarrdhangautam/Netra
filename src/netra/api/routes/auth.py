@@ -12,12 +12,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.core.config import settings
+from netra.core.rate_limiter import rate_limit
 from netra.core.secretbox import decrypt_value
 from netra.core.security import (
     create_access_token,
+    create_password_reset_token,
     create_refresh_token,
     decode_access_token,
+    decode_password_reset_token,
     decode_refresh_token,
+    get_password_hash,
+    password_fingerprint,
     token_blacklist,
     verify_api_key,
     verify_backup_code,
@@ -26,6 +31,7 @@ from netra.core.security import (
 )
 from netra.db.models.user import User, UserRole
 from netra.db.session import get_db
+from netra.notifications.email import EmailNotifier
 
 logger = structlog.get_logger()
 
@@ -385,6 +391,67 @@ async def login(
         email=user.email,
         mfa_required=user.requires_mfa(),
     )
+
+
+_RESET_INVALID = "Reset link is invalid or has expired"
+
+
+@router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
+@rate_limit("3/hour")
+async def request_password_reset(
+    request: Request,
+    body: PasswordResetRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, str]:
+    """Email a one-hour reset link. The answer is the same whether or not the email exists."""
+    answer = {"detail": "If that account exists, a reset link has been sent."}
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return answer
+
+    token = create_password_reset_token(user.id, password_hash=user.hashed_password)
+    link = f"{settings.public_app_url.rstrip('/')}/reset-password?token={token}"
+    sent = EmailNotifier().send(
+        to=user.email,
+        subject="Reset your NETRA password",
+        body=(
+            "Use this link within one hour to choose a new password:\n\n"
+            f"{link}\n\n"
+            "If you did not ask for this, ignore this email."
+        ),
+    )
+    # The link itself is never logged. If SMTP is not configured, nothing is sent.
+    logger.info("password_reset_requested", user_id=str(user.id), email_sent=sent)
+    return answer
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    body: PasswordResetConfirmRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, str]:
+    """Set a new password from a reset link. The link works once: changing the password voids it."""
+    payload = decode_password_reset_token(body.token)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_RESET_INVALID)
+    try:
+        user_id = uuid.UUID(str(payload.get("sub")))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_RESET_INVALID) from exc
+
+    user = await db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_RESET_INVALID)
+    if payload.get("pwh") != password_fingerprint(user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_RESET_INVALID)
+
+    user.hashed_password = get_password_hash(body.new_password)
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    await db.commit()
+    logger.info("password_reset_completed", user_id=str(user.id))
+    return {"detail": "Password updated. You can sign in now."}
 
 
 @router.post("/refresh", response_model=RefreshTokenResponse)

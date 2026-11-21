@@ -1,0 +1,2 @@
+[12:00:00] [INFO] testing connection to the target URL
+[12:00:01] [INFO] testing

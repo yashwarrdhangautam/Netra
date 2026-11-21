@@ -2,8 +2,9 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from netra.db.models.scan import ScanProfile, ScanStatus
 
@@ -16,6 +17,13 @@ class ScanCreate(BaseModel):
     profile: ScanProfile = ScanProfile.STANDARD
     config: dict | None = None
 
+    @model_validator(mode="after")
+    def validate_profile_config(self) -> "ScanCreate":
+        from netra.schemas.scan_config import validate_scan_config
+
+        self.config = validate_scan_config(str(self.profile), self.config)
+        return self
+
 
 class ScanUpdate(BaseModel):
     """Schema for updating a scan."""
@@ -24,7 +32,26 @@ class ScanUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
 
 
-class ScanResponse(BaseModel):
+# "pending": the scan is still running and the tool has not reached its turn yet.
+ToolRunState = Literal["completed", "skipped", "unavailable", "failed", "parse_error", "pending"]
+
+
+class ToolCoverage(BaseModel):
+    phase: str
+    tool: str
+    state: ToolRunState
+    required: bool
+    reason_code: str | None = None
+    findings_count: int | None = None
+
+
+class ScanCoverage(BaseModel):
+    outcome: Literal["complete", "incomplete"] = "incomplete"
+    coverage_reason: str | None = "coverage_unknown"
+    coverage: list[ToolCoverage] = Field(default_factory=list)
+
+
+class ScanResponse(ScanCoverage):
     """Schema for scan response."""
 
     id: uuid.UUID
@@ -40,7 +67,7 @@ class ScanResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ScanListResponse(BaseModel):
+class ScanListResponse(ScanCoverage):
     """Schema for scan list items."""
 
     id: uuid.UUID
@@ -63,6 +90,8 @@ class ScanPhaseResponse(BaseModel):
     findings_count: int
     started_at: datetime | None
     completed_at: datetime | None
+    # Why a phase failed or was skipped, or its warnings (e.g. active_test_not_authorized).
+    error_message: str | None = None
 
     model_config = {"from_attributes": True}
 

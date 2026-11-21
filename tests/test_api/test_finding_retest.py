@@ -47,7 +47,42 @@ async def _finding(db_session, url: str | None, evidence: dict | None = None) ->
     target = Target(name="R", target_type="domain", value="retest.example.org")
     db_session.add(target)
     await db_session.flush()
-    scan = Scan(name="retest-scan", target_id=target.id, profile="quick")
+    from datetime import UTC, datetime, timedelta
+
+    from netra.schemas.authorization import AuthorizationRequest
+    from netra.services.scan_authorization import grant_authorization, prepare_scan_authorization
+
+    admin = User(
+        id=uuid.uuid4(),
+        email=f"grant-{uuid.uuid4()}@example.org",
+        hashed_password="unused",
+        role=UserRole.ADMIN,
+        is_active=True,
+    )
+    db_session.add(admin)
+    if url and "169.254.169.254" in url:
+        target.scope_includes = ["http://169.254.169.254/latest/meta-data"]
+    await db_session.flush()
+    await grant_authorization(
+        db_session,
+        target.id,
+        AuthorizationRequest(
+            evidence_reference="retest-lab",
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+            allowed_actions=["retest"],
+            http_methods=["GET"],
+            ports=[80, 443],
+            max_requests_per_second=1,
+        ),
+        admin,
+    )
+    snapshot = await prepare_scan_authorization(db_session, target.id)
+    scan = Scan(
+        name="retest-scan",
+        target_id=target.id,
+        profile="quick",
+        checkpoint_data={"authorization_snapshot": snapshot},
+    )
     db_session.add(scan)
     await db_session.flush()
     finding = Finding(
@@ -110,3 +145,18 @@ async def test_unknown_finding_is_404(db_session) -> None:
     async with _client_for(db_session, _analyst()) as client:
         response = await client.post(f"/api/v1/findings/{uuid.uuid4()}/retest")
     assert response.status_code == 404
+
+
+async def test_out_of_scope_retest_never_requests_or_resolves(db_session, monkeypatch):
+    from unittest.mock import AsyncMock, Mock
+
+    finding = await _finding(db_session, "https://outside.example.net/secret")
+    request = AsyncMock()
+    resolve = Mock()
+    monkeypatch.setattr(findings_module, "_retest_request", request)
+    monkeypatch.setattr(findings_module.SSRFProtection, "validate_url", resolve)
+    async with _client_for(db_session, _analyst()) as client:
+        response = await client.post(f"/api/v1/findings/{finding.id}/retest")
+    assert response.status_code == 403
+    request.assert_not_awaited()
+    resolve.assert_not_called()

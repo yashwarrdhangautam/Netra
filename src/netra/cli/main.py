@@ -215,55 +215,13 @@ def main() -> None:
                 console.print("\n[dim]Goodbye.[/dim]")
                 break
     elif args.command == "scan":
-        console.print(f"[bold]Scanning:[/bold] {args.target} with profile {args.profile}")
-        if args.dry_run:
-            console.print("[green]Dry run — config valid, no scan started.[/green]")
-        else:
-            try:
-                console.print("[cyan]Starting scan...[/cyan]")
-                # TODO: Replace with real scan orchestration in Phase 1
-                findings: list[dict[str, str]] = []  # placeholder until wired
-                console.print(f"[green]Scan complete — {len(findings)} findings.[/green]")
-
-                # --output-sarif: Write SARIF output
-                if getattr(args, "output_sarif", None):
-                    from pathlib import Path as _Path
-
-                    from netra.reports.sarif import generate_sarif
-
-                    sarif_path = generate_sarif(findings, _Path(args.output_sarif))
-                    console.print(f"[green]SARIF written to {sarif_path}[/green]")
-
-                # --fail-on: Exit with code 1 if findings meet threshold
-                if getattr(args, "fail_on", None):
-                    severity_order: dict[str, int] = {
-                        "critical": 0,
-                        "high": 1,
-                        "medium": 2,
-                        "low": 3,
-                        "info": 4,
-                    }
-                    threshold = severity_order[args.fail_on]
-                    violating = [
-                        f
-                        for f in findings
-                        if severity_order.get(f.get("severity", "info").lower(), 4) <= threshold
-                    ]
-                    if violating:
-                        console.print(
-                            f"[red]FAIL: {len(violating)} finding(s) at or above "
-                            f"{args.fail_on} severity.[/red]"
-                        )
-                        sys.exit(1)
-                    else:
-                        console.print(
-                            f"[green]PASS: No findings at or above "
-                            f"{args.fail_on} severity.[/green]"
-                        )
-                        sys.exit(0)
-            except Exception as exc:
-                console.print(f"[red]Scan error: {exc}[/red]")
-                sys.exit(2)
+        console.print(
+            "[yellow]Scan not available: the CLI is not connected to the authorized "
+            "scan pipeline. Use the API/dashboard workflow.[/yellow]"
+        )
+        # No assessment or configuration validation occurred, including --dry-run.
+        # Never manufacture a clean SARIF result or a passing severity gate.
+        sys.exit(2)
     elif args.command == "server":
         import uvicorn
 

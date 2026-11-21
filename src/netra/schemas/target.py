@@ -3,12 +3,13 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from netra.db.models.target import TargetType
 
 
 class TargetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     """Schema for creating a new target."""
 
     name: str = Field(min_length=1, max_length=255)
@@ -16,17 +17,16 @@ class TargetCreate(BaseModel):
     value: str
     scope_includes: list[str] | None = None
     scope_excludes: list[str] | None = None
-    metadata_: dict | None = Field(None, alias="metadata")
 
 
 class TargetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     """Schema for updating a target."""
 
     name: str | None = Field(None, min_length=1, max_length=255)
     value: str | None = None
     scope_includes: list[str] | None = None
     scope_excludes: list[str] | None = None
-    metadata_: dict | None = Field(None, alias="metadata")
     # Assign to a client user, or send null to unassign. Analysts and admins only.
     client_id: uuid.UUID | None = None
 

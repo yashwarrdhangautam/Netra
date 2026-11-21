@@ -1,5 +1,6 @@
 """Enhanced security utilities for JWT, refresh tokens, MFA, and token blacklist."""
 
+import hashlib
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -405,15 +406,23 @@ def verify_api_key(api_key: str, hashed_key: str) -> bool:
 # ── Password Reset Tokens ─────────────────────────────────────────────────────
 
 
+def password_fingerprint(hashed_password: str) -> str:
+    """Short digest of the current password hash. A reset token carries it, so changing the
+    password (by any route) makes every outstanding reset token invalid."""
+    return hashlib.sha256(hashed_password.encode("utf-8")).hexdigest()
+
+
 def create_password_reset_token(
     user_id: str | uuid.UUID,
     expires_hours: int = 1,
+    password_hash: str | None = None,
 ) -> str:
     """Create a password reset token.
 
     Args:
         user_id: The user ID
         expires_hours: Token expiration in hours (default 1)
+        password_hash: The user's current password hash, bound into the token
 
     Returns:
         The encoded JWT reset token
@@ -427,6 +436,8 @@ def create_password_reset_token(
         "type": "password_reset",
         "jti": str(uuid.uuid4()),
     }
+    if password_hash is not None:
+        to_encode["pwh"] = password_fingerprint(password_hash)
 
     return jwt.encode(
         to_encode,

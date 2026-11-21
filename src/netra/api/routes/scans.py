@@ -11,6 +11,7 @@ from netra.api.deps import CurrentUser, get_db_session
 from netra.api.routes.auth import get_current_active_user
 from netra.api.scope import apply, can_see_scan, scan_filter
 from netra.db.models.scan import Scan, ScanStatus
+from netra.db.models.scan_phase import ScanPhase
 from netra.db.models.target import Target
 from netra.db.models.user import User
 from netra.schemas.common import PaginatedResponse
@@ -24,8 +25,20 @@ from netra.schemas.scan import (
     ScanUpdate,
 )
 from netra.services.audit import record_audit
+from netra.services.scan_authorization import (
+    AuthorizationDenied,
+    prepare_scan_authorization,
+    require_scan_authorization,
+)
+from netra.services.scan_coverage import build_coverage_manifest, scan_coverage
 
 router = APIRouter()
+
+
+async def _scan_response(db: AsyncSession, scan: Scan) -> ScanResponse:
+    phases = list((await db.scalars(select(ScanPhase).where(ScanPhase.scan_id == scan.id))).all())
+    coverage = scan_coverage(scan, phases)
+    return ScanResponse.model_validate(scan).model_copy(update=coverage.model_dump())
 
 
 @router.post("/", response_model=ScanResponse, status_code=201)
@@ -48,16 +61,42 @@ async def create_scan(
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
 
+    if payload.config and any("authorization" in key.lower() for key in payload.config):
+        raise HTTPException(
+            status_code=422, detail="Server-managed authorization fields are forbidden"
+        )
+    try:
+        snapshot = await prepare_scan_authorization(db, target.id)
+    except AuthorizationDenied as exc:
+        raise HTTPException(
+            status_code=503 if exc.code == "policy_unavailable" else 403, detail=exc.code
+        ) from exc
+
+    from netra.worker.tasks import _passive_host
+
+    snapshot_actions = set((snapshot.get("record") or {}).get("allowed_actions") or [])
+
     # Create scan record
     scan = Scan(
         name=payload.name,
         target_id=payload.target_id,
         profile=payload.profile,
         config=payload.config or {},
+        user_id=current_user.id,
+        # The expected-tool manifest is fixed here, before dispatch, so a run that never
+        # happens shows as missing coverage rather than disappearing from the count.
+        checkpoint_data={
+            "authorization_snapshot": snapshot,
+            "coverage_manifest": build_coverage_manifest(
+                str(payload.profile),
+                payload.config,
+                passive_discovery=_passive_host(target.value) is not None,
+                active_test_allowed="active_test" in snapshot_actions,
+            ),
+        },
     )
     db.add(scan)
-    await db.commit()
-    await db.refresh(scan)
+    await db.flush()
     await record_audit(
         db,
         actor=current_user,
@@ -72,9 +111,16 @@ async def create_scan(
     # status. Running it inside this request would share a session that closes with the response.
     from netra.worker.tasks import run_scan
 
-    run_scan.delay(str(scan.id))
+    try:
+        run_scan.delay(str(scan.id))
+    except Exception as exc:
+        scan.status = ScanStatus.FAILED
+        scan.error_message = "dispatch_unavailable"
+        await db.commit()
+        raise HTTPException(status_code=503, detail="dispatch_unavailable") from exc
 
-    return ScanResponse.model_validate(scan)
+    await db.refresh(scan)
+    return await _scan_response(db, scan)
 
 
 @router.get("/", response_model=PaginatedResponse[ScanListResponse])
@@ -124,8 +170,27 @@ async def list_scans(
     total_result = await db.execute(count_query)
     total = len(list(total_result.scalars().all()))
 
+    phase_rows = (
+        list(
+            (
+                await db.scalars(
+                    select(ScanPhase).where(ScanPhase.scan_id.in_([scan.id for scan in scans]))
+                )
+            ).all()
+        )
+        if scans
+        else []
+    )
+    by_scan = {}
+    for phase in phase_rows:
+        by_scan.setdefault(phase.scan_id, []).append(phase)
     return PaginatedResponse(
-        items=[ScanListResponse.model_validate(s) for s in scans],
+        items=[
+            ScanListResponse.model_validate(s).model_copy(
+                update=scan_coverage(s, by_scan.get(s.id, [])).model_dump()
+            )
+            for s in scans
+        ],
         total=total,
         page=page,
         per_page=per_page,
@@ -151,7 +216,8 @@ async def get_scan(
     if not scan or not await can_see_scan(db, current_user, scan_id):
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    return ScanResponse.model_validate(scan)
+    await db.refresh(scan)
+    return await _scan_response(db, scan)
 
 
 @router.patch("/{scan_id}", response_model=ScanResponse)
@@ -176,6 +242,14 @@ async def update_scan(
         raise HTTPException(status_code=404, detail="Scan not found")
 
     if payload.status:
+        if payload.status not in (ScanStatus.PAUSED, ScanStatus.CANCELLED):
+            raise HTTPException(
+                status_code=422, detail="Use resume to run; execution owns terminal outcomes"
+            )
+        if scan.status in (ScanStatus.COMPLETED, ScanStatus.CANCELLED, ScanStatus.FAILED):
+            raise HTTPException(
+                status_code=409, detail="Terminal scans cannot be changed through PATCH"
+            )
         scan.status = payload.status
     if payload.name:
         scan.name = payload.name
@@ -185,8 +259,7 @@ async def update_scan(
     )
     await db.commit()
     await db.refresh(scan)
-
-    return ScanResponse.model_validate(scan)
+    return await _scan_response(db, scan)
 
 
 @router.delete("/{scan_id}", status_code=204)
@@ -264,9 +337,14 @@ async def resume_scan(
             detail="Can only resume paused or failed scans",
         )
 
-    scan.status = ScanStatus.RUNNING
-    await db.commit()
-    await db.refresh(scan)
+    try:
+        await require_scan_authorization(db, scan.id)
+    except AuthorizationDenied as exc:
+        raise HTTPException(
+            status_code=503 if exc.code == "policy_unavailable" else 403, detail=exc.code
+        ) from exc
+    # The status stays paused or failed until the worker claims the scan, so a duplicate
+    # dispatch cannot start a second run.
     await record_audit(
         db, actor=current_user, action="scan.resume", resource_type="scan", resource_id=str(scan.id)
     )
@@ -275,9 +353,16 @@ async def resume_scan(
     # Re-queue the pipeline on the worker. Without this the scan would sit at RUNNING forever.
     from netra.worker.tasks import run_scan
 
-    run_scan.delay(str(scan.id))
+    try:
+        run_scan.delay(str(scan.id))
+    except Exception as exc:
+        scan.status = ScanStatus.FAILED
+        scan.error_message = "dispatch_unavailable"
+        await db.commit()
+        raise HTTPException(status_code=503, detail="dispatch_unavailable") from exc
 
-    return ScanResponse.model_validate(scan)
+    await db.refresh(scan)
+    return await _scan_response(db, scan)
 
 
 @router.post("/diff", response_model=ScanDiffResponse)

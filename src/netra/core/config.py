@@ -15,6 +15,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         env_prefix="NETRA_",
+        # Compose-only keys (DB/Redis/Flower passwords, API host port) live in .env too.
+        extra="ignore",
     )
 
     # ── App ──
@@ -72,6 +74,8 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
+    # Base URL of the web app, used to build links in emails (password reset).
+    public_app_url: str = "http://localhost:5173"
     notification_email_from: str = ""
     notification_email_to: list[str] = Field(default=[])
 

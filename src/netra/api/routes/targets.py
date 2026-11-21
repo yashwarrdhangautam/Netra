@@ -3,7 +3,7 @@
 import csv
 import io
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -12,15 +12,21 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netra.api.deps import get_db_session
-from netra.api.routes.auth import get_current_active_user
+from netra.api.routes.auth import get_current_active_user, require_admin
 from netra.api.scope import can_see_target, target_filter
 from netra.core.rate_limiter import RateLimitProfiles, rate_limit
 from netra.core.ssrf_protection import SSRFProtectionError, validate_scan_target
 from netra.db.models.scan import Scan
 from netra.db.models.target import Target
 from netra.db.models.user import User, UserRole
+from netra.schemas.authorization import AuthorizationRequest
 from netra.schemas.common import PaginatedResponse
 from netra.services.audit import record_audit
+from netra.services.scan_authorization import (
+    AuthorizationDenied,
+    grant_authorization,
+    revoke_authorization,
+)
 
 logger = structlog.get_logger()
 
@@ -34,6 +40,7 @@ MAX_IMPORT_ROWS = 1000
 
 
 class TargetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(..., min_length=1, max_length=255)
     target_type: str
     value: str = Field(..., min_length=1)
@@ -43,6 +50,7 @@ class TargetCreate(BaseModel):
 
 
 class TargetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str | None = Field(None, min_length=1, max_length=255)
     value: str | None = Field(None, min_length=1)
     group_name: str | None = Field(None, max_length=100)
@@ -261,6 +269,13 @@ async def update_target(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="client_id must be a user with the client role",
             )
+    if any(
+        key in changes and changes[key] != getattr(target, key)
+        for key in ("value", "scope_includes", "scope_excludes")
+    ):
+        # Serialize policy mutation with grant/revoke and preserve its version history.
+        await db.refresh(target, with_for_update=True)
+        await revoke_authorization(db, target.id, current_user)
     for field, value in changes.items():
         setattr(target, field, value)
     await record_audit(
@@ -373,3 +388,36 @@ async def import_targets(
     )
     await db.commit()
     return ImportResult(imported=imported, failed=len(errors), errors=errors[:50])
+
+
+@router.put("/{target_id}/authorization")
+async def grant_target_authorization(
+    target_id: uuid.UUID,
+    payload: AuthorizationRequest,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> dict[str, Any]:
+    try:
+        record = await grant_authorization(db, target_id, payload, current_user)
+        await db.commit()
+        return record.model_dump(mode="json")
+    except AuthorizationDenied as exc:
+        raise HTTPException(
+            status_code=404 if exc.code == "target_missing" else 422, detail=exc.code
+        ) from exc
+
+
+@router.delete("/{target_id}/authorization")
+async def revoke_target_authorization(
+    target_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> dict[str, Any]:
+    try:
+        record = await revoke_authorization(db, target_id, current_user)
+        await db.commit()
+        return record.model_dump(mode="json") if record else {"revoked": True}
+    except AuthorizationDenied as exc:
+        raise HTTPException(
+            status_code=404 if exc.code == "target_missing" else 422, detail=exc.code
+        ) from exc

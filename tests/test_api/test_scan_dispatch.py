@@ -57,6 +57,20 @@ async def test_create_scan_queues_worker_task(db_session, monkeypatch) -> None:
             json={"name": "Dispatch", "target_type": "domain", "value": "example.org"},
         )
         assert target.status_code == 201, target.text
+        from datetime import UTC, datetime, timedelta
+
+        grant = await client.put(
+            f"/api/v1/targets/{target.json()['id']}/authorization",
+            json={
+                "evidence_reference": "dispatch-lab",
+                "expires_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+                "allowed_actions": ["passive_recon", "http_probe"],
+                "http_methods": ["GET", "HEAD"],
+                "ports": [80, 443],
+                "max_requests_per_second": 2,
+            },
+        )
+        assert grant.status_code == 200, grant.text
         scan = await client.post(
             "/api/v1/scans/",
             json={"target_id": target.json()["id"], "name": "Queued", "profile": "quick"},
