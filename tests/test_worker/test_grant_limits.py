@@ -147,3 +147,54 @@ def test_nuclei_timeout_shares_the_phase_budget() -> None:
     visibility = celery_app.conf.broker_transport_options["visibility_timeout"]
     assert visibility > tasks.VULN_SCAN_TIME_LIMIT
     assert tasks.vuln_scan.soft_time_limit == tasks.VULN_SCAN_SOFT_LIMIT
+
+
+def test_nuclei_and_nikto_together_fit_the_phase_budget() -> None:
+    nuclei, nikto = tasks._nuclei_timeout(2, nikto_hosts=2), tasks._nikto_timeout(2)
+    assert nuclei * 2 + nikto * 2 <= tasks.VULN_SCAN_SOFT_LIMIT
+    assert nikto >= 80 * 60  # ~4,700 nikto requests per host at 1 rps (measured on the lab)
+    assert nuclei > 3 * 3600
+
+
+async def test_vuln_scan_runs_nikto_with_grant_limits(monkeypatch) -> None:
+    """Nikto gets the granted rate, the granted methods and its share of the budget."""
+    calls: dict[str, dict] = {}
+
+    def fake(name):
+        class Fake:
+            def __init__(self, work_dir=None):
+                pass
+
+            async def run(self, target, **kwargs):
+                calls[name] = kwargs
+                return ToolResult(tool_name=name, success=True, metadata={"state": "completed"})
+
+        return Fake
+
+    record = SimpleNamespace(max_requests_per_second=1, http_methods={"GET", "HEAD"}, ports=[443])
+    scan = SimpleNamespace(profile="deep", config={}, checkpoint_data={}, target=None)
+
+    async def fake_auth(db, scan_id):
+        return scan, None, record, None
+
+    async def nothing(*args, **kwargs):
+        return 0
+
+    class FakeDb:
+        async def execute(self, *_):
+            return SimpleNamespace(scalar_one_or_none=lambda: scan)
+
+    monkeypatch.setattr(tasks, "require_scan_authorization", fake_auth)
+    monkeypatch.setattr(tasks, "_require_action", nothing)
+    monkeypatch.setattr(tasks, "_persist_findings", nothing)
+    monkeypatch.setattr(tasks, "NucleiTool", fake("nuclei"))
+    monkeypatch.setattr(tasks, "NiktoTool", fake("nikto"))
+    result = await tasks._execute_vuln_scan(
+        FakeDb(), uuid.uuid4(), {"live_hosts": ["https://example.test"]}
+    )
+    assert result["status"] == "completed"
+    assert calls["nikto"]["max_rps"] == 1
+    assert calls["nikto"]["allowed_methods"] == ["GET", "HEAD"]
+    assert calls["nikto"]["timeout"] == tasks._nikto_timeout(1)
+    assert calls["nuclei"]["timeout"] == tasks._nuclei_timeout(1, nikto_hosts=1)
+    assert [r["tool"] for r in result["runs"]] == ["nuclei", "nikto"]

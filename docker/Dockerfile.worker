@@ -30,9 +30,14 @@ ENV PYTHONPATH=/app/src
 # wpscan is not installed (Ruby gem with native deps); its wrapper reports it as missing.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap sqlmap dnsutils git curl ca-certificates \
-    perl libnet-ssleay-perl libwww-perl libjson-perl \
+    perl libnet-ssleay-perl libwww-perl libjson-perl libxml-writer-perl libxml-libxml-perl \
  && rm -rf /var/lib/apt/lists/*
-RUN git clone --depth 1 https://github.com/sullo/nikto /opt/nikto \
+# nikto 2.6.1 refuses to start without XML::Writer and XML::LibXML (the two xml packages above).
+# Pinned to a reviewed commit; NETRA filters its test database per run (scanner/tools/nikto.py),
+# which depends on the db_tests column layout of this version.
+ARG NIKTO_COMMIT=312645d873478a77986627ab1fc8cffe595e85d4
+RUN git clone https://github.com/sullo/nikto /opt/nikto \
+ && git -C /opt/nikto checkout ${NIKTO_COMMIT} \
  && ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
  && chmod +x /opt/nikto/program/nikto.pl
 # Installed in their own venv: these tools pin dependencies that clash with the NETRA

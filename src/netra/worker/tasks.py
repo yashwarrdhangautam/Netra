@@ -25,6 +25,7 @@ from netra.scanner.scope_gate import compile_rules
 from netra.scanner.tools.base import RUN_GUARD
 from netra.scanner.tools.dalfox import DalfoxTool
 from netra.scanner.tools.httpx import HttpxTool
+from netra.scanner.tools.nikto import NiktoTool
 from netra.scanner.tools.nuclei import NucleiTool
 from netra.scanner.tools.process_control import (
     clear_task_registry,
@@ -629,9 +630,24 @@ VULN_SCAN_TIME_LIMIT = VULN_SCAN_SOFT_LIMIT + 300
 _VULN_SCAN_MARGIN = 600
 
 
-def _nuclei_timeout(host_count: int) -> int:
-    """Per-host nuclei timeout: the phase budget shared across hosts, never below 5 minutes."""
-    return max(300, (VULN_SCAN_SOFT_LIMIT - _VULN_SCAN_MARGIN) // max(1, host_count))
+# Share of the phase budget nuclei gets when nikto also runs; nikto gets the rest. Nikto's
+# filtered run is ~4,700 requests per host (~80 min at 1 rps), so 30% covers two hosts.
+_NUCLEI_SHARE_WITH_NIKTO = 0.70
+
+
+def _phase_budget(share: float) -> int:
+    return int((VULN_SCAN_SOFT_LIMIT - _VULN_SCAN_MARGIN) * share)
+
+
+def _nuclei_timeout(host_count: int, nikto_hosts: int = 0) -> int:
+    """Per-host nuclei timeout: its share of the phase budget, never below 5 minutes."""
+    share = _NUCLEI_SHARE_WITH_NIKTO if nikto_hosts else 1.0
+    return max(300, _phase_budget(share) // max(1, host_count))
+
+
+def _nikto_timeout(host_count: int) -> int:
+    """Per-host nikto timeout: the budget nuclei leaves, never below 5 minutes."""
+    return max(300, _phase_budget(1 - _NUCLEI_SHARE_WITH_NIKTO) // max(1, host_count))
 
 
 @celery_app.task(
@@ -731,7 +747,9 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
             overrides.get("rate_limit", profile.get("rate_limit", 150)), record
         )
         nuclei_hosts = live_hosts[:50]
-        nuclei_timeout = _nuclei_timeout(len(nuclei_hosts))
+        nikto_enabled = bool(profile.get("use_nikto")) and bool(overrides.get("use_nikto", True))
+        nikto_hosts = live_hosts[:10] if nikto_enabled else []
+        nuclei_timeout = _nuclei_timeout(len(nuclei_hosts), len(nikto_hosts))
         for target in nuclei_hosts:
             await _require_action(db, scan, target, "vulnerability_scan", "GET")
             run = await nuclei.run(
@@ -743,11 +761,19 @@ async def _execute_vuln_scan(db: AsyncSession, scan_id: uuid.UUID, previous_resu
             )
             _record_run(runs, "nuclei", target, run)
             total_findings += await _persist_findings(db, scan_id, "nuclei", run.findings)
-        # Nikto has no parser yet. Its runs are recorded as unavailable, never as clean.
-        nikto_enabled = bool(profile.get("use_nikto")) and bool(overrides.get("use_nikto", True))
-        for target in live_hosts[:10] if nikto_enabled else []:
+        # Nikto runs only grant-allowed, non-exploit tests at the granted rate (see nikto.py).
+        nikto = NiktoTool(work_dir=_phase_dir(scan_id, "vuln_scan") / "nikto")
+        nikto_timeout = _nikto_timeout(len(nikto_hosts))
+        for target in nikto_hosts:
             await _require_action(db, scan, target, "vulnerability_scan", "GET")
-            _record_unavailable(runs, "nikto", target, "parser_not_implemented")
+            run = await nikto.run(
+                target,
+                max_rps=rate_limit,
+                allowed_methods=sorted(record.http_methods),
+                timeout=nikto_timeout,
+            )
+            _record_run(runs, "nikto", target, run)
+            total_findings += await _persist_findings(db, scan_id, "nikto", run.findings)
         return {
             "scan_id": str(scan_id),
             "phase": "vuln_scan",
