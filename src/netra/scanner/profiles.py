@@ -54,10 +54,6 @@ PROFILES: dict[str, dict[str, Any]] = {
         "wordlist": "directory-list-2.3-medium.txt",
         "timeout_minutes": 720,
         "threads": 5,
-        # Phase 2 options
-        "run_sast": True,
-        "run_secrets": True,
-        "run_dependencies": True,
     },
     "api_only": {
         "description": "API-focused — REST/GraphQL testing",

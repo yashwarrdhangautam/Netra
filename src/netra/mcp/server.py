@@ -4,8 +4,14 @@ Run with: python -m netra.mcp.server
 Or configure in Claude Desktop / Claude Code config.
 """
 
+import inspect
 import os
+import uuid
+from collections.abc import Awaitable, Callable
+from functools import wraps
 from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -40,8 +46,7 @@ except Exception:
 
 
 # Phase 1 tools
-from netra.bugbounty.scope import AssetType, RuleType, ScopeRule, ScopeValidator, ScopeViolation
-from netra.mcp.federated import FederatedMcpClient
+from netra.bugbounty.scope import RuleType, ScopeRule, ScopeValidator, ScopeViolation
 from netra.scanner.tools.amass import AmassTool
 from netra.scanner.tools.checkov import CheckovTool
 from netra.scanner.tools.dalfox import DalfoxTool
@@ -65,26 +70,195 @@ from netra.scanner.tools.trivy import TrivyTool
 mcp = FastMCP("netra")
 
 
-def _bb_validator(scope_rules: list[dict[str, str]]) -> ScopeValidator:
-    return ScopeValidator(
-        [
-            ScopeRule(
-                rule_type=RuleType(r.get("rule_type", "in")),
-                asset_type=AssetType(r.get("asset_type", "domain")),
-                pattern=r["pattern"],
-                severity_cap=r.get("severity_cap"),
+MCP_TOOL_POLICY = {
+    "nuclei_scan": ("target", "vulnerability_scan"),
+    "nmap_scan": ("target", "port_scan"),
+    "sqlmap_test": ("url", "active_test"),
+    "subfinder_enum": ("domain", "passive_recon"),
+    "httpx_probe": ("targets", "http_probe"),
+    "ffuf_fuzz": ("url", "active_test"),
+    "dalfox_xss": ("url", "active_test"),
+    "nikto_scan": ("target", "vulnerability_scan"),
+    "amass_enum": ("domain", "passive_recon"),
+    "shodan_search": "deferred",
+    "semgrep_scan": "deferred",
+    "gitleaks_scan": "deferred",
+    "pip_audit_scan": "deferred",
+    "prowler_audit": "deferred",
+    "trivy_scan": "deferred",
+    "checkov_scan": "deferred",
+    "llm_security_scan": "deferred",
+    "bb_passive_recon": "federated",
+    "bb_active_recon": "federated",
+    "bb_subdomain_enum": "federated",
+    "scanner_tools_status": "read_only",
+    "cve_priority": "read_only",
+    "protection_checklist": "read_only",
+    "payload_search": "read_only",
+}
+
+
+def _policy_session() -> AsyncSession:
+    from netra.db.session import async_session_factory
+
+    return async_session_factory()
+
+
+def _blocked(code: str) -> dict[str, Any]:
+    return {"success": False, "status": "blocked", "error": code}
+
+
+def _unavailable(reason: str) -> dict[str, Any]:
+    return {"success": False, "status": "unavailable", "error": reason}
+
+
+async def _authorize_mcp(
+    candidates: list[str], action: str, method: str | None
+) -> dict[str, Any] | None:
+    from sqlalchemy import select
+
+    from netra.db.models.target import Target
+    from netra.services.scan_authorization import AuthorizationDenied, require_target_action
+
+    try:
+        async with _policy_session() as db:
+            binding = os.getenv("NETRA_MCP_TARGET_ID")
+            targets = (
+                [uuid.UUID(binding)]
+                if binding
+                else list((await db.scalars(select(Target.id).limit(1001))).all())
             )
-            for r in scope_rules
-            if r.get("pattern")
-        ]
+            if len(targets) > 1000:
+                return _blocked("target_binding_required")
+            matches = []
+            rates = []
+            for target_id in targets:
+                try:
+                    for candidate in candidates:
+                        record = await require_target_action(
+                            db, target_id, candidate, action, method=method
+                        )
+                    matches.append(target_id)
+                    rates.append(record.max_requests_per_second)
+                except AuthorizationDenied as exc:
+                    if exc.code == "policy_unavailable":
+                        return _blocked(exc.code)
+            if len(matches) != 1:
+                return _blocked("authorization_ambiguous" if matches else "authorization_missing")
+            return {"success": True, "rate_limit": min(rates)}
+    except Exception:
+        return _blocked("policy_unavailable")
+
+
+def _guard_mcp(
+    fn: Callable[..., Awaitable[dict[str, Any]]],
+) -> Callable[..., Awaitable[dict[str, Any]]]:
+    signature = inspect.signature(fn)
+
+    @wraps(fn)
+    async def guarded(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        policy = MCP_TOOL_POLICY[fn.__name__]
+        if policy == "deferred":
+            return _unavailable("target_kind_or_tool_not_supported")
+        values = signature.bind(*args, **kwargs)
+        values.apply_defaults()
+        if isinstance(policy, tuple):
+            parameter, action = policy
+            candidate = values.arguments[parameter]
+            candidates = candidate if isinstance(candidate, list) else [candidate]
+            if (
+                not candidates
+                or len(candidates) > 100
+                or any(
+                    not isinstance(c, str)
+                    or not c
+                    or c.startswith("-")
+                    or "," in c
+                    or any(ord(ch) < 32 for ch in c)
+                    for c in candidates
+                )
+            ):
+                return _blocked("target_invalid")
+            denied = await _authorize_mcp(candidates, action, values.arguments.get("method", "GET"))
+            if denied and not denied.get("success"):
+                return denied
+            if fn.__name__ != "httpx_probe":
+                return _unavailable("adapter_scope_controls_pending_review")
+            if fn.__name__ == "httpx_probe" and any(
+                not c.startswith(("http://", "https://")) for c in candidates
+            ):
+                return _blocked("explicit_url_required")
+            if fn.__name__ == "httpx_probe" and values.arguments["follow_redirects"]:
+                return _unavailable("redirects_not_authorized")
+            if fn.__name__ == "httpx_probe":
+                if denied is None:
+                    return _blocked("policy_unavailable")
+                return await _run_httpx(values.arguments, int(denied["rate_limit"]))
+        return await fn(*args, **kwargs)
+
+    return guarded
+
+
+async def _run_httpx(values: dict[str, Any], rate_limit: int) -> dict[str, Any]:
+    tool = HttpxTool()
+    if not tool.is_installed():
+        return _unavailable("httpx_not_installed")
+    result = await tool.run(
+        ",".join(values["targets"]),
+        follow_redirects=False,
+        tech_detect=values["tech_detect"],
+        rate_limit=rate_limit,
     )
+    return {
+        "success": result.success,
+        "live_hosts": len(result.findings),
+        "findings": result.findings[:50],
+        "metadata": result.metadata,
+    }
+
+
+async def _stored_bb_validator() -> ScopeValidator:
+    from sqlalchemy import select
+
+    from netra.db.models.bb_program import BBProgram
+    from netra.db.models.bb_scope_rule import BBScopeRule
+
+    binding = os.getenv("NETRA_MCP_PROGRAM_ID")
+    if not binding:
+        raise ValueError("program_binding_required")
+    async with _policy_session() as db:
+        program = await db.get(BBProgram, uuid.UUID(binding))
+        if program is None or not program.active or program.deleted_at is not None:
+            raise ValueError("program_unavailable")
+        rules = list(
+            (
+                await db.scalars(
+                    select(BBScopeRule).where(
+                        BBScopeRule.program_id == program.id, BBScopeRule.active.is_(True)
+                    )
+                )
+            ).all()
+        )
+        if not rules:
+            raise ValueError("scope_denied")
+        # Reject malformed policy rather than silently ignoring an invalid exclusion.
+        from netra.scanner.scope_gate import canonical_rule
+
+        compiled = []
+        for rule in rules:
+            kind, pattern = canonical_rule(rule.pattern, allow_wildcard=True)
+            if kind.value != rule.asset_type:
+                raise ValueError("policy_invalid")
+            compiled.append(ScopeRule(RuleType(rule.rule_type), kind, pattern))
+        return ScopeValidator(compiled)
 
 
 async def _call_federated_bb(
     tool_name: str, target: str, scope_rules: list[dict[str, str]], arguments: dict[str, Any]
 ) -> dict[str, Any]:
     try:
-        _bb_validator(scope_rules).require(target)
+        validator = await _stored_bb_validator()
+        validator.require(target)
     except ScopeViolation as exc:
         return {
             "success": False,
@@ -93,12 +267,18 @@ async def _call_federated_bb(
             "reason": exc.decision.reason,
         }
 
-    command = os.getenv("NETRA_BB_MCP_COMMAND", "gokulapap-mcp").split()
-    try:
-        async with FederatedMcpClient(command) as client:
-            return await client.call_tool(tool_name, arguments)
-    except Exception as exc:
-        return {"success": False, "error": "downstream_unavailable", "detail": str(exc)}
+    except ValueError as exc:
+        return _blocked(
+            str(exc)
+            if str(exc) in {"program_binding_required", "program_unavailable", "scope_denied"}
+            else "policy_invalid"
+        )
+    except Exception:
+        return _blocked("policy_unavailable")
+
+    # Stored scope is necessary but does not prove downstream traffic/rate controls.
+    # Keep all federation execution unavailable until that contract is validated.
+    return _unavailable("federated_scope_controls_pending_review")
 
 
 # ══════════════════════════════════════════════════════════
@@ -107,6 +287,7 @@ async def _call_federated_bb(
 
 
 @mcp.tool()
+@_guard_mcp
 async def nuclei_scan(
     target: str,
     templates: str = "default",
@@ -145,6 +326,7 @@ async def nuclei_scan(
 
 
 @mcp.tool()
+@_guard_mcp
 async def nmap_scan(
     target: str,
     scan_type: str = "service_version",
@@ -182,6 +364,7 @@ async def nmap_scan(
 
 
 @mcp.tool()
+@_guard_mcp
 async def sqlmap_test(
     url: str,
     method: str = "GET",
@@ -225,6 +408,7 @@ async def sqlmap_test(
 
 
 @mcp.tool()
+@_guard_mcp
 async def subfinder_enum(
     domain: str,
     sources: str = "all",
@@ -246,7 +430,7 @@ async def subfinder_enum(
             "error": "Subfinder not installed",
             "install": tool.install_instructions,
         }
-    result = await tool.run(domain, sources=sources, recursive=recursive)
+    result = await tool.run(domain, sources="passive", passive_only=True, recursive=recursive)
     subdomains = [f.get("url", "") for f in result.findings if f.get("url")]
     return {
         "success": result.success,
@@ -257,6 +441,7 @@ async def subfinder_enum(
 
 
 @mcp.tool()
+@_guard_mcp
 async def httpx_probe(
     targets: list[str],
     follow_redirects: bool = True,
@@ -289,6 +474,7 @@ async def httpx_probe(
 
 
 @mcp.tool()
+@_guard_mcp
 async def ffuf_fuzz(
     url: str,
     wordlist: str = "common.txt",
@@ -330,6 +516,7 @@ async def ffuf_fuzz(
 
 
 @mcp.tool()
+@_guard_mcp
 async def dalfox_xss(
     url: str,
     parameter: str = "",
@@ -360,6 +547,7 @@ async def dalfox_xss(
 
 
 @mcp.tool()
+@_guard_mcp
 async def nikto_scan(
     target: str,
     tuning: str = "",
@@ -391,6 +579,7 @@ async def nikto_scan(
 
 
 @mcp.tool()
+@_guard_mcp
 async def amass_enum(
     domain: str,
     passive: bool = True,
@@ -423,6 +612,7 @@ async def amass_enum(
 
 
 @mcp.tool()
+@_guard_mcp
 async def shodan_search(
     query: str,
     max_results: int = 100,
@@ -452,18 +642,21 @@ async def shodan_search(
 
 
 @mcp.tool()
+@_guard_mcp
 async def bb_passive_recon(target: str, scope_rules: list[dict[str, str]]) -> dict[str, Any]:
     """Proxy passive bug bounty recon through downstream MCP with NETRA scope gate."""
     return await _call_federated_bb("bb_passive_recon", target, scope_rules, {"target": target})
 
 
 @mcp.tool()
+@_guard_mcp
 async def bb_active_recon(target: str, scope_rules: list[dict[str, str]]) -> dict[str, Any]:
     """Proxy active bug bounty recon through downstream MCP with NETRA scope gate."""
     return await _call_federated_bb("bb_active_recon", target, scope_rules, {"target": target})
 
 
 @mcp.tool()
+@_guard_mcp
 async def bb_subdomain_enum(domain: str, scope_rules: list[dict[str, str]]) -> dict[str, Any]:
     """Proxy subdomain enumeration through downstream MCP with NETRA scope gate."""
     return await _call_federated_bb("bb_subdomain_enum", domain, scope_rules, {"domain": domain})
@@ -475,6 +668,7 @@ async def bb_subdomain_enum(domain: str, scope_rules: list[dict[str, str]]) -> d
 
 
 @mcp.tool()
+@_guard_mcp
 async def semgrep_scan(
     path: str,
     ruleset: str = "all",
@@ -508,6 +702,7 @@ async def semgrep_scan(
 
 
 @mcp.tool()
+@_guard_mcp
 async def gitleaks_scan(
     path: str,
     scan_history: bool = True,
@@ -537,6 +732,7 @@ async def gitleaks_scan(
 
 
 @mcp.tool()
+@_guard_mcp
 async def pip_audit_scan(
     path: str,
 ) -> dict[str, Any]:
@@ -564,6 +760,7 @@ async def pip_audit_scan(
 
 
 @mcp.tool()
+@_guard_mcp
 async def prowler_audit(
     provider: str = "aws",
     checks: str = "",
@@ -595,6 +792,7 @@ async def prowler_audit(
 
 
 @mcp.tool()
+@_guard_mcp
 async def trivy_scan(
     target: str,
     scan_type: str = "image",
@@ -626,6 +824,7 @@ async def trivy_scan(
 
 
 @mcp.tool()
+@_guard_mcp
 async def checkov_scan(
     path: str,
     framework: str = "",
@@ -655,6 +854,7 @@ async def checkov_scan(
 
 
 @mcp.tool()
+@_guard_mcp
 async def llm_security_scan(
     target: str,
     test_categories: list[str] | None = None,
@@ -782,6 +982,7 @@ def pentest_report(scan_id: str) -> str:
 
 
 @mcp.tool()
+@_guard_mcp
 async def scanner_tools_status() -> dict[str, Any]:
     """List which scanner binaries are installed on this host and which required ones are missing.
 
@@ -796,6 +997,7 @@ async def scanner_tools_status() -> dict[str, Any]:
 
 
 @mcp.tool()
+@_guard_mcp
 async def cve_priority(cve_ids: list[str]) -> dict[str, Any]:
     """Rank CVE identifiers by exploitation: CISA KEV status first, then FIRST EPSS likelihood.
 
@@ -824,6 +1026,7 @@ async def cve_priority(cve_ids: list[str]) -> dict[str, Any]:
 
 
 @mcp.tool()
+@_guard_mcp
 async def protection_checklist(
     headers: dict[str, str], status_code: int | None = None
 ) -> dict[str, Any]:
@@ -850,6 +1053,7 @@ async def protection_checklist(
 
 
 @mcp.tool()
+@_guard_mcp
 async def payload_search(
     query: str = "", topic: str | None = None, limit: int = 25
 ) -> dict[str, Any]:

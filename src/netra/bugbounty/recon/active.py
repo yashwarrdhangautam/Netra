@@ -10,7 +10,7 @@ import structlog
 from netra.bugbounty.scope import ScopeValidator, ScopeViolation
 from netra.scanner.tools.ffuf import FfufTool
 from netra.scanner.tools.httpx import HttpxTool
-from netra.scanner.tools.nuclei import NucleiTool
+from netra.scanner.tools.nuclei import NON_EXPLOIT_EXCLUDE_TAGS, NucleiTool
 
 logger = structlog.get_logger()
 
@@ -82,6 +82,8 @@ async def nuclei_safe(
         tags="cve,exposure,misconfig",
         severity=severity,
         rate_limit=25,
+        # "Safe" subset: the cve tag also carries state-changing and flooding templates.
+        exclude_tags=list(NON_EXPLOIT_EXCLUDE_TAGS),
     )
     if not result.success:
         logger.warning("bb.recon.active.nuclei_failed", host=host, error=result.error)

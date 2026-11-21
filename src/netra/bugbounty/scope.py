@@ -311,7 +311,11 @@ def _match_url(rule_pattern: str, parsed: ParsedTarget) -> bool:
         return False
     if rule.host != parsed.host:
         return False
-    if rule.port is not None and parsed.port != rule.port:
+    if rule.scheme is not None and rule.scheme != parsed.scheme:
+        return False
+    rule_port = rule.port or {"http": 80, "https": 443}.get(rule.scheme or "")
+    target_port = parsed.port or {"http": 80, "https": 443}.get(parsed.scheme or "")
+    if rule_port is not None and target_port != rule_port:
         return False
     rule_path = rule.path
     parsed_path = parsed.path

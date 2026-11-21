@@ -1,0 +1,16 @@
+# NETRA-owned Semgrep rules. Written in-house so no registry rule licence applies (spec 6.4).
+rules:
+  - id: netra.python.subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: "subprocess call with shell=True receives a possibly untrusted command string"
+    pattern: subprocess.$F(..., shell=True, ...)
+    metadata:
+      cwe: "CWE-78"
+  - id: netra.python.eval-call
+    languages: [python]
+    severity: WARNING
+    message: "eval() executes dynamic code"
+    pattern: eval(...)
+    metadata:
+      cwe: "CWE-95"

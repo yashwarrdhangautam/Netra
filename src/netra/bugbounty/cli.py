@@ -54,7 +54,9 @@ def _doctor_checks(include_local_tools: bool = True) -> list[tuple[str, bool, st
         "claude": "ANTHROPIC_API_KEY",
         "kimi": "KIMI_API_KEY",
     }.get(graphify_backend)
-    if graphify_key_env:
+    # A local Ollama server needs no API key; only Ollama Cloud does.
+    local_ollama = graphify_backend == "ollama" and "ollama.com" not in settings.ollama_base_url
+    if graphify_key_env and not local_ollama:
         key_ok = bool(os.getenv(graphify_key_env))
         checks.append(
             (
@@ -137,11 +139,17 @@ def _check_broker(url: str) -> tuple[bool, str]:
         return (bool(url), f"configured ({parsed.scheme or 'unknown'} broker)")
     host = parsed.hostname or "localhost"
     port = parsed.port or 6379
+    payload = b""
+    if parsed.password:
+        # The compose stack requires a Redis password, so authenticate before PING.
+        auth = parsed.password.encode("utf-8")
+        payload += b"*2\r\n$4\r\nAUTH\r\n$" + str(len(auth)).encode() + b"\r\n" + auth + b"\r\n"
+    payload += b"*1\r\n$4\r\nPING\r\n"
     try:
         with socket.create_connection((host, port), timeout=1.5) as sock:
-            sock.sendall(b"*1\r\n$4\r\nPING\r\n")
-            response = sock.recv(16)
-        if response.startswith(b"+PONG"):
+            sock.sendall(payload)
+            response = sock.recv(64)
+        if b"+PONG" in response:
             return True, f"reachable at {host}:{port}"
         return False, f"unexpected Redis response at {host}:{port}"
     except OSError as exc:
@@ -153,44 +161,61 @@ def _ollama_model_size_ok() -> bool:
     return any(marker in model for marker in ("7b", "8b", "13b", "14b", "32b"))
 
 
-def _check_agentic_budget_table() -> tuple[bool, str]:
+def _run_isolated(factory):
+    """Run an async check on its own thread, loop and engine.
+
+    The API calls these checks from inside its running event loop, where asyncio.run() cannot
+    be used, and the shared engine's pooled connections belong to the API's loop.
+    """
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(lambda: asyncio.run(factory())).result(timeout=60)
+
+
+async def _with_fresh_session(fn):
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
     try:
-        from netra.db.engine import get_session
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            return await fn(session)
+    finally:
+        await engine.dispose()
 
-        async def run() -> tuple[bool, str]:
-            async with get_session() as session:
-                await session.execute(text("SELECT 1 FROM bb_hunt_budgets LIMIT 1"))
-            return True, "reachable"
 
-        return asyncio.run(run())
+def _check_agentic_budget_table() -> tuple[bool, str]:
+    async def run(session) -> tuple[bool, str]:
+        await session.execute(text("SELECT 1 FROM bb_hunt_budgets LIMIT 1"))
+        return True, "reachable"
+
+    try:
+        return _run_isolated(lambda: _with_fresh_session(run))
     except Exception as exc:
         return False, f"not ready: {exc}"
 
 
 def _check_corpus_freshness(source_name: str, *, max_age_hours: int) -> tuple[bool, str]:
+    from sqlalchemy import select
+
+    from netra.db.models import CorpusIngestLog
+
+    async def run(session) -> tuple[bool, str]:
+        result = await session.execute(
+            select(CorpusIngestLog)
+            .where(CorpusIngestLog.source_name == source_name)
+            .order_by(CorpusIngestLog.completed_at.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        if row is None or row.completed_at is None:
+            return False, "never ingested"
+        age = datetime.now(UTC) - row.completed_at
+        return age <= timedelta(hours=max_age_hours), f"last ingest {row.completed_at.isoformat()}"
+
     try:
-        from sqlalchemy import select
-
-        from netra.db.engine import get_session
-        from netra.db.models import CorpusIngestLog
-
-        async def run() -> tuple[bool, str]:
-            async with get_session() as session:
-                result = await session.execute(
-                    select(CorpusIngestLog)
-                    .where(CorpusIngestLog.source_name == source_name)
-                    .order_by(CorpusIngestLog.completed_at.desc())
-                    .limit(1)
-                )
-                row = result.scalar_one_or_none()
-            if row is None or row.completed_at is None:
-                return False, "never ingested"
-            age = datetime.now(UTC) - row.completed_at
-            return age <= timedelta(
-                hours=max_age_hours
-            ), f"last ingest {row.completed_at.isoformat()}"
-
-        return asyncio.run(run())
+        return _run_isolated(lambda: _with_fresh_session(run))
     except Exception as exc:
         return False, f"not ready: {exc}"
 

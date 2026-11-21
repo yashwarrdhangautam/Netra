@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from netra.intel.bypass_checklist import checklist_for, detect_protections
+from netra.scanner.passive import security_headers
 from netra.scanner.tools.base import CliTool, ToolResult, parse_json_lines
 
 
@@ -19,10 +20,15 @@ class HttpxTool(CliTool):
         follow_redirects: bool = True,
         tech_detect: bool = True,
         head: bool = False,
+        rate_limit: int | None = None,
         **kwargs,
     ) -> ToolResult:
         targets = [t.strip() for t in target.split(",") if t.strip()]
         args = ["-json", "-silent", "-no-color", "-include-response-header"]
+        if rate_limit is not None:
+            if isinstance(rate_limit, bool) or not 1 <= rate_limit <= 300:
+                raise ValueError("invalid httpx rate limit")
+            args += ["-rate-limit", str(rate_limit)]
         if follow_redirects:
             args.append("-follow-redirects")
         if tech_detect:
@@ -46,4 +52,7 @@ def _row_to_finding(row: dict[str, Any]) -> dict[str, Any]:
         "title": row.get("title"),
         "protections": protections,
         "bypass_checklist": [c.check for c in checklist_for(protections)],
+        # Only the hardening/disclosure headers: enough for header findings, nothing sensitive.
+        # None means httpx returned no header data, which must never read as "no security headers".
+        "headers": security_headers(row["header"]) if row.get("header") else None,
     }
